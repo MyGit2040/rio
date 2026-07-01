@@ -11,18 +11,26 @@
         <span class="text-xs font-semibold shrink-0" :class="textColor" x-text="score + '/100 · ' + level"></span>
     </div>
 
+    {{-- The message with flagged words shaded red, so you can see them in context. --}}
+    <div x-show="flagged.length && highlighted" x-cloak
+         class="mt-2 text-xs text-gray-800 whitespace-pre-line break-words leading-relaxed bg-white rounded border border-gray-100 p-2 max-h-32 overflow-auto"
+         x-html="highlighted"></div>
+
     <template x-if="flagged.length">
-        <div class="mt-2">
-            <p class="text-[11px] text-gray-500 mb-1">Words raising your score — click to swap for a cleaner word:</p>
-            <div class="flex flex-wrap gap-1">
-                <template x-for="(f, i) in flagged" :key="i">
-                    <button type="button" @click="replaceWord(f)"
-                            class="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs hover:bg-red-200"
-                            :title="f.alt ? ('Replace with: ' + f.alt) : 'Consider removing this'">
-                        <span x-text="f.word"></span><span x-show="f.alt" class="text-red-400" x-text="' → ' + f.alt"></span>
-                    </button>
-                </template>
-            </div>
+        <div class="mt-2 space-y-1">
+            <p class="text-[11px] text-gray-500">Words raising your score — tap a suggestion to swap it in:</p>
+            <template x-for="(f, i) in flagged" :key="i">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs" x-text="f.word"></span>
+                    <span class="text-gray-400 text-xs" x-show="f.alts.length">→</span>
+                    <template x-for="(a, ai) in f.alts" :key="ai">
+                        <button type="button" @click="replaceWord(f.word, a)"
+                                class="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs hover:bg-green-200" x-text="a"></button>
+                    </template>
+                    <button type="button" x-show="! f.alts.length" @click="replaceWord(f.word, '')"
+                            class="text-[11px] text-gray-500 hover:text-red-600 underline">remove</button>
+                </div>
+            </template>
         </div>
     </template>
 
@@ -38,20 +46,24 @@
     <script>
         function spamLive(targetId) {
             return {
-                score: 0, level: 'low', flagged: [], tips: [], ta: null,
+                score: 0, level: 'low', flagged: [], tips: [], highlighted: '', ta: null,
                 get barColor() { return this.level === 'high' ? 'bg-red-500' : (this.level === 'medium' ? 'bg-yellow-500' : 'bg-green-500'); },
                 get textColor() { return this.level === 'high' ? 'text-red-600' : (this.level === 'medium' ? 'text-yellow-700' : 'text-green-600'); },
                 init() {
                     this.ta = document.getElementById(targetId);
                     if (! this.ta) return;
-                    const run = () => { const r = window.eagleSpamScore(this.ta.value); this.score = r.score; this.level = r.level; this.flagged = r.flagged; this.tips = r.tips; };
+                    const run = () => {
+                        const r = window.eagleSpamScore(this.ta.value);
+                        this.score = r.score; this.level = r.level; this.flagged = r.flagged; this.tips = r.tips;
+                        this.highlighted = window.eagleSpamHighlight(this.ta.value);
+                    };
                     this.ta.addEventListener('input', run);
                     run();
                 },
-                replaceWord(f) {
-                    if (! f.alt || ! this.ta) return;
-                    const re = new RegExp(f.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig');
-                    this.ta.value = this.ta.value.replace(re, f.alt);
+                replaceWord(word, alt) {
+                    if (! this.ta) return;
+                    const re = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig');
+                    this.ta.value = this.ta.value.replace(re, alt);
                     this.ta.dispatchEvent(new Event('input', { bubbles: true })); // re-scores + syncs Alpine x-model
                     this.ta.focus();
                 },
@@ -63,18 +75,24 @@
                     const lower = text.toLowerCase();
                     let score = 0; const flagged = []; const tips = [];
 
-                    // Spam-trigger words → cleaner alternative ('' = just remove it).
+                    // Spam-trigger words → list of cleaner alternatives ([] = just remove it).
                     const SPAM = {
-                        'free': 'complimentary', '100% free': 'included', 'free gift': 'gift', 'winner': '', 'you won': '',
-                        'congratulations': '', 'urgent': '', 'act now': '', 'click here': 'tap the link', 'click below': 'the link below',
-                        'limited time': '', 'limited offer': '', 'offer expires': '', 'exclusive deal': 'special offer', 'discount': 'special price',
-                        'cash': '', 'prize': '', 'guarantee': '', 'guaranteed': '', 'risk free': '', 'no cost': '', 'no obligation': '',
-                        'buy now': 'have a look', 'order now': 'order', 'cheap': 'affordable', 'lowest price': 'great price', 'credit': '',
-                        'loan': '', 'debt': '', 'casino': '', 'lottery': '', 'jackpot': '', 'bitcoin': '', 'crypto': '', 'investment': '',
-                        'earn money': '', 'make money': '', 'work from home': '', 'double your': '', 'get rich': '', 'weight loss': '',
-                        'miracle': '', 'hurry': '', 'instant': '', 'claim now': '', 'verify your account': '', 'suspended': '', 'reward': '',
+                        'free': ['complimentary', 'included', 'no charge'], '100% free': ['fully included'], 'free gift': ['gift', 'bonus'],
+                        'winner': ['selected'], 'you won': ['you are eligible'], 'congratulations': ['great news'],
+                        'urgent': ['important', 'time-sensitive'], 'act now': ['get started', 'have a look'],
+                        'click here': ['tap the link', 'open the link'], 'click below': ['the link below'],
+                        'limited time': ['for a short while'], 'limited offer': ['current offer'], 'offer expires': ['offer ends'],
+                        'exclusive deal': ['special offer', 'members offer'], 'discount': ['special price', 'saving', 'better rate'],
+                        'cash': ['payment', 'funds'], 'prize': ['reward', 'gift'], 'guarantee': ['assurance'],
+                        'guaranteed': ['assured', 'reliable'], 'risk free': ['no-obligation'], 'no cost': ['included'],
+                        'no obligation': ['no commitment'], 'buy now': ['have a look', 'explore'], 'order now': ['order', 'place your order'],
+                        'cheap': ['affordable', 'budget-friendly'], 'lowest price': ['great price', 'competitive price'],
+                        'credit': [], 'loan': [], 'debt': [], 'casino': [], 'lottery': [], 'jackpot': [], 'bitcoin': [], 'crypto': [],
+                        'investment': [], 'earn money': ['grow income'], 'make money': ['increase revenue'], 'work from home': ['remote work'],
+                        'double your': ['grow your'], 'get rich': [], 'weight loss': [], 'miracle': ['remarkable'], 'hurry': ['soon'],
+                        'instant': ['quick', 'fast'], 'claim now': ['request yours'], 'verify your account': [], 'suspended': [], 'reward': ['benefit', 'perk'],
                     };
-                    for (const w in SPAM) { if (lower.includes(w)) flagged.push({ word: w, alt: SPAM[w] }); }
+                    for (const w in SPAM) { if (lower.includes(w)) flagged.push({ word: w, alts: SPAM[w] || [] }); }
                     if (flagged.length) { score += Math.min(35, flagged.length * 6); tips.push('Reword the salesy terms shown in red.'); }
 
                     const links = (text.match(/\b(?:https?:\/\/|www\.)\S+/ig) || []).length;
@@ -95,6 +113,17 @@
                     score = Math.min(100, score);
                     const level = score <= 25 ? 'low' : (score <= 55 ? 'medium' : 'high');
                     return { score, level, flagged, tips: tips.slice(0, 3) };
+        };
+        // Escape text, then wrap each flagged word in a red mark for an at-a-glance view.
+        window.eagleSpamHighlight = function (text) {
+            text = text || '';
+            let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const words = window.eagleSpamScore(text).flagged.map(f => f.word).sort((a, b) => b.length - a.length);
+            for (const w of words) {
+                const esc = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                html = html.replace(new RegExp('(' + esc + ')(?![^<]*>)', 'ig'), '<mark class="bg-red-200 text-red-800 rounded px-0.5">$1</mark>');
+            }
+            return html;
         };
     </script>
     @endpush

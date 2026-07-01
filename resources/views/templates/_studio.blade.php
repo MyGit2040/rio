@@ -75,23 +75,30 @@
                                                   class="flex-1 rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500"></textarea>
                                         <button type="button" @click="variants.splice(i, 1)" class="text-red-500 px-2 mt-2">&times;</button>
                                     </div>
-                                    {{-- Live spam score for THIS variant (instant) + click-to-swap suggestions --}}
-                                    <div x-show="(variants[i] || '').trim()" class="flex items-center gap-2 mt-1 pr-7 flex-wrap">
-                                        <div class="flex items-center gap-2 flex-1 min-w-[120px]">
+                                    {{-- Live spam score for THIS variant (instant): bar, red-shaded content, multi-word suggestions --}}
+                                    <div x-show="(variants[i] || '').trim()" class="mt-1 pr-7 space-y-1">
+                                        <div class="flex items-center gap-2">
                                             <div class="flex-1 h-1.5 rounded-full bg-gray-200 overflow-hidden">
                                                 <div class="h-full" :class="spamOf(variants[i]).level === 'high' ? 'bg-red-500' : (spamOf(variants[i]).level === 'medium' ? 'bg-yellow-500' : 'bg-green-500')" :style="`width:${spamOf(variants[i]).score}%`"></div>
                                             </div>
                                             <span class="text-[10px] shrink-0" :class="spamOf(variants[i]).level === 'high' ? 'text-red-600' : (spamOf(variants[i]).level === 'medium' ? 'text-yellow-700' : 'text-green-600')" x-text="spamOf(variants[i]).score + '/100'"></span>
                                         </div>
-                                        <div class="flex gap-1 flex-wrap">
-                                            <template x-for="(f, fi) in spamOf(variants[i]).flagged.slice(0, 4)" :key="fi">
-                                                <button type="button" x-show="f.alt"
-                                                        @click="variants[i] = variants[i].replace(new RegExp(f.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig'), f.alt)"
-                                                        class="px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] hover:bg-red-200"
-                                                        :title="'Replace with: ' + f.alt"
-                                                        x-text="f.word + ' → ' + f.alt"></button>
-                                            </template>
-                                        </div>
+                                        {{-- content with flagged words shaded red --}}
+                                        <div x-show="spamOf(variants[i]).flagged.length" x-html="eagleSpamHighlight(variants[i])"
+                                             class="text-[11px] text-gray-700 whitespace-pre-line break-words bg-white rounded border border-gray-100 p-1.5"></div>
+                                        {{-- each flagged word + its alternative suggestions --}}
+                                        <template x-for="(f, fi) in spamOf(variants[i]).flagged" :key="fi">
+                                            <div class="flex items-center gap-1 flex-wrap">
+                                                <span class="px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px]" x-text="f.word"></span>
+                                                <span class="text-gray-400 text-[10px]" x-show="f.alts.length">→</span>
+                                                <template x-for="(a, ai) in f.alts" :key="ai">
+                                                    <button type="button" @click="variants[i] = variants[i].replace(new RegExp(f.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig'), a)"
+                                                            class="px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] hover:bg-green-200" x-text="a"></button>
+                                                </template>
+                                                <button type="button" x-show="! f.alts.length" @click="variants[i] = variants[i].replace(new RegExp(f.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig'), '')"
+                                                        class="text-[10px] text-gray-500 hover:text-red-600 underline">remove</button>
+                                            </div>
+                                        </template>
                                     </div>
                                 </div>
                             </template>
@@ -127,6 +134,7 @@
                                     <span x-text="uploading ? '…' : 'Upload'"></span>
                                 </label>
                             </div>
+                            @include('templates._upload-status')
                         </div>
                     </div>
 
@@ -169,6 +177,7 @@
                                     </label>
                                 </div>
                             </div>
+                            @include('templates._upload-status')
                             <p class="text-xs text-gray-500 mt-1">Your <strong>Message</strong> above is sent with this image as its caption, then the poll appears below it.</p>
                         </div>
                     </div>
@@ -360,7 +369,7 @@
             cards: @js(old('cards', $template->cards ?: [['image' => '', 'title' => '', 'body' => '', 'buttons' => []]])),
             variantCount: 10,
             variantGenerating: false,
-            uploading: false,
+            uploading: false, uploadProgress: 0, uploadError: '', uploadName: '',
             generateVariants() {
                 if (! this.body.trim()) { alert('Write your main message first.'); return; }
                 this.variantGenerating = true;
@@ -469,20 +478,31 @@
                 const file = e.target.files[0];
                 if (! file) return;
                 this.uploading = true;
+                this.uploadProgress = 0;
+                this.uploadError = '';
+                this.uploadName = file.name;
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '{{ route('uploads.store') }}');
+                xhr.setRequestHeader('X-CSRF-TOKEN', document.querySelector('meta[name=csrf-token]').content);
+                xhr.setRequestHeader('Accept', 'application/json');
+                xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) this.uploadProgress = Math.round(ev.loaded / ev.total * 100); };
+                xhr.onload = () => {
+                    this.uploading = false;
+                    let d = {};
+                    try { d = JSON.parse(xhr.responseText); } catch (_) {}
+                    if (xhr.status >= 200 && xhr.status < 300 && d.url) {
+                        setter(d.url);
+                        this.uploadName = d.name || file.name;
+                        this.uploadProgress = 100;
+                    } else {
+                        this.uploadName = '';
+                        this.uploadError = d.message || (d.errors && Object.values(d.errors)[0]) || ('Upload failed (' + xhr.status + ')');
+                    }
+                };
+                xhr.onerror = () => { this.uploading = false; this.uploadName = ''; this.uploadError = 'Upload failed — network error.'; };
                 const fd = new FormData();
                 fd.append('file', file);
-                fetch('{{ route('uploads.store') }}', {
-                    method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content, 'Accept': 'application/json' },
-                    body: fd,
-                })
-                .then(async r => {
-                    const d = await r.json().catch(() => ({}));
-                    if (! r.ok) throw new Error(d.message || (d.errors && Object.values(d.errors)[0]) || ('Upload failed (' + r.status + ')'));
-                    return d;
-                })
-                .then(d => { this.uploading = false; d.url ? setter(d.url) : alert(d.message || 'Upload failed'); })
-                .catch(e => { this.uploading = false; alert(e.message || 'Upload failed — check the file type/size.'); });
+                xhr.send(fd);
                 e.target.value = '';
             },
             removeOption(i) { if (this.options.length > 2) this.options.splice(i, 1); },
