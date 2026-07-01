@@ -1,12 +1,15 @@
 <x-app-layout>
     <x-slot name="header">Reports</x-slot>
 
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-6">
         @foreach ([
             ['Campaigns', $totals['campaigns'], 'text-gray-800'],
             ['Messages sent', $totals['sent'], 'text-green-600'],
             ['Failed', $totals['failed'], 'text-red-500'],
             ['Link clicks', $totals['clicks'], 'text-brand'],
+            ['Replies', $totals['replies'], 'text-brand'],
+            ['Poll answers', $totals['poll_answers'], 'text-green-600'],
+            ['Button clicks', $totals['button_clicks'], 'text-blue-600'],
         ] as [$label, $value, $color])
             <x-card><p class="text-2xl font-bold {{ $color }}">{{ number_format($value) }}</p><p class="text-xs text-gray-500 mt-1">{{ $label }}</p></x-card>
         @endforeach
@@ -23,6 +26,7 @@
                         <th class="px-5 py-3 font-medium">Delivered</th>
                         <th class="px-5 py-3 font-medium">Read</th>
                         <th class="px-5 py-3 font-medium">Failed</th>
+                        <th class="px-5 py-3 font-medium">Responses</th>
                         <th class="px-5 py-3 font-medium">Delivery rate</th>
                     </tr>
                 </thead>
@@ -35,6 +39,7 @@
                             <td class="px-5 py-3 text-gray-600">{{ $c->delivered_count }}</td>
                             <td class="px-5 py-3 text-gray-600">{{ $c->read_count }}</td>
                             <td class="px-5 py-3 text-red-500">{{ $c->failed }}</td>
+                            <td class="px-5 py-3 font-medium text-brand">{{ $c->responses_count }}</td>
                             <td class="px-5 py-3">
                                 <div class="flex items-center gap-2">
                                     <div class="w-20 h-2 rounded-full bg-gray-100 overflow-hidden"><div class="h-full bg-green-500" style="width: {{ $rate }}%"></div></div>
@@ -43,7 +48,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="px-5 py-10 text-center text-gray-500">No campaigns yet.</td></tr>
+                        <tr><td colspan="7" class="px-5 py-10 text-center text-gray-500">No campaigns yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>

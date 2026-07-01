@@ -168,6 +168,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/campaigns/{campaign}/test', [CampaignController::class, 'test'])->name('campaigns.test');
     Route::get('/campaigns/{campaign}/export', [CampaignController::class, 'export'])->name('campaigns.export');
     Route::get('/campaigns/{campaign}/progress', [CampaignController::class, 'progress'])->name('campaigns.progress');
+    Route::get('/campaigns/{campaign}/responses', [CampaignController::class, 'responses'])->name('campaigns.responses');
 
     // Chatbot rules
     Route::resource('chatbot', ChatbotRuleController::class)->parameters(['chatbot' => 'rule'])->except('show');

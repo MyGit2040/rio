@@ -193,6 +193,32 @@ class CampaignController extends Controller
         ]);
     }
 
+    /**
+     * Live engagement (replies / poll answers / button clicks) for the Responses card.
+     */
+    public function responses(Campaign $campaign): JsonResponse
+    {
+        $inbound = Message::where('campaign_id', $campaign->id)->where('direction', 'in');
+
+        return response()->json([
+            'engagement' => [
+                'replies'       => (clone $inbound)->where('type', 'text')->count(),
+                'poll_answers'  => (clone $inbound)->where('type', 'poll_response')->count(),
+                'button_clicks' => (clone $inbound)->where('type', 'button_response')->count(),
+            ],
+            'poll' => (clone $inbound)->where('type', 'poll_response')
+                ->selectRaw('body, COUNT(*) as c')->groupBy('body')->orderByDesc('c')->get()
+                ->map(fn ($r) => ['option' => $r->body, 'count' => (int) $r->c]),
+            'latest' => (clone $inbound)->with('contact')->latest('id')->limit(30)->get()
+                ->map(fn ($r) => [
+                    'icon' => ['poll_response' => '📊', 'button_response' => '🔘'][$r->type] ?? '📩',
+                    'who'  => $r->contact->name ?? '+'.$r->phone,
+                    'body' => \Illuminate\Support\Str::limit($r->body, 120),
+                    'ago'  => $r->created_at?->diffForHumans(),
+                ]),
+        ]);
+    }
+
     public function destroy(Campaign $campaign): RedirectResponse
     {
         $campaign->delete();

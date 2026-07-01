@@ -92,47 +92,56 @@
         </div>
     </div>
 
-    {{-- Responses / engagement --}}
-    <x-card title="Responses" class="mb-6">
+    {{-- Responses / engagement (auto-refreshes live) --}}
+    <x-card title="Responses" class="mb-6"
+            x-data="campaignResponses({{ $campaign->id }}, @js([
+                'engagement' => $engagement,
+                'poll'       => $pollBreakdown->map(fn ($c, $o) => ['option' => $o, 'count' => $c])->values(),
+                'latest'     => $responses->map(fn ($r) => [
+                    'icon' => ['poll_response' => '📊', 'button_response' => '🔘'][$r->type] ?? '📩',
+                    'who'  => $r->contact->name ?? '+'.$r->phone,
+                    'body' => Str::limit($r->body, 120),
+                    'ago'  => $r->created_at?->diffForHumans(),
+                ]),
+            ]))"
+            x-init="startPolling()">
         <div class="grid grid-cols-3 gap-4 mb-4">
-            <div class="text-center"><p class="text-2xl font-bold text-brand">{{ $engagement['replies'] }}</p><p class="text-xs text-gray-500">Replies received</p></div>
-            <div class="text-center"><p class="text-2xl font-bold text-green-600">{{ $engagement['poll_answers'] }}</p><p class="text-xs text-gray-500">Poll answers</p></div>
-            <div class="text-center"><p class="text-2xl font-bold text-blue-600">{{ $engagement['button_clicks'] }}</p><p class="text-xs text-gray-500">Button clicks</p></div>
+            <div class="text-center"><p class="text-2xl font-bold text-brand" x-text="engagement.replies"></p><p class="text-xs text-gray-500">Replies received</p></div>
+            <div class="text-center"><p class="text-2xl font-bold text-green-600" x-text="engagement.poll_answers"></p><p class="text-xs text-gray-500">Poll answers</p></div>
+            <div class="text-center"><p class="text-2xl font-bold text-blue-600" x-text="engagement.button_clicks"></p><p class="text-xs text-gray-500">Button clicks</p></div>
         </div>
 
-        @if ($pollBreakdown->isNotEmpty())
-            @php($pollTotal = $pollBreakdown->sum())
+        <template x-if="breakdown.length">
             <div class="mb-4">
                 <p class="text-xs font-semibold text-gray-600 mb-2">Poll answer breakdown</p>
                 <div class="space-y-2">
-                    @foreach ($pollBreakdown as $option => $c)
+                    <template x-for="(row, i) in breakdown" :key="i">
                         <div>
-                            <div class="flex justify-between text-sm mb-0.5"><span class="text-gray-700 truncate">{{ $option }}</span><span class="text-gray-500 shrink-0 ml-2">{{ $c }}</span></div>
-                            <div class="h-2 rounded-full bg-gray-100 overflow-hidden"><div class="h-full bg-green-500" style="width: {{ $pollTotal ? round($c / $pollTotal * 100) : 0 }}%"></div></div>
+                            <div class="flex justify-between text-sm mb-0.5"><span class="text-gray-700 truncate" x-text="row.option"></span><span class="text-gray-500 shrink-0 ml-2" x-text="row.count"></span></div>
+                            <div class="h-2 rounded-full bg-gray-100 overflow-hidden"><div class="h-full bg-green-500 transition-all" :style="`width:${pollPercent(row.count)}%`"></div></div>
                         </div>
-                    @endforeach
+                    </template>
                 </div>
             </div>
-        @endif
+        </template>
 
-        @if ($responses->isNotEmpty())
-            <p class="text-xs font-semibold text-gray-600 mb-2">Latest responses</p>
-            <ul class="divide-y divide-gray-100 max-h-80 overflow-y-auto">
-                @foreach ($responses as $r)
-                    @php($icon = ['poll_response' => '📊', 'button_response' => '🔘'][$r->type] ?? '📩')
-                    <li class="py-2 flex items-start gap-2 text-sm">
-                        <span class="shrink-0">{{ $icon }}</span>
-                        <div class="min-w-0">
-                            <span class="font-medium text-gray-800">{{ $r->contact->name ?? '+'.$r->phone }}</span>
-                            <span class="text-gray-600"> — {{ Str::limit($r->body, 120) }}</span>
-                            <span class="block text-[11px] text-gray-400">{{ $r->created_at?->diffForHumans() }}</span>
-                        </div>
-                    </li>
-                @endforeach
-            </ul>
-        @else
-            <p class="text-sm text-gray-500">No responses yet. Replies, poll answers and button clicks land here — and a detailed copy goes to your hook number.</p>
-        @endif
+        <template x-if="latest.length">
+            <div>
+                <p class="text-xs font-semibold text-gray-600 mb-2">Latest responses <span class="text-gray-400 font-normal">· live</span></p>
+                <ul class="divide-y divide-gray-100 max-h-80 overflow-y-auto">
+                    <template x-for="(r, i) in latest" :key="i">
+                        <li class="py-2 flex items-start gap-2 text-sm">
+                            <span class="shrink-0" x-text="r.icon"></span>
+                            <div class="min-w-0">
+                                <span class="font-medium text-gray-800" x-text="r.who"></span><span class="text-gray-600"> — </span><span class="text-gray-600" x-text="r.body"></span>
+                                <span class="block text-[11px] text-gray-400" x-text="r.ago"></span>
+                            </div>
+                        </li>
+                    </template>
+                </ul>
+            </div>
+        </template>
+        <p x-show="!latest.length" class="text-sm text-gray-500">No responses yet. Replies, poll answers and button clicks land here — and a detailed copy goes to your hook number.</p>
     </x-card>
 
     @if (!empty($variantStats))
@@ -239,6 +248,27 @@
             }, 3000);
         })();
         @endif
+
+        // Live-refresh the Responses card (replies / poll answers / button clicks keep arriving).
+        function campaignResponses(id, initial) {
+            return {
+                engagement: initial.engagement,
+                breakdown: initial.poll,
+                latest: initial.latest,
+                pollPercent(count) {
+                    const total = this.breakdown.reduce((s, r) => s + r.count, 0);
+                    return total ? Math.round(count / total * 100) : 0;
+                },
+                startPolling() {
+                    setInterval(() => {
+                        fetch(`/campaigns/${id}/responses`, { headers: { 'Accept': 'application/json' } })
+                            .then(r => r.json())
+                            .then(d => { this.engagement = d.engagement; this.breakdown = d.poll; this.latest = d.latest; })
+                            .catch(() => {});
+                    }, 8000);
+                },
+            };
+        }
     </script>
     @endpush
 </x-app-layout>

@@ -1249,6 +1249,21 @@ class AppSmokeTest extends TestCase
         $this->assertDatabaseHas('messages', ['direction' => 'in', 'type' => 'poll_response', 'body' => 'More details', 'campaign_id' => $campaign->id]);
     }
 
+    public function test_campaign_responses_endpoint(): void
+    {
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $device = WhatsappInstance::create(['name' => 'L', 'instance_name' => 're-dev', 'status' => 'open']);
+        $campaign = Campaign::create(['whatsapp_instance_id' => $device->id, 'name' => 'C', 'type' => 'poll', 'body' => 'hi', 'status' => 'completed', 'total' => 1]);
+        $contact = Contact::create(['phone' => '971500000001', 'name' => 'A']);
+        Message::create(['whatsapp_instance_id' => $device->id, 'contact_id' => $contact->id, 'campaign_id' => $campaign->id, 'direction' => 'in', 'phone' => '971500000001', 'type' => 'poll_response', 'body' => 'Yes', 'status' => 'received']);
+
+        $this->getJson("/campaigns/{$campaign->id}/responses")
+            ->assertOk()
+            ->assertJson(['engagement' => ['poll_answers' => 1]])
+            ->assertJsonPath('latest.0.body', 'Yes');
+    }
+
     public function test_spam_score_rates_clean_vs_spammy(): void
     {
         $service = new SpamScoreService;

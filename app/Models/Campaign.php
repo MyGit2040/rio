@@ -50,6 +50,11 @@ class Campaign extends Model
         return $this->hasMany(CampaignRecipient::class);
     }
 
+    public function messages(): HasMany
+    {
+        return $this->hasMany(Message::class);
+    }
+
     public function progressPercent(): int
     {
         if ($this->total === 0) {
