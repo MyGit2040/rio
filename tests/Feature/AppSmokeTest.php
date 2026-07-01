@@ -1103,6 +1103,101 @@ class AppSmokeTest extends TestCase
         $this->assertSame(9, \App\Services\PlanLimit::for($owner->tenant->fresh())->limit('devices'));
     }
 
+    public function test_missing_limit_heals_to_config_default_not_unlimited(): void
+    {
+        // F6: a plan JSON missing a key must fall back to the config default, never "unlimited" (0).
+        Plan::byKey('free')->update(['limits' => ['devices' => 1]]); // contacts + monthly_messages dropped
+        $plan = Plan::byKey('free');
+
+        $this->assertSame(1, $plan->limit('devices'));
+        $this->assertSame(500, $plan->limit('contacts'));          // config free default
+        $this->assertSame(1000, $plan->limit('monthly_messages')); // config free default, NOT 0
+    }
+
+    public function test_plan_key_is_immutable_on_update(): void
+    {
+        // F4: even a crafted request cannot change a plan key (would orphan tenants).
+        $admin = $this->makeUser('HQ', 'admin@test.dev');
+        $admin->update(['is_super_admin' => true]);
+        $this->actingAs($admin);
+
+        $pro = Plan::byKey('pro');
+        $this->put("/admin/plans/{$pro->id}", [
+            'key' => 'changed', 'name' => 'Pro', 'price' => 29, 'billing_period' => 'monthly',
+            'limit_devices' => 5, 'limit_contacts' => 25000, 'limit_monthly_messages' => 50000, 'is_active' => 1,
+        ])->assertRedirect('/admin/plans');
+
+        $this->assertSame('pro', $pro->fresh()->key);
+        $this->assertDatabaseMissing('plans', ['key' => 'changed']);
+    }
+
+    public function test_workspace_cannot_be_assigned_an_inactive_plan(): void
+    {
+        // F5: admin assignment now matches Billing — only active plans.
+        $admin = $this->makeUser('HQ', 'admin@test.dev');
+        $admin->update(['is_super_admin' => true]);
+        $this->actingAs($admin);
+
+        Plan::byKey('pro')->update(['is_active' => false]);
+
+        $this->post('/admin/workspaces', [
+            'name' => 'Co', 'owner_name' => 'O', 'owner_email' => 'o@test.dev', 'password' => 'password123',
+            'plan' => 'pro', 'max_devices' => 1,
+        ])->assertSessionHasErrors('plan');
+    }
+
+    public function test_monthly_message_cap_blocks_single_send(): void
+    {
+        // F1: over the monthly cap, a new single send is blocked before the gateway.
+        config(['evolution.base_url' => 'http://localhost:8080', 'evolution.api_key' => 'k']);
+        Http::fake(['*' => Http::response(['key' => ['id' => 'X']], 201)]);
+
+        $owner = $this->makeUser();
+        $owner->tenant->update(['plan' => 'free']);
+        Plan::byKey('free')->update(['limits' => ['devices' => 1, 'contacts' => 500, 'monthly_messages' => 1]]);
+        $this->actingAs($owner);
+
+        $device = WhatsappInstance::create(['name' => 'L', 'instance_name' => 'cap-1', 'status' => 'open']);
+        Message::create(['tenant_id' => $owner->tenant_id, 'direction' => 'out', 'type' => 'text', 'phone' => '971500000001']);
+
+        $this->post('/single-message', [
+            'whatsapp_instance_id' => $device->id, 'phone' => '971500000003', 'body' => 'hi',
+        ])->assertRedirect();
+
+        Http::assertNothingSent();
+        $this->assertSame(1, Message::where('direction', 'out')->count()); // no new outbound
+    }
+
+    public function test_campaign_pauses_when_monthly_cap_reached(): void
+    {
+        // F1: mid-flight, the campaign pauses cleanly at the cap; recipients stay pending.
+        config(['evolution.base_url' => 'http://localhost:8080', 'evolution.api_key' => 'k']);
+        Http::fake(['*' => Http::response(['key' => ['id' => 'X']], 201)]);
+
+        $owner = $this->makeUser();
+        $owner->tenant->update(['plan' => 'free']);
+        Plan::byKey('free')->update(['limits' => ['devices' => 1, 'contacts' => 500, 'monthly_messages' => 1]]);
+        $this->actingAs($owner);
+
+        $device = WhatsappInstance::create(['name' => 'L', 'instance_name' => 'cap-j', 'status' => 'open']);
+        $contact = Contact::create(['name' => 'A', 'phone' => '971500000010']);
+        $campaign = Campaign::create([
+            'whatsapp_instance_id' => $device->id, 'name' => 'C', 'type' => 'text',
+            'body' => 'hi', 'status' => 'sending', 'total' => 1,
+        ]);
+        $recipient = $campaign->recipients()->create([
+            'contact_id' => $contact->id, 'phone' => $contact->phone, 'status' => 'pending',
+        ]);
+
+        Message::create(['tenant_id' => $owner->tenant_id, 'direction' => 'out', 'type' => 'text', 'phone' => 'x']); // at cap
+
+        (new SendCampaignMessage($recipient->id))->handle();
+
+        $this->assertSame('paused', $campaign->fresh()->status);
+        $this->assertSame('pending', $recipient->fresh()->status);
+        Http::assertNothingSent();
+    }
+
     public function test_suspended_workspace_is_blocked(): void
     {
         $owner = $this->makeUser();

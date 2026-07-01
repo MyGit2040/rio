@@ -9,6 +9,7 @@ use App\Models\Message;
 use App\Models\Suppression;
 use App\Models\WhatsappInstance;
 use App\Services\EvolutionApiService;
+use App\Services\PlanLimit;
 use App\Support\SendingWindow;
 use App\Support\Tenancy;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -68,6 +69,14 @@ class SendCampaignMessage implements ShouldQueue
         // defer this contact to tomorrow (stays pending — nothing is lost).
         if ($instance->atDailyCap()) {
             self::dispatch($recipient->id)->delay(now()->addDay()->startOfDay()->addMinutes(random_int(1, 90)));
+
+            return;
+        }
+
+        // Plan monthly-message cap: pause the campaign cleanly when the limit is hit.
+        // Remaining recipients stay pending — resumable next month or after an upgrade.
+        if ($campaign->tenant && PlanLimit::for($campaign->tenant)->reached('monthly_messages')) {
+            $campaign->update(['status' => 'paused']);
 
             return;
         }

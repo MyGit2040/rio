@@ -7,6 +7,7 @@ use App\Http\Requests\PlanRequest;
 use App\Models\Plan;
 use App\Models\Tenant;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Arr;
 use Illuminate\View\View;
 
 class PlanController extends Controller
@@ -47,7 +48,8 @@ class PlanController extends Controller
 
     public function update(PlanRequest $request, Plan $plan): RedirectResponse
     {
-        $plan->update($request->toPlan());
+        // Key is immutable — tenants reference it by key, so never change it on update.
+        $plan->update(Arr::except($request->toPlan(), 'key'));
         $this->syncSingleDefault($plan);
 
         return redirect()->route('admin.plans.index')->with('success', 'Plan updated.');

@@ -28,11 +28,24 @@ class PlanLimit
         return new self($tenant);
     }
 
-    /** The tenant's Plan model (or the default plan). Null only if no plans exist. */
+    /** The tenant's Plan model (or a safe default). Null only if no plans exist at all. */
     public function plan(): ?Plan
     {
         if (! $this->resolvedDone) {
-            $this->resolved = Plan::byKey($this->tenant->plan) ?? Plan::defaultPlan();
+            $key = $this->tenant->plan;
+
+            if ($key) {
+                // A set-but-unknown key (e.g. a plan that was removed) fails CLOSED to the
+                // config-safe default — never the admin's default plan, which could be unlimited.
+                $this->resolved = Plan::byKey($key)
+                    ?? Plan::byKey(config('plans.default', 'free'))
+                    ?? Plan::defaultPlan();
+            } else {
+                // No plan assigned yet: the admin's chosen default plan.
+                $this->resolved = Plan::defaultPlan()
+                    ?? Plan::byKey(config('plans.default', 'free'));
+            }
+
             $this->resolvedDone = true;
         }
 
@@ -41,7 +54,8 @@ class PlanLimit
 
     public function planKey(): string
     {
-        return $this->tenant->plan ?: (optional($this->plan())->key ?? config('plans.default', 'free'));
+        // Always the RESOLVED plan's key (an invalid tenant.plan resolves to the safe default).
+        return optional($this->plan())->key ?? config('plans.default', 'free');
     }
 
     public function planName(): string

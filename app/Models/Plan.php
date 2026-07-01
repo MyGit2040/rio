@@ -51,7 +51,25 @@ class Plan extends Model
     /** A single limit value (0 = unlimited). */
     public function limit(string $key): int
     {
-        return (int) data_get($this->limits, $key, 0);
+        $value = data_get($this->limits, $key);
+
+        // A drifted plan missing a limit key heals to the configured default for its
+        // tier — never silently "unlimited" because a key happened to be absent.
+        if ($value === null) {
+            $value = data_get(config('plans.tiers.'.$this->key), "limits.$key");
+        }
+
+        return (int) $value;
+    }
+
+    /** Price suffix driven by billing_period (so the field isn't decorative). */
+    public function periodLabel(): string
+    {
+        return match ($this->billing_period) {
+            'yearly'   => '/yr',
+            'one_time' => ' one-time',
+            default    => '/mo',
+        };
     }
 
     /**

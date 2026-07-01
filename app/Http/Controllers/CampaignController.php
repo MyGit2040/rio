@@ -10,6 +10,7 @@ use App\Models\WhatsappInstance;
 use App\Models\Message;
 use App\Services\CampaignService;
 use App\Services\EvolutionApiService;
+use App\Services\PlanLimit;
 use App\Support\Audit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -162,6 +163,10 @@ class CampaignController extends Controller
         $connected = $this->campaigns->connectedDeviceCount($campaign);
         if ($connected === 0) {
             return back()->with('error', "None of this campaign's WhatsApp numbers are connected. Reconnect at least one on the Devices page, then Resume — no messages are lost.");
+        }
+
+        if (PlanLimit::for(auth()->user()->tenant)->reached('monthly_messages')) {
+            return back()->with('error', "You've reached your plan's monthly message limit. Upgrade on the Billing page to send more.");
         }
 
         $wasResume = $campaign->status === 'paused';

@@ -7,6 +7,7 @@ use App\Models\Message;
 use App\Models\Template;
 use App\Models\WhatsappInstance;
 use App\Services\EvolutionApiService;
+use App\Services\PlanLimit;
 use App\Support\Tenancy;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -37,6 +38,10 @@ class SingleMessageController extends Controller
         $device = WhatsappInstance::findOrFail($data['whatsapp_instance_id']);
         if (! $device->isConnected()) {
             return back()->withInput()->with('error', 'That WhatsApp number is not connected.');
+        }
+
+        if (PlanLimit::for(auth()->user()->tenant)->reached('monthly_messages')) {
+            return back()->withInput()->with('error', "You've reached your plan's monthly message limit. Upgrade on the Billing page to send more.");
         }
 
         $phone = preg_replace('/\D+/', '', $data['phone']);

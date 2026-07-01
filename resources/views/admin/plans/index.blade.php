@@ -30,7 +30,7 @@
                                 <div class="text-xs text-gray-400">{{ $plan->key }}</div>
                             </td>
                             <td class="px-5 py-3 text-gray-600 whitespace-nowrap">
-                                ${{ rtrim(rtrim(number_format($plan->price, 2), '0'), '.') }}<span class="text-gray-400">/mo</span>
+                                ${{ rtrim(rtrim(number_format($plan->price, 2), '0'), '.') }}<span class="text-gray-400">{{ $plan->periodLabel() }}</span>
                             </td>
                             <td class="px-5 py-3 text-gray-600 whitespace-nowrap text-xs">
                                 {{ (int) data_get($plan->limits, 'devices', 0) }} dev ·

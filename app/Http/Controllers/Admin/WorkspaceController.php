@@ -109,7 +109,7 @@ class WorkspaceController extends Controller
             'owner_email' => [Rule::requiredIf($creating), 'nullable', 'email', 'max:255', Rule::unique('users', 'email')],
             'password'    => [Rule::requiredIf($creating), 'nullable', 'string', 'min:8'],
             'plan_type'   => ['nullable', Rule::in(array_keys(WorkspaceService::PLAN_TYPES))],
-            'plan'        => ['nullable', Rule::exists('plans', 'key')],
+            'plan'        => ['nullable', Rule::exists('plans', 'key')->where('is_active', true)],
             'max_devices' => ['required', 'integer', 'min:0', 'max:100000'],
             'modules'     => ['array'],
             'modules.*'   => [Rule::in(array_keys(config('modules')))],

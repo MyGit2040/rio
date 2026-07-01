@@ -41,7 +41,7 @@
                 @if ($plan->description)<p class="mt-1 text-sm text-gray-500">{{ $plan->description }}</p>@endif
                 <p class="mt-2">
                     <span class="text-3xl font-bold text-gray-900">${{ $price }}</span>
-                    <span class="text-sm text-gray-500">/mo</span>
+                    <span class="text-sm text-gray-500">{{ $plan->periodLabel() }}</span>
                     @if ($plan->annual_price)<span class="block text-xs text-gray-400">or ${{ rtrim(rtrim(number_format($plan->annual_price, 2), '0'), '.') }}/yr</span>@endif
                 </p>
                 <ul class="mt-4 space-y-2 text-sm text-gray-600">

@@ -34,7 +34,7 @@ self-hosted [Evolution API](https://github.com/EvolutionAPI/evolution-api) (Bail
 | **Plans & billing** | Database-driven subscription plans managed in **Super-Admin → Plans** (name, monthly/annual price, usage limits, feature list, popular/default flags); owners self-switch on the Billing page; limits (devices/contacts/monthly messages) enforced live by `PlanLimit` |
 | **Lists** | Tick-box bulk actions on every list (delete, and add/remove-group + opt-out on Contacts) via one shared `bulkSelect()` helper; collapsible Workspace sub-menu; per-page "?" help |
 
-All modules are built and covered by `tests/Feature/AppSmokeTest.php` (113 tests).
+All modules are built and covered by `tests/Feature/AppSmokeTest.php` (118 tests).
 
 ## Local setup
 
