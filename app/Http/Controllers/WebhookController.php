@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\DispatchWebhook;
 use App\Models\CampaignRecipient;
 use App\Models\Contact;
 use App\Models\Message;
+use App\Models\Suppression;
 use App\Models\WhatsappInstance;
 use App\Services\ChatbotService;
 use App\Services\EvolutionApiService;
@@ -123,10 +125,58 @@ class WebhookController extends Controller
             ]);
 
             if (! $fromMe && $text !== '') {
-                $this->chatbot->handleInbound($instance, $contact, $text);
+                // Opt-out keywords take priority — unsubscribe + confirm, skip the auto-reply.
+                if ($this->handleOptOut($instance, $contact, $text)) {
+                    DispatchWebhook::fire($instance->tenant_id, 'contact.opted_out', [
+                        'contact_id' => $contact->id, 'phone' => $phone, 'keyword' => trim($text),
+                    ]);
+                } else {
+                    $this->chatbot->handleInbound($instance, $contact, $text);
+                }
+
                 $this->forwardToHook($instance, $contact, $phone, $text);
+
+                DispatchWebhook::fire($instance->tenant_id, 'message.received', [
+                    'contact_id' => $contact->id,
+                    'name'       => $contact->name,
+                    'phone'      => $phone,
+                    'text'       => $text,
+                ]);
             }
         }
+    }
+
+    /**
+     * If the inbound text is one of the tenant's opt-out keywords, unsubscribe the
+     * contact, add them to the suppression list, and send a confirmation reply.
+     */
+    private function handleOptOut(WhatsappInstance $instance, Contact $contact, string $text): bool
+    {
+        $raw = data_get($instance->tenant?->settings, 'optout_keywords');
+        $keywords = collect(preg_split('/[,\n]+/', (string) ($raw ?: 'STOP,UNSUBSCRIBE,CANCEL,END,QUIT')))
+            ->map(fn ($k) => strtoupper(trim($k)))
+            ->filter()
+            ->all();
+
+        $normalized = strtoupper(trim(preg_replace('/[^\p{L}\p{N}\s]/u', '', $text)));
+
+        if (! in_array($normalized, $keywords, true)) {
+            return false;
+        }
+
+        $contact->update(['opted_out' => true]);
+
+        Suppression::updateOrCreate(
+            ['tenant_id' => $instance->tenant_id, 'phone' => $contact->phone],
+            ['reason' => 'Replied "'.trim($text).'"', 'source' => 'opt_out'],
+        );
+
+        $reply = data_get($instance->tenant?->settings, 'optout_reply')
+            ?: "You've been unsubscribed and won't receive further messages. Reply START to opt back in.";
+
+        EvolutionApiService::forInstance($instance)->sendText($instance->instance_name, $contact->phone, $reply);
+
+        return true;
     }
 
     /**

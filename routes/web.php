@@ -1,7 +1,9 @@
 <?php
 
 use App\Http\Controllers\ApiTokenController;
+use App\Http\Controllers\AuditController;
 use App\Http\Controllers\BackupController;
+use App\Http\Controllers\BillingController;
 use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\ChatbotRuleController;
 use App\Http\Controllers\ContactController;
@@ -9,17 +11,25 @@ use App\Http\Controllers\ContactImportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\GroupController;
+use App\Http\Controllers\HealthController;
+use App\Http\Controllers\InboxController;
 use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\LinkController;
+use App\Http\Controllers\MediaController;
 use App\Http\Controllers\OrderWebhookController;
 use App\Http\Controllers\Auth\TwoFactorController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SecurityController;
+use App\Http\Controllers\SequenceController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SpamCheckerController;
+use App\Http\Controllers\SuppressionController;
 use App\Http\Controllers\TemplateController;
 use App\Http\Controllers\UploadController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\WebhookController;
+use App\Http\Controllers\WebhookEndpointController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -64,6 +74,47 @@ Route::middleware('auth')->group(function () {
     Route::get('/groups/{group}', [GroupController::class, 'show'])->name('groups.show');
     Route::post('/groups/{group}/import', [GroupController::class, 'import'])->name('groups.import');
     Route::post('/groups/{group}/verify', [GroupController::class, 'verify'])->name('groups.verify');
+
+    // Contact profile / timeline
+    Route::get('/contacts/{contact}', [ContactController::class, 'show'])->name('contacts.show');
+
+    // Suppression (do-not-contact) list
+    Route::get('/suppressions', [SuppressionController::class, 'index'])->name('suppressions.index');
+    Route::post('/suppressions', [SuppressionController::class, 'store'])->name('suppressions.store');
+    Route::post('/suppressions/import', [SuppressionController::class, 'import'])->name('suppressions.import');
+    Route::delete('/suppressions/{suppression}', [SuppressionController::class, 'destroy'])->name('suppressions.destroy');
+
+    // Two-way inbox
+    Route::get('/inbox', [InboxController::class, 'index'])->name('inbox.index');
+    Route::get('/inbox/{contact}', [InboxController::class, 'show'])->name('inbox.show');
+    Route::post('/inbox/{contact}/reply', [InboxController::class, 'reply'])->name('inbox.reply');
+
+    // Drip / follow-up sequences
+    Route::resource('sequences', SequenceController::class);
+    Route::post('/sequences/{sequence}/enroll', [SequenceController::class, 'enroll'])->name('sequences.enroll');
+
+    // Number-health dashboard
+    Route::get('/health', [HealthController::class, 'index'])->name('health.index');
+
+    // Media library
+    Route::get('/media', [MediaController::class, 'index'])->name('media.index');
+    Route::post('/media', [MediaController::class, 'store'])->name('media.store');
+    Route::delete('/media/{asset}', [MediaController::class, 'destroy'])->name('media.destroy');
+
+    // Reports (performance + link clicks)
+    Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
+
+    // Outbound webhook endpoints
+    Route::get('/webhook-endpoints', [WebhookEndpointController::class, 'index'])->name('webhook-endpoints.index');
+    Route::post('/webhook-endpoints', [WebhookEndpointController::class, 'store'])->name('webhook-endpoints.store');
+    Route::delete('/webhook-endpoints/{webhook}', [WebhookEndpointController::class, 'destroy'])->name('webhook-endpoints.destroy');
+
+    // Billing & plans
+    Route::get('/billing', [BillingController::class, 'index'])->name('billing.index');
+    Route::put('/billing', [BillingController::class, 'update'])->name('billing.update');
+
+    // Audit log
+    Route::get('/audit', [AuditController::class, 'index'])->name('audit.index');
 
     // Shared attachment upload (returns a public URL)
     Route::post('/uploads', [UploadController::class, 'store'])->name('uploads.store');
@@ -121,5 +172,8 @@ Route::post('/webhooks/evolution/{secret?}', [WebhookController::class, 'handle'
 
 // Inbound WhatsApp shop order webhook (no auth — verified by secret).
 Route::post('/webhooks/order/{secret?}', [OrderWebhookController::class, 'handle'])->name('webhooks.order');
+
+// Public tracked-link redirect (records a click, then forwards on).
+Route::get('/l/{token}', [LinkController::class, 'click'])->name('links.click');
 
 require __DIR__.'/auth.php';

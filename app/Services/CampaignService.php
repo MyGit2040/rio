@@ -5,12 +5,17 @@ namespace App\Services;
 use App\Jobs\SendCampaignMessage;
 use App\Models\Campaign;
 use App\Models\Contact;
+use App\Models\Suppression;
 use App\Models\Template;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class CampaignService
 {
+    public function __construct(private readonly LinkTracker $links)
+    {
+    }
+
     /**
      * Create a campaign, snapshot its message, and build the recipient list.
      *
@@ -39,12 +44,18 @@ class CampaignService
                 'poll'                 => $message['poll'],
                 'buttons'              => $message['buttons'],
                 'cards'                => $message['cards'],
+                'track_links'          => ! empty($data['track_links']),
                 'min_delay'            => (int) $data['min_delay'],
                 'max_delay'            => (int) $data['max_delay'],
                 'max_retries'          => (int) ($data['max_retries'] ?? 3),
                 'scheduled_at'         => $scheduledAt,
                 'status'               => $scheduledAt ? 'scheduled' : 'draft',
             ]);
+
+            // Link tracking: rewrite the http(s) links in the body into tracked short links.
+            if ($campaign->track_links && $campaign->body) {
+                $campaign->update(['body' => $this->links->wrap($campaign->body, $campaign)]);
+            }
 
             $count = $this->buildRecipients($campaign, $data, $deviceIds);
             $campaign->update(['total' => $count]);
@@ -148,9 +159,18 @@ class CampaignService
             $query->whatsappValid();
         }
 
-        if (($data['audience'] ?? 'all') === 'groups') {
+        // Never build a recipient for a number on the do-not-contact (suppression) list.
+        $suppressed = Suppression::pluck('phone')->all();
+        if (! empty($suppressed)) {
+            $query->whereNotIn('phone', $suppressed);
+        }
+
+        $audience = $data['audience'] ?? 'all';
+        if ($audience === 'groups') {
             $groupIds = $data['group_ids'] ?? [];
             $query->whereHas('groups', fn ($g) => $g->whereIn('contact_groups.id', $groupIds));
+        } elseif ($audience === 'tag' && ! empty($data['tag'])) {
+            $query->tagged($data['tag']);
         }
 
         $count = 0;

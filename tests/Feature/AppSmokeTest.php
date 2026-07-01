@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\DispatchWebhook;
 use App\Jobs\SendCampaignMessage;
 use App\Jobs\SendTransactionalNotification;
 use App\Models\Alert;
@@ -9,11 +10,18 @@ use App\Models\ApiToken;
 use App\Models\Campaign;
 use App\Models\Contact;
 use App\Models\ContactGroup;
+use App\Models\MediaAsset;
+use App\Models\Sequence;
+use App\Models\Suppression;
 use App\Models\Template;
 use App\Models\Tenant;
+use App\Models\TrackedLink;
 use App\Models\User;
+use App\Models\WebhookEndpoint;
 use App\Models\WhatsappInstance;
+use App\Services\SequenceService;
 use App\Services\SpamScoreService;
+use App\Support\SendingWindow;
 use App\Support\Totp;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -67,6 +75,9 @@ class AppSmokeTest extends TestCase
             '/campaigns', '/campaigns/create', '/chatbot', '/chatbot/create',
             '/spam-checker', '/users', '/users/create', '/invoices',
             '/api-tokens', '/backup', '/security', '/settings',
+            // New modules
+            '/inbox', '/health', '/sequences', '/sequences/create', '/media',
+            '/reports', '/suppressions', '/billing', '/webhook-endpoints', '/audit',
         ];
 
         foreach ($pages as $page) {
@@ -667,6 +678,192 @@ class AppSmokeTest extends TestCase
 
         $this->post("/campaigns/{$campaign->id}/test", ['phone' => '971500000009'])->assertRedirect();
         Http::assertSent(fn ($r) => str_contains($r->url(), '/message/sendText/t-dev'));
+    }
+
+    public function test_suppressed_number_is_excluded_from_campaign(): void
+    {
+        Queue::fake();
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $device = WhatsappInstance::create(['name' => 'L', 'instance_name' => 'sup-dev', 'status' => 'open']);
+        Contact::create(['name' => 'A', 'phone' => '971500000001']);
+        Contact::create(['name' => 'B', 'phone' => '971500000002']);
+        Suppression::create(['phone' => '971500000002', 'source' => 'manual']);
+
+        $this->post('/campaigns', [
+            'name' => 'C', 'device_ids' => [$device->id], 'body' => 'hi',
+            'audience' => 'all', 'min_delay' => 1, 'max_delay' => 2, 'schedule' => 'now',
+        ])->assertRedirect();
+
+        $this->assertSame(1, Campaign::first()->total); // suppressed contact excluded
+    }
+
+    public function test_tag_targeting_limits_recipients(): void
+    {
+        Queue::fake();
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $device = WhatsappInstance::create(['name' => 'L', 'instance_name' => 'tag-dev', 'status' => 'open']);
+        Contact::create(['name' => 'A', 'phone' => '971500000001', 'tags' => ['vip']]);
+        Contact::create(['name' => 'B', 'phone' => '971500000002', 'tags' => ['lead']]);
+
+        $this->post('/campaigns', [
+            'name' => 'C', 'device_ids' => [$device->id], 'body' => 'hi',
+            'audience' => 'tag', 'tag' => 'vip', 'min_delay' => 1, 'max_delay' => 2, 'schedule' => 'now',
+        ])->assertRedirect();
+
+        $this->assertSame(1, Campaign::first()->total);
+    }
+
+    public function test_link_tracking_wraps_and_click_redirects(): void
+    {
+        Queue::fake();
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $device = WhatsappInstance::create(['name' => 'L', 'instance_name' => 'lt-dev', 'status' => 'open']);
+        Contact::create(['name' => 'A', 'phone' => '971500000001']);
+
+        $this->post('/campaigns', [
+            'name' => 'C', 'device_ids' => [$device->id], 'body' => 'Visit https://example.com/deal now',
+            'audience' => 'all', 'track_links' => '1', 'min_delay' => 1, 'max_delay' => 2, 'schedule' => 'now',
+        ])->assertRedirect();
+
+        $link = TrackedLink::first();
+        $this->assertNotNull($link);
+        $this->assertSame('https://example.com/deal', $link->url);
+
+        $this->get('/l/'.$link->token)->assertRedirect('https://example.com/deal');
+        $this->assertSame(1, $link->fresh()->clicks);
+    }
+
+    public function test_manual_suppression_and_audit_logged(): void
+    {
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+
+        $this->post('/suppressions', ['phone' => '+971 50 111 2233', 'reason' => 'requested'])->assertRedirect();
+
+        $this->assertDatabaseHas('suppressions', ['tenant_id' => $owner->tenant_id, 'phone' => '971501112233']);
+        $this->assertDatabaseHas('activity_logs', ['tenant_id' => $owner->tenant_id, 'action' => 'suppression.added']);
+    }
+
+    public function test_sequence_create_enroll_and_dispatch(): void
+    {
+        config(['evolution.base_url' => 'http://localhost:8080', 'evolution.api_key' => 'k']);
+        Http::fake(['*' => Http::response(['key' => ['id' => 'X']], 201)]);
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        WhatsappInstance::create(['name' => 'L', 'instance_name' => 'seq-dev', 'status' => 'open']);
+        Contact::create(['name' => 'A', 'phone' => '971500000001']);
+
+        $this->post('/sequences', [
+            'name' => 'Onboarding', 'is_active' => '1',
+            'steps' => [['delay_minutes' => 0, 'body' => 'Welcome {{name}}']],
+        ])->assertRedirect();
+
+        $sequence = Sequence::first();
+        $this->assertSame(1, $sequence->steps()->count());
+
+        $this->post("/sequences/{$sequence->id}/enroll", [])->assertRedirect();
+        $this->assertSame(1, $sequence->enrollments()->count());
+
+        $sequence->enrollments()->update(['next_run_at' => now()->subMinute()]);
+        app(SequenceService::class)->dispatchDue();
+
+        $this->assertSame('completed', $sequence->enrollments()->first()->status);
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/message/sendText/seq-dev'));
+    }
+
+    public function test_media_upload_records_asset(): void
+    {
+        Storage::fake('public');
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+
+        $this->post('/media', ['file' => UploadedFile::fake()->image('a.jpg')])->assertRedirect();
+        $this->assertDatabaseHas('media_assets', ['tenant_id' => $owner->tenant_id, 'name' => 'a.jpg']);
+    }
+
+    public function test_contact_tags_and_custom_fields_saved(): void
+    {
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+
+        $this->post('/contacts', [
+            'name' => 'Bob', 'phone' => '971500000001',
+            'tags' => 'vip, dubai',
+            'attr_keys' => ['company', 'city'], 'attr_values' => ['Acme', 'Dubai'],
+        ])->assertRedirect('/contacts');
+
+        $c = Contact::first();
+        $this->assertEqualsCanonicalizing(['vip', 'dubai'], $c->tags);
+        $this->assertSame('Acme', $c->attributes['company']);
+    }
+
+    public function test_billing_plan_switch(): void
+    {
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+
+        $this->put('/billing', ['plan' => 'pro'])->assertRedirect();
+        $this->assertSame('pro', $owner->tenant->fresh()->plan);
+    }
+
+    public function test_device_limit_blocks_second_on_free_plan(): void
+    {
+        $owner = $this->makeUser();
+        $owner->tenant->update(['plan' => 'free']);
+        $this->actingAs($owner);
+        WhatsappInstance::create(['name' => 'One', 'instance_name' => 'd1', 'status' => 'open']);
+
+        $this->post('/devices', ['name' => 'Two'])->assertRedirect();
+        $this->assertSame(1, WhatsappInstance::count()); // plan cap blocks the second
+    }
+
+    public function test_webhook_endpoint_created_and_event_queues(): void
+    {
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+
+        $this->post('/webhook-endpoints', ['url' => 'https://example.com/hook', 'events' => ['message.received']])
+            ->assertRedirect();
+        $this->assertDatabaseHas('webhook_endpoints', ['tenant_id' => $owner->tenant_id, 'url' => 'https://example.com/hook']);
+
+        Queue::fake();
+        DispatchWebhook::fire($owner->tenant_id, 'message.received', ['x' => 1]);
+        Queue::assertPushed(DispatchWebhook::class);
+    }
+
+    public function test_inbound_stop_keyword_opts_out_and_suppresses(): void
+    {
+        config(['evolution.base_url' => 'http://localhost:8080', 'evolution.api_key' => 'k', 'evolution.webhook_secret' => null]);
+        Http::fake(['*' => Http::response(['key' => ['id' => 'X']], 201)]);
+        $owner = $this->makeUser();
+        WhatsappInstance::create(['tenant_id' => $owner->tenant_id, 'name' => 'L', 'instance_name' => 'wh-dev', 'status' => 'open']);
+
+        $this->postJson('/webhooks/evolution', [
+            'event'    => 'messages.upsert',
+            'instance' => 'wh-dev',
+            'data'     => [
+                'key'      => ['remoteJid' => '971500000009@s.whatsapp.net', 'fromMe' => false, 'id' => 'm1'],
+                'message'  => ['conversation' => 'STOP'],
+                'pushName' => 'Test',
+            ],
+        ])->assertOk();
+
+        $this->assertDatabaseHas('contacts', ['phone' => '971500000009', 'opted_out' => 1]);
+        $this->assertDatabaseHas('suppressions', ['phone' => '971500000009', 'source' => 'opt_out']);
+    }
+
+    public function test_quiet_hours_window(): void
+    {
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-07-01 12:00:00'));
+
+        $this->assertNull(SendingWindow::nextAllowed(['quiet_hours_enabled' => false]));
+        $this->assertNull(SendingWindow::nextAllowed(['quiet_hours_enabled' => true, 'quiet_start' => '20:00', 'quiet_end' => '23:00']));
+        $this->assertNotNull(SendingWindow::nextAllowed(['quiet_hours_enabled' => true, 'quiet_start' => '08:00', 'quiet_end' => '18:00']));
+
+        $this->travelBack();
     }
 
     public function test_spam_score_rates_clean_vs_spammy(): void

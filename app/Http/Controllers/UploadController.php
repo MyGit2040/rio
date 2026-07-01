@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\MediaAsset;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -10,6 +11,7 @@ class UploadController extends Controller
     /**
      * Store an uploaded attachment on the public disk and return its URL.
      * The URL is what campaigns hand to Evolution (which fetches it to send).
+     * Every upload is also filed in the reusable Media Library.
      */
     public function store(Request $request): JsonResponse
     {
@@ -18,11 +20,19 @@ class UploadController extends Controller
         ]);
 
         $tenantId = auth()->user()->tenant_id;
-        $path = $request->file('file')->store("uploads/{$tenantId}", 'public');
+        $file = $request->file('file');
+        $path = $file->store("uploads/{$tenantId}", 'public');
+
+        MediaAsset::create([
+            'name' => $file->getClientOriginalName(),
+            'path' => $path,
+            'mime' => $file->getMimeType(),
+            'size' => $file->getSize(),
+        ]);
 
         return response()->json([
             'url'  => asset('storage/'.$path),
-            'name' => $request->file('file')->getClientOriginalName(),
+            'name' => $file->getClientOriginalName(),
         ]);
     }
 }

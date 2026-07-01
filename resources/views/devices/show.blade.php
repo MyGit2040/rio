@@ -33,6 +33,29 @@
                         <x-text-input id="daily_limit" name="daily_limit" type="number" min="0" class="block mt-1 w-full" :value="old('daily_limit', $device->daily_limit)" />
                         <p class="text-xs text-gray-500 mt-1">Once reached, extra messages wait until tomorrow.</p>
                     </div>
+
+                    <div class="pt-3 border-t border-gray-100" x-data="{ warmup: {{ old('warmup_enabled', $device->warmup_enabled) ? 'true' : 'false' }} }">
+                        <label class="flex items-start gap-2">
+                            <input type="hidden" name="warmup_enabled" value="0">
+                            <input type="checkbox" name="warmup_enabled" value="1" x-model="warmup" @checked(old('warmup_enabled', $device->warmup_enabled))
+                                   class="mt-0.5 rounded border-gray-300 text-brand focus:ring-brand">
+                            <span class="text-sm text-gray-700">Warm up this number<span class="block text-xs text-gray-500">Ramp the daily cap up gradually for a fresh number.</span></span>
+                        </label>
+                        <div x-show="warmup" x-cloak class="grid grid-cols-2 gap-3 mt-3">
+                            <div>
+                                <x-input-label for="warmup_start" value="Start at (per day)" />
+                                <x-text-input id="warmup_start" name="warmup_start" type="number" min="1" class="block mt-1 w-full" :value="old('warmup_start', $device->warmup_start ?: 20)" />
+                            </div>
+                            <div>
+                                <x-input-label for="warmup_per_day" value="Increase per day" />
+                                <x-text-input id="warmup_per_day" name="warmup_per_day" type="number" min="0" class="block mt-1 w-full" :value="old('warmup_per_day', $device->warmup_per_day ?: 20)" />
+                            </div>
+                            @if ($device->warmup_enabled)
+                                <p class="col-span-2 text-xs text-blue-600">Today's ceiling: <strong>{{ $device->effectiveDailyCap() }}</strong> messages.</p>
+                            @endif
+                        </div>
+                    </div>
+
                     <x-btn type="submit" variant="primary">Save</x-btn>
                 </form>
             </x-card>

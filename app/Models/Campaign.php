@@ -13,7 +13,7 @@ class Campaign extends Model
 
     protected $fillable = [
         'tenant_id', 'whatsapp_instance_id', 'device_ids', 'template_id', 'name', 'type',
-        'body', 'variants', 'media_url', 'media_type', 'poll', 'buttons', 'cards', 'status',
+        'body', 'variants', 'media_url', 'media_type', 'poll', 'buttons', 'cards', 'track_links', 'status',
         'min_delay', 'max_delay', 'max_retries', 'scheduled_at', 'started_at', 'completed_at',
         'total', 'sent', 'failed',
     ];
@@ -24,10 +24,16 @@ class Campaign extends Model
         'buttons'      => 'array',
         'cards'        => 'array',
         'device_ids'   => 'array',
+        'track_links'  => 'boolean',
         'scheduled_at' => 'datetime',
         'started_at'   => 'datetime',
         'completed_at' => 'datetime',
     ];
+
+    public function trackedLinks(): HasMany
+    {
+        return $this->hasMany(TrackedLink::class);
+    }
 
     public function instance(): BelongsTo
     {

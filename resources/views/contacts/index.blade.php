@@ -52,7 +52,7 @@
                 <tbody class="divide-y divide-gray-100">
                     @forelse ($contacts as $contact)
                         <tr class="hover:bg-gray-50">
-                            <td class="px-5 py-3 font-medium text-gray-800 whitespace-nowrap">{{ $contact->name ?: '—' }}</td>
+                            <td class="px-5 py-3 font-medium text-gray-800 whitespace-nowrap"><a href="{{ route('contacts.show', $contact) }}" class="hover:text-green-600">{{ $contact->name ?: '—' }}</a></td>
                             <td class="px-5 py-3 text-gray-600 whitespace-nowrap">+{{ $contact->phone }}</td>
                             <td class="px-5 py-3 text-gray-600 whitespace-nowrap">{{ $contact->email ?: '—' }}</td>
                             <td class="px-5 py-3">
@@ -75,6 +75,7 @@
                             </td>
                             <td class="px-5 py-3">
                                 <div class="flex items-center gap-3 justify-end">
+                                    <a href="{{ route('contacts.show', $contact) }}" class="text-gray-500 hover:text-gray-700">View</a>
                                     <a href="{{ route('contacts.edit', $contact) }}" class="text-green-600 hover:text-green-700">Edit</a>
                                     <form method="POST" action="{{ route('contacts.destroy', $contact) }}" onsubmit="return confirm('Delete this contact?')">
                                         @csrf @method('DELETE')

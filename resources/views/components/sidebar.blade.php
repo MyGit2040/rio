@@ -17,16 +17,25 @@
     <nav class="px-3 py-4 space-y-1 text-sm overflow-y-auto" style="max-height: calc(100vh - 4rem);">
         <x-nav-item :active="request()->routeIs('dashboard')" href="{{ route('dashboard') }}" icon="grid">Dashboard</x-nav-item>
         <x-nav-item :active="request()->routeIs('devices.*')" href="{{ route('devices.index') }}" icon="device">Devices</x-nav-item>
+        <x-nav-item :active="request()->routeIs('inbox.*')" href="{{ route('inbox.index') }}" icon="inbox">Inbox</x-nav-item>
         <x-nav-item :active="request()->routeIs('templates.*')" href="{{ route('templates.index') }}" icon="doc">Templates</x-nav-item>
-        <x-nav-item :active="request()->routeIs('contacts.*') && ! request()->routeIs('contacts.index')  || (request()->routeIs('contacts.index') && request('status') !== 'opted_out')" href="{{ route('contacts.index') }}" icon="users">Contacts</x-nav-item>
+        <x-nav-item :active="request()->routeIs('media.*')" href="{{ route('media.index') }}" icon="image">Media library</x-nav-item>
+        <x-nav-item :active="(request()->routeIs('contacts.*') && ! request()->routeIs('contacts.index')) || (request()->routeIs('contacts.index') && request('status') !== 'opted_out')" href="{{ route('contacts.index') }}" icon="users">Contacts</x-nav-item>
         <x-nav-item :active="request()->routeIs('groups.*')" href="{{ route('groups.index') }}" icon="tag">Groups</x-nav-item>
         <x-nav-item :active="request()->routeIs('campaigns.*')" href="{{ route('campaigns.index') }}" icon="send">Bulk messages</x-nav-item>
+        <x-nav-item :active="request()->routeIs('sequences.*')" href="{{ route('sequences.index') }}" icon="drip">Drip sequences</x-nav-item>
         <x-nav-item :active="request()->routeIs('chatbot.*')" href="{{ route('chatbot.index') }}" icon="bot">Auto reply</x-nav-item>
+        <x-nav-item :active="request()->routeIs('reports.*')" href="{{ route('reports.index') }}" icon="chart">Reports</x-nav-item>
+        <x-nav-item :active="request()->routeIs('health.*')" href="{{ route('health.index') }}" icon="pulse">Number health</x-nav-item>
         <x-nav-item :active="request()->routeIs('spam.*')" href="{{ route('spam.index') }}" icon="shield">Spam checker</x-nav-item>
         <x-nav-item :active="request()->routeIs('invoices.*')" href="{{ route('invoices.index') }}" icon="doc">Orders</x-nav-item>
-        <x-nav-item :active="request()->routeIs('contacts.index') && request('status') === 'opted_out'" href="{{ route('contacts.index', ['status' => 'opted_out']) }}" icon="optout">Opt-out management</x-nav-item>
 
         <div class="pt-3 mt-3 border-t border-gray-100"></div>
-        <x-nav-item :active="request()->routeIs('settings.*') || request()->routeIs('users.*') || request()->routeIs('api-tokens.*') || request()->routeIs('backup.*') || request()->routeIs('security.*')" href="{{ route('settings.edit') }}" icon="cog">Settings</x-nav-item>
+        <p class="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Compliance</p>
+        <x-nav-item :active="request()->routeIs('contacts.index') && request('status') === 'opted_out'" href="{{ route('contacts.index', ['status' => 'opted_out']) }}" icon="optout">Opt-out management</x-nav-item>
+        <x-nav-item :active="request()->routeIs('suppressions.*')" href="{{ route('suppressions.index') }}" icon="optout">Do-not-contact</x-nav-item>
+
+        <div class="pt-3 mt-3 border-t border-gray-100"></div>
+        <x-nav-item :active="request()->routeIs('settings.*') || request()->routeIs('users.*') || request()->routeIs('api-tokens.*') || request()->routeIs('backup.*') || request()->routeIs('security.*') || request()->routeIs('billing.*') || request()->routeIs('webhook-endpoints.*') || request()->routeIs('audit.*')" href="{{ route('settings.edit') }}" icon="cog">Settings</x-nav-item>
     </nav>
 </aside>

@@ -10,3 +10,6 @@ Artisan::command('inspire', function () {
 
 // Launch scheduled campaigns every minute.
 Schedule::command('campaigns:dispatch-due')->everyMinute()->withoutOverlapping();
+
+// Send due drip-sequence steps every minute.
+Schedule::command('sequences:dispatch')->everyMinute()->withoutOverlapping();

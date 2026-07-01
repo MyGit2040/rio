@@ -6,18 +6,20 @@ use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Contact extends Model
 {
     use BelongsToTenant;
 
     protected $fillable = [
-        'tenant_id', 'name', 'phone', 'email', 'country', 'attributes', 'opted_out',
+        'tenant_id', 'name', 'phone', 'email', 'country', 'attributes', 'tags', 'opted_out',
         'wa_status', 'verified_at',
     ];
 
     protected $casts = [
         'attributes'  => 'array',
+        'tags'        => 'array',
         'opted_out'   => 'boolean',
         'verified_at' => 'datetime',
     ];
@@ -25,6 +27,26 @@ class Contact extends Model
     public function groups(): BelongsToMany
     {
         return $this->belongsToMany(ContactGroup::class);
+    }
+
+    public function messages(): HasMany
+    {
+        return $this->hasMany(Message::class);
+    }
+
+    public function enrollments(): HasMany
+    {
+        return $this->hasMany(SequenceEnrollment::class);
+    }
+
+    public function scopeTagged(Builder $query, ?string $tag): Builder
+    {
+        if (! $tag) {
+            return $query;
+        }
+
+        // JSON array column — match the exact tag token inside the stored list.
+        return $query->where('tags', 'like', '%"'.$tag.'"%');
     }
 
     /**

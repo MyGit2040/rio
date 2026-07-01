@@ -6,11 +6,14 @@ use App\Models\Alert;
 use App\Models\Campaign;
 use App\Models\CampaignRecipient;
 use App\Models\Message;
+use App\Models\Suppression;
 use App\Models\WhatsappInstance;
 use App\Services\EvolutionApiService;
+use App\Support\SendingWindow;
 use App\Support\Tenancy;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class SendCampaignMessage implements ShouldQueue
@@ -54,6 +57,13 @@ class SendCampaignMessage implements ShouldQueue
             return;
         }
 
+        // Quiet hours: hold this send until the next allowed window (stays pending).
+        if ($next = SendingWindow::nextAllowed($campaign->tenant?->settings)) {
+            self::dispatch($recipient->id)->delay($next->addSeconds(random_int(1, 300)));
+
+            return;
+        }
+
         // Per-device daily cap: if this number has sent its allowance today,
         // defer this contact to tomorrow (stays pending — nothing is lost).
         if ($instance->atDailyCap()) {
@@ -65,10 +75,20 @@ class SendCampaignMessage implements ShouldQueue
         $engine = EvolutionApiService::forInstance($instance);
         $contact = $recipient->contact;
         $number = $recipient->phone;
+
+        // Do-not-contact list: never message a suppressed number.
+        if (Suppression::has($number)) {
+            $recipient->update(['status' => 'failed', 'error' => 'On suppression list (do-not-contact)']);
+            $campaign->increment('failed');
+            $this->finaliseIfDone($campaign);
+
+            return;
+        }
+
         $spinRandom = (bool) data_get($campaign->tenant?->settings, 'bulk_spintax', true);
 
         // Rotate across author-written message variants (A/B copy), then spin + personalize.
-        $body = $this->chooseVariant($campaign);
+        [$variantIndex, $body] = $this->chooseVariant($campaign);
 
         // A poll can't hold text/media itself, so send the message FIRST — the image with
         // the full text as its caption (bound together), or plain text — then the poll below.
@@ -115,10 +135,11 @@ class SendCampaignMessage implements ShouldQueue
 
         if ($result['ok']) {
             $recipient->update([
-                'status'     => 'sent',
-                'message_id' => $result['message_id'],
-                'sent_at'    => now(),
-                'error'      => $result['error'] ?? null,   // may hold a non-fatal note (carousel fallback)
+                'status'        => 'sent',
+                'variant_index' => $variantIndex,
+                'message_id'    => $result['message_id'],
+                'sent_at'       => now(),
+                'error'         => $result['error'] ?? null,   // may hold a non-fatal note (carousel fallback)
             ]);
             $campaign->increment('sent');
 
@@ -186,14 +207,24 @@ class SendCampaignMessage implements ShouldQueue
 
         if (($campaign->sent + $campaign->failed) >= $campaign->total && $campaign->status === 'sending') {
             $campaign->update(['status' => 'completed', 'completed_at' => now()]);
+
+            DispatchWebhook::fire($campaign->tenant_id, 'campaign.completed', [
+                'campaign_id' => $campaign->id,
+                'name'        => $campaign->name,
+                'total'       => $campaign->total,
+                'sent'        => $campaign->sent,
+                'failed'      => $campaign->failed,
+            ]);
         }
     }
 
     /**
      * Pick one message body to send. Rotates across the main body + author-written
      * variants so consecutive sends use different (author-approved) copy.
+     *
+     * @return array{0: int, 1: ?string}  [variant index, body]
      */
-    private function chooseVariant(Campaign $campaign): ?string
+    private function chooseVariant(Campaign $campaign): array
     {
         $pool = array_values(array_filter(
             array_merge([$campaign->body], $campaign->variants ?? []),
@@ -201,10 +232,12 @@ class SendCampaignMessage implements ShouldQueue
         ));
 
         if (empty($pool)) {
-            return $campaign->body;
+            return [0, $campaign->body];
         }
 
-        return $pool[array_rand($pool)];
+        $index = array_rand($pool);
+
+        return [$index, $pool[$index]];
     }
 
     /**
@@ -289,12 +322,26 @@ class SendCampaignMessage implements ShouldQueue
         // 1) Spintax variation: {Hi|Hello} -> one option (natural wording variety).
         $text = $this->spin((string) $body, $spinRandom);
 
-        // 2) Compliant merge tags only — no random/tracking tokens.
-        return preg_replace(
+        // 2) Built-in compliant merge tags — no random/tracking tokens.
+        $text = preg_replace(
             ['/\{\{\s*name\s*\}\}/i', '/\{\{\s*phone\s*\}\}/i', '/\{\{\s*date\s*\}\}/i'],
             [$name, $number, now()->format('M j, Y')],
             $text
         );
+
+        // 3) Custom merge fields: {{anything}} resolved from the contact's own attributes.
+        $attributes = (array) ($contact?->attributes ?? []);
+
+        return preg_replace_callback('/\{\{\s*([a-z0-9_]+)\s*\}\}/i', function ($m) use ($attributes) {
+            $key = strtolower($m[1]);
+            foreach ($attributes as $k => $v) {
+                if (strtolower((string) $k) === $key && ! is_array($v)) {
+                    return (string) $v;
+                }
+            }
+
+            return ''; // unknown field → blank, never a leftover {{token}}
+        }, $text);
     }
 
     /**

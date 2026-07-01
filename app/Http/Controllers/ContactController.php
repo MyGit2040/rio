@@ -7,6 +7,7 @@ use App\Models\Contact;
 use App\Models\ContactGroup;
 use App\Models\WhatsappInstance;
 use App\Services\EvolutionApiService;
+use App\Services\PlanLimit;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -21,6 +22,7 @@ class ContactController extends Controller
             ->search($request->input('q'))
             ->when($request->filled('group'), fn ($query) =>
                 $query->whereHas('groups', fn ($g) => $g->where('contact_groups.id', $request->input('group'))))
+            ->when($request->filled('tag'), fn ($query) => $query->tagged($request->input('tag')))
             ->when($request->input('status') === 'opted_out', fn ($query) => $query->where('opted_out', true))
             ->when($request->input('status') === 'active', fn ($query) => $query->where('opted_out', false))
             ->latest()
@@ -41,10 +43,30 @@ class ContactController extends Controller
 
     public function store(ContactRequest $request): RedirectResponse
     {
+        if (PlanLimit::for(auth()->user()->tenant)->reached('contacts')) {
+            return back()->withInput()->with('error', 'You have reached your plan\'s contact limit. Upgrade in Billing to add more.');
+        }
+
         $contact = Contact::create($request->safe()->except('groups'));
         $contact->groups()->sync($request->input('groups', []));
 
         return redirect()->route('contacts.index')->with('success', 'Contact added.');
+    }
+
+    /**
+     * Contact profile with an activity timeline.
+     */
+    public function show(Contact $contact): View
+    {
+        $contact->load('groups');
+
+        $timeline = $contact->messages()
+            ->with('instance')
+            ->latest('id')
+            ->limit(100)
+            ->get();
+
+        return view('contacts.show', compact('contact', 'timeline'));
     }
 
     public function edit(Contact $contact): View

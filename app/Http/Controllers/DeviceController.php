@@ -4,7 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\WhatsappInstance;
 use App\Services\EvolutionApiService;
-use App\Support\Tenancy;
+use App\Services\PlanLimit;
+use App\Support\Audit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -34,6 +35,11 @@ class DeviceController extends Controller
         ]);
 
         $tenant = auth()->user()->tenant;
+
+        if (PlanLimit::for($tenant)->reached('devices')) {
+            return back()->with('error', 'You have reached your plan\'s device limit. Upgrade in Billing to add more numbers.');
+        }
+
         $engine = EvolutionApiService::forTenant($tenant);
 
         if (! $engine->configured()) {
@@ -66,6 +72,8 @@ class DeviceController extends Controller
 
             return back()->with('error', 'Could not reach the Evolution engine: '.$e->getMessage());
         }
+
+        Audit::log('device.created', $device, $device->name);
 
         return redirect()->route('devices.index')
             ->with('success', 'Device created. Scan the QR code with WhatsApp to link it.');
@@ -132,11 +140,24 @@ class DeviceController extends Controller
     public function update(Request $request, WhatsappInstance $device): RedirectResponse
     {
         $data = $request->validate([
-            'name'        => ['required', 'string', 'max:255'],
-            'daily_limit' => ['nullable', 'integer', 'min:0', 'max:100000'],
+            'name'           => ['required', 'string', 'max:255'],
+            'daily_limit'    => ['nullable', 'integer', 'min:0', 'max:100000'],
+            'warmup_enabled' => ['sometimes', 'boolean'],
+            'warmup_start'   => ['nullable', 'integer', 'min:1', 'max:100000'],
+            'warmup_per_day' => ['nullable', 'integer', 'min:0', 'max:100000'],
         ]);
 
-        $device->update(['name' => $data['name'], 'daily_limit' => (int) ($data['daily_limit'] ?? 0)]);
+        $warmup = $request->boolean('warmup_enabled');
+
+        $device->update([
+            'name'              => $data['name'],
+            'daily_limit'       => (int) ($data['daily_limit'] ?? 0),
+            'warmup_enabled'    => $warmup,
+            'warmup_start'      => (int) ($data['warmup_start'] ?? 20),
+            'warmup_per_day'    => (int) ($data['warmup_per_day'] ?? 20),
+            // Stamp the ramp start the first time warm-up is switched on.
+            'warmup_started_at' => $warmup ? ($device->warmup_started_at ?? today()) : $device->warmup_started_at,
+        ]);
 
         return back()->with('success', 'Device settings saved.');
     }
@@ -175,6 +196,7 @@ class DeviceController extends Controller
             Log::warning('Evolution delete failed (continuing)', ['error' => $e->getMessage()]);
         }
 
+        Audit::log('device.deleted', $device, $device->name);
         $device->delete();
 
         return redirect()->route('devices.index')->with('success', 'Device removed.');

@@ -12,11 +12,14 @@ class WhatsappInstance extends Model
 
     protected $fillable = [
         'tenant_id', 'name', 'instance_name', 'token', 'status', 'daily_limit',
+        'warmup_enabled', 'warmup_start', 'warmup_per_day', 'warmup_started_at',
         'phone_number', 'profile_name', 'qr_code', 'pairing_code', 'connected_at',
     ];
 
     protected $casts = [
-        'connected_at' => 'datetime',
+        'connected_at'      => 'datetime',
+        'warmup_enabled'    => 'boolean',
+        'warmup_started_at' => 'date',
     ];
 
     public function sentToday(): int
@@ -27,9 +30,33 @@ class WhatsappInstance extends Model
             ->count();
     }
 
+    /**
+     * Today's send ceiling. Warm-up ramps a fresh number up gradually
+     * (start + per_day × days elapsed), never above the hard daily_limit.
+     * Returns 0 for "no cap".
+     */
+    public function effectiveDailyCap(): int
+    {
+        $hard = (int) $this->daily_limit;
+
+        if (! $this->warmup_enabled) {
+            return $hard;
+        }
+
+        $days = $this->warmup_started_at
+            ? (int) $this->warmup_started_at->startOfDay()->diffInDays(today()->startOfDay())
+            : 0;
+
+        $ramp = max(1, (int) $this->warmup_start) + ($days * max(0, (int) $this->warmup_per_day));
+
+        return $hard > 0 ? min($hard, $ramp) : $ramp;
+    }
+
     public function atDailyCap(): bool
     {
-        return $this->daily_limit > 0 && $this->sentToday() >= $this->daily_limit;
+        $cap = $this->effectiveDailyCap();
+
+        return $cap > 0 && $this->sentToday() >= $cap;
     }
 
     public function campaigns(): HasMany

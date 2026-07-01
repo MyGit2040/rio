@@ -9,6 +9,7 @@ use App\Models\Template;
 use App\Models\WhatsappInstance;
 use App\Services\CampaignService;
 use App\Services\EvolutionApiService;
+use App\Support\Audit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -63,8 +64,11 @@ class CampaignController extends Controller
                 ->with('error', 'No reachable contacts matched this audience. Add contacts, then launch.');
         }
 
+        Audit::log('campaign.created', $campaign, $campaign->name);
+
         if ($request->input('schedule') === 'now') {
             $this->campaigns->launch($campaign);
+            Audit::log('campaign.launched', $campaign, "{$campaign->total} recipients");
 
             return redirect()->route('campaigns.show', $campaign)
                 ->with('success', "Campaign started — sending to {$campaign->total} contacts.");
@@ -83,7 +87,48 @@ class CampaignController extends Controller
             ->latest('id')
             ->paginate(25);
 
-        return view('campaigns.show', compact('campaign', 'recipients'));
+        return view('campaigns.show', [
+            'campaign'     => $campaign,
+            'recipients'   => $recipients,
+            'variantStats' => $this->variantStats($campaign),
+            'trackedLinks' => $campaign->track_links ? $campaign->trackedLinks()->orderByDesc('clicks')->get() : collect(),
+        ]);
+    }
+
+    /**
+     * A/B report: how each message variant performed (sent / delivered+read).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function variantStats(Campaign $campaign): array
+    {
+        $pool = array_values(array_filter(array_merge([$campaign->body], $campaign->variants ?? []), 'filled'));
+
+        if (count($pool) < 2) {
+            return []; // no A/B to report
+        }
+
+        $rows = $campaign->recipients()
+            ->selectRaw("variant_index,
+                COUNT(*) as total,
+                SUM(CASE WHEN status IN ('delivered','read') THEN 1 ELSE 0 END) as delivered")
+            ->whereNotNull('variant_index')
+            ->groupBy('variant_index')
+            ->get()
+            ->keyBy('variant_index');
+
+        return collect($pool)->map(function ($body, $i) use ($rows) {
+            $total = (int) ($rows[$i]->total ?? 0);
+            $delivered = (int) ($rows[$i]->delivered ?? 0);
+
+            return [
+                'label'     => $i === 0 ? 'Main' : 'Variant '.$i,
+                'body'      => $body,
+                'sent'      => $total,
+                'delivered' => $delivered,
+                'rate'      => $total > 0 ? (int) round($delivered / $total * 100) : 0,
+            ];
+        })->all();
     }
 
     public function launch(Campaign $campaign): RedirectResponse
@@ -93,6 +138,7 @@ class CampaignController extends Controller
         }
 
         $this->campaigns->launch($campaign);
+        Audit::log('campaign.launched', $campaign, $campaign->name);
 
         return back()->with('success', 'Campaign launched.');
     }

@@ -124,6 +124,49 @@
             </div>
         </x-card>
 
+        {{-- Quiet hours --}}
+        <x-card title="Quiet hours" subtitle="Hold campaign sends overnight — messages queued during this window go out when it ends.">
+            <div class="space-y-4">
+                <label class="flex items-start gap-3">
+                    <input type="hidden" name="quiet_hours_enabled" value="0">
+                    <input type="checkbox" name="quiet_hours_enabled" value="1" @checked(data_get($s, 'quiet_hours_enabled', false)) class="mt-1 rounded border-gray-300 text-brand focus:ring-brand">
+                    <span>
+                        <span class="text-sm font-medium text-gray-800">Don't send during quiet hours</span>
+                        <span class="block text-xs text-gray-500">Messages due in this window are delayed until it ends. Times are in {{ config('app.timezone', 'UTC') }}.</span>
+                    </span>
+                </label>
+                <div class="grid grid-cols-2 gap-4 max-w-sm">
+                    <div>
+                        <x-input-label for="quiet_start" value="From" />
+                        <input id="quiet_start" name="quiet_start" type="time" value="{{ old('quiet_start', data_get($s, 'quiet_start', '21:00')) }}"
+                               class="mt-1 block w-full rounded-lg border-gray-300 text-sm focus:ring-brand focus:border-brand">
+                    </div>
+                    <div>
+                        <x-input-label for="quiet_end" value="Until" />
+                        <input id="quiet_end" name="quiet_end" type="time" value="{{ old('quiet_end', data_get($s, 'quiet_end', '08:00')) }}"
+                               class="mt-1 block w-full rounded-lg border-gray-300 text-sm focus:ring-brand focus:border-brand">
+                    </div>
+                </div>
+            </div>
+        </x-card>
+
+        {{-- Opt-out handling --}}
+        <x-card title="Opt-out keywords" subtitle="When a contact replies one of these words, they're unsubscribed and added to the do-not-contact list automatically.">
+            <div class="space-y-4">
+                <div>
+                    <x-input-label for="optout_keywords" value="Keywords (comma separated)" />
+                    <x-text-input id="optout_keywords" name="optout_keywords" class="block mt-1 w-full" placeholder="STOP, UNSUBSCRIBE, CANCEL"
+                                  :value="old('optout_keywords', data_get($s, 'optout_keywords', 'STOP,UNSUBSCRIBE,CANCEL,END,QUIT'))" />
+                </div>
+                <div>
+                    <x-input-label for="optout_reply" value="Confirmation reply (optional)" />
+                    <textarea id="optout_reply" name="optout_reply" rows="2" placeholder="You've been unsubscribed and won't receive further messages."
+                              class="mt-1 block w-full rounded-lg border-gray-300 text-sm focus:ring-brand focus:border-brand">{{ old('optout_reply', data_get($s, 'optout_reply')) }}</textarea>
+                    <p class="text-xs text-gray-500 mt-1">Sent back automatically when a contact opts out. Leave blank for the default.</p>
+                </div>
+            </div>
+        </x-card>
+
         {{-- SMTP --}}
         <x-card title="Email (SMTP)" subtitle="Used for login codes and notifications. Leave blank to use the platform default.">
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -206,8 +249,11 @@
             <x-card title="Workspace admin" subtitle="Team, API and backups live here — kept out of the main menu.">
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     @foreach ([
+                        ['Billing & plans', route('billing.index')],
                         ['Team members', route('users.index')],
                         ['REST API tokens', route('api-tokens.index')],
+                        ['Outbound webhooks', route('webhook-endpoints.index')],
+                        ['Audit log', route('audit.index')],
                         ['Backup & restore', route('backup.index')],
                         ['Two-factor (2FA)', route('security.edit')],
                     ] as [$label, $href])

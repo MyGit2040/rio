@@ -39,6 +39,13 @@ class SettingsController extends Controller
             'bulk_hook_number'   => ['nullable', 'string', 'max:32'],
             'bulk_spintax'       => ['sometimes', 'boolean'],
             'allow_non_verified' => ['sometimes', 'boolean'],
+            // Quiet hours (compliant courtesy — delays sends, never alters content).
+            'quiet_hours_enabled' => ['sometimes', 'boolean'],
+            'quiet_start'         => ['nullable', 'date_format:H:i'],
+            'quiet_end'           => ['nullable', 'date_format:H:i'],
+            // Opt-out keywords + auto-reply.
+            'optout_keywords'     => ['nullable', 'string', 'max:255'],
+            'optout_reply'        => ['nullable', 'string', 'max:1000'],
             'smtp_host'          => ['nullable', 'string', 'max:255'],
             'smtp_port'          => ['nullable', 'integer', 'min:1', 'max:65535'],
             'smtp_user'          => ['nullable', 'string', 'max:255'],
@@ -66,6 +73,15 @@ class SettingsController extends Controller
         $settings['bulk_hook_number']   = preg_replace('/\D+/', '', (string) ($data['bulk_hook_number'] ?? '')) ?: null;
         $settings['bulk_spintax']       = $request->boolean('bulk_spintax');
         $settings['allow_non_verified'] = $request->boolean('allow_non_verified');
+
+        // Quiet hours.
+        $settings['quiet_hours_enabled'] = $request->boolean('quiet_hours_enabled');
+        $settings['quiet_start']         = $data['quiet_start'] ?? '21:00';
+        $settings['quiet_end']           = $data['quiet_end'] ?? '08:00';
+
+        // Opt-out handling.
+        $settings['optout_keywords'] = ($data['optout_keywords'] ?? null) ?: 'STOP,UNSUBSCRIBE,CANCEL,END,QUIT';
+        $settings['optout_reply']    = $data['optout_reply'] ?? null;
 
         // SMTP (per-workspace mail for OTP etc.). Keep existing password if left blank.
         $settings['smtp_host']       = $data['smtp_host'] ?? null;

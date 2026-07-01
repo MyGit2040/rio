@@ -28,6 +28,9 @@ class ContactRequest extends FormRequest
             'email'    => ['nullable', 'email', 'max:255'],
             'country'  => ['nullable', 'string', 'max:64'],
             'opted_out' => ['sometimes', 'boolean'],
+            'tags'       => ['array'],
+            'tags.*'     => ['string', 'max:64'],
+            'attributes' => ['array'],
             'groups'   => ['array'],
             'groups.*' => ['integer', 'exists:contact_groups,id'],
         ];
@@ -37,6 +40,29 @@ class ContactRequest extends FormRequest
     {
         if ($this->has('phone')) {
             $this->merge(['phone' => preg_replace('/\D+/', '', (string) $this->input('phone'))]);
+        }
+
+        // Tags arrive as a comma-separated string; normalise to a unique array.
+        if ($this->has('tags') && is_string($this->input('tags'))) {
+            $tags = collect(explode(',', $this->input('tags')))
+                ->map(fn ($t) => trim($t))->filter()->unique()->values()->all();
+            $this->merge(['tags' => $tags]);
+        }
+
+        // Custom fields arrive as parallel key[]/value[] arrays — zip into an assoc map.
+        if ($this->has('attr_keys')) {
+            $keys = (array) $this->input('attr_keys', []);
+            $values = (array) $this->input('attr_values', []);
+            $attributes = [];
+
+            foreach ($keys as $i => $key) {
+                $key = trim((string) $key);
+                if ($key !== '') {
+                    $attributes[$key] = (string) ($values[$i] ?? '');
+                }
+            }
+
+            $this->merge(['attributes' => $attributes]);
         }
     }
 }

@@ -92,6 +92,53 @@
         </div>
     </div>
 
+    @if (!empty($variantStats))
+        <x-card title="A/B variant performance" class="mb-6">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="text-gray-500 text-left">
+                        <tr>
+                            <th class="py-2 font-medium">Variant</th>
+                            <th class="py-2 font-medium">Copy</th>
+                            <th class="py-2 font-medium">Sent</th>
+                            <th class="py-2 font-medium">Delivered</th>
+                            <th class="py-2 font-medium">Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        @foreach ($variantStats as $v)
+                            <tr>
+                                <td class="py-2 font-medium text-gray-800 whitespace-nowrap">{{ $v['label'] }}</td>
+                                <td class="py-2 text-gray-600 max-w-xs truncate">{{ Str::limit($v['body'], 50) }}</td>
+                                <td class="py-2 text-gray-600">{{ $v['sent'] }}</td>
+                                <td class="py-2 text-gray-600">{{ $v['delivered'] }}</td>
+                                <td class="py-2">
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-16 h-2 rounded-full bg-gray-100 overflow-hidden"><div class="h-full bg-green-500" style="width: {{ $v['rate'] }}%"></div></div>
+                                        <span class="text-xs text-gray-500">{{ $v['rate'] }}%</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </x-card>
+    @endif
+
+    @if ($trackedLinks->isNotEmpty())
+        <x-card title="Link clicks" class="mb-6">
+            <ul class="divide-y divide-gray-100">
+                @foreach ($trackedLinks as $link)
+                    <li class="flex items-center gap-3 py-2">
+                        <a href="{{ $link->url }}" target="_blank" rel="noopener" class="text-sm text-gray-600 truncate hover:text-green-600">{{ $link->url }}</a>
+                        <span class="ml-auto text-sm font-semibold text-gray-800 whitespace-nowrap">{{ $link->clicks }} click{{ $link->clicks === 1 ? '' : 's' }}</span>
+                    </li>
+                @endforeach
+            </ul>
+        </x-card>
+    @endif
+
     <x-card flush>
         <div class="px-5 py-4 border-b border-gray-100"><h2 class="font-semibold text-gray-800">Recipients</h2></div>
         <div class="overflow-x-auto">

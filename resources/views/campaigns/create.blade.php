@@ -88,14 +88,18 @@
 
             <x-card title="Audience">
                 <div class="space-y-4">
-                    <div class="flex gap-2">
-                        <label class="flex-1">
+                    <div class="grid grid-cols-3 gap-2">
+                        <label>
                             <input type="radio" name="audience" x-model="audience" value="all" class="sr-only peer">
                             <div class="px-4 py-2 rounded-lg border text-sm text-center cursor-pointer peer-checked:border-green-500 peer-checked:bg-green-50">All contacts</div>
                         </label>
-                        <label class="flex-1">
+                        <label>
                             <input type="radio" name="audience" x-model="audience" value="groups" class="sr-only peer">
-                            <div class="px-4 py-2 rounded-lg border text-sm text-center cursor-pointer peer-checked:border-green-500 peer-checked:bg-green-50">Specific groups</div>
+                            <div class="px-4 py-2 rounded-lg border text-sm text-center cursor-pointer peer-checked:border-green-500 peer-checked:bg-green-50">Groups</div>
+                        </label>
+                        <label>
+                            <input type="radio" name="audience" x-model="audience" value="tag" class="sr-only peer">
+                            <div class="px-4 py-2 rounded-lg border text-sm text-center cursor-pointer peer-checked:border-green-500 peer-checked:bg-green-50">By tag</div>
                         </label>
                     </div>
 
@@ -112,6 +116,12 @@
                                 <p class="text-sm text-gray-500">No groups yet.</p>
                             @endforelse
                         </div>
+                    </div>
+
+                    <div x-show="audience === 'tag'" x-cloak>
+                        <x-input-label for="tag" value="Tag" />
+                        <x-text-input id="tag" name="tag" class="block mt-1 w-full" placeholder="vip" :value="old('tag')" />
+                        <p class="text-xs text-gray-500 mt-1">Sends to every opted-in contact carrying this tag.</p>
                     </div>
                 </div>
             </x-card>
@@ -135,6 +145,13 @@
                         <x-text-input id="max_retries" name="max_retries" type="number" min="0" max="10" class="block mt-1 w-32" :value="old('max_retries', 3)" />
                         <p class="text-xs text-gray-500 mt-1">How many times to retry a message that fails to send.</p>
                     </div>
+
+                    <label class="flex items-start gap-2">
+                        <input type="hidden" name="track_links" value="0">
+                        <input type="checkbox" name="track_links" value="1" @checked(old('track_links'))
+                               class="mt-0.5 rounded border-gray-300 text-brand focus:ring-brand">
+                        <span class="text-sm text-gray-700">Track link clicks<span class="block text-xs text-gray-500">Links in your message are shortened so clicks show up in Reports.</span></span>
+                    </label>
 
                     <div class="flex gap-2">
                         <label class="flex-1">
