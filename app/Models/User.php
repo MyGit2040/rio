@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
-#[Fillable(['tenant_id', 'name', 'email', 'role', 'password', 'two_factor_enabled', 'two_factor_type', 'two_factor_secret'])]
+#[Fillable(['tenant_id', 'name', 'email', 'role', 'is_super_admin', 'password', 'two_factor_enabled', 'two_factor_type', 'two_factor_secret'])]
 #[Hidden(['password', 'remember_token', 'two_factor_secret'])]
 class User extends Authenticatable
 {
@@ -28,6 +28,11 @@ class User extends Authenticatable
         return $this->role === 'owner';
     }
 
+    public function isSuperAdmin(): bool
+    {
+        return (bool) $this->is_super_admin;
+    }
+
     /**
      * Get the attributes that should be cast.
      *
@@ -39,6 +44,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'two_factor_enabled' => 'boolean',
+            'is_super_admin' => 'boolean',
         ];
     }
 }

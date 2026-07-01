@@ -8,13 +8,39 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Tenant extends Model
 {
     protected $fillable = [
-        'name', 'slug', 'plan', 'status',
+        'name', 'slug', 'plan', 'status', 'expires_at', 'max_devices', 'enabled_modules',
         'evolution_base_url', 'evolution_api_key', 'settings',
     ];
 
     protected $casts = [
-        'settings' => 'array',
+        'settings'        => 'array',
+        'enabled_modules' => 'array',
+        'expires_at'      => 'datetime',
     ];
+
+    public function isExpired(): bool
+    {
+        return $this->expires_at !== null && $this->expires_at->isPast();
+    }
+
+    /**
+     * A workspace is blocked when suspended or past its subscription date.
+     */
+    public function isBlocked(): bool
+    {
+        return $this->status === 'suspended' || $this->isExpired();
+    }
+
+    /**
+     * Is a feature module available to this workspace?
+     * null/empty enabled_modules = everything on (back-compat for older workspaces).
+     */
+    public function allows(string $module): bool
+    {
+        $modules = $this->enabled_modules;
+
+        return empty($modules) || in_array($module, $modules, true);
+    }
 
     public function users(): HasMany
     {

@@ -37,6 +37,11 @@ class PlanLimit
 
     public function limit(string $key): int
     {
+        // A workspace-specific device cap (set by the admin) overrides the plan default.
+        if ($key === 'devices' && (int) $this->tenant->max_devices > 0) {
+            return (int) $this->tenant->max_devices;
+        }
+
         return (int) data_get($this->plan(), "limits.$key", 0);
     }
 

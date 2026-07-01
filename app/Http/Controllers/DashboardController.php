@@ -10,12 +10,18 @@ use App\Models\Contact;
 use App\Models\Message;
 use App\Models\Template;
 use App\Models\WhatsappInstance;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
-    public function index(): View
+    public function index(): View|RedirectResponse
     {
+        // Platform admins land in the admin panel, not a tenant dashboard.
+        if (auth()->user()->isSuperAdmin()) {
+            return redirect()->route('admin.dashboard');
+        }
+
         $sent = (int) Campaign::sum('sent');
         $failed = (int) Campaign::sum('failed');
 

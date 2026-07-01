@@ -22,7 +22,15 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->alias([
-            'api.token' => \App\Http\Middleware\ApiTokenAuth::class,
+            'api.token'  => \App\Http\Middleware\ApiTokenAuth::class,
+            'superadmin' => \App\Http\Middleware\EnsureSuperAdmin::class,
+        ]);
+
+        // Enforce subscription status + plan modules on every web request
+        // (both no-op for guests and super-admins).
+        $middleware->web(append: [
+            \App\Http\Middleware\CheckSubscription::class,
+            \App\Http\Middleware\ModuleAccess::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

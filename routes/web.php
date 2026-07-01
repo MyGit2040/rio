@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\Admin\WorkspaceController;
 use App\Http\Controllers\ApiTokenController;
 use App\Http\Controllers\AuditController;
 use App\Http\Controllers\BackupController;
@@ -24,6 +26,7 @@ use App\Http\Controllers\SecurityController;
 use App\Http\Controllers\SequenceController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SpamCheckerController;
+use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\SuppressionController;
 use App\Http\Controllers\TemplateController;
 use App\Http\Controllers\UploadController;
@@ -45,6 +48,21 @@ Route::post('/two-factor-resend', [TwoFactorController::class, 'resend'])->name(
 
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+
+    // Subscription blocked notice (suspended / expired workspaces).
+    Route::get('/subscription/inactive', [SubscriptionController::class, 'inactive'])->name('subscription.inactive');
+
+    // Platform admin (super-admin only) — manage client workspaces & subscriptions.
+    Route::prefix('admin')->name('admin.')->middleware('superadmin')->group(function () {
+        Route::get('/', [AdminDashboardController::class, 'index'])->name('dashboard');
+        Route::get('/workspaces', [WorkspaceController::class, 'index'])->name('workspaces.index');
+        Route::get('/workspaces/create', [WorkspaceController::class, 'create'])->name('workspaces.create');
+        Route::post('/workspaces', [WorkspaceController::class, 'store'])->name('workspaces.store');
+        Route::get('/workspaces/{workspace}/edit', [WorkspaceController::class, 'edit'])->name('workspaces.edit');
+        Route::put('/workspaces/{workspace}', [WorkspaceController::class, 'update'])->name('workspaces.update');
+        Route::post('/workspaces/{workspace}/status', [WorkspaceController::class, 'toggleStatus'])->name('workspaces.status');
+        Route::delete('/workspaces/{workspace}', [WorkspaceController::class, 'destroy'])->name('workspaces.destroy');
+    });
 
     // Account security (2FA)
     Route::get('/security', [SecurityController::class, 'edit'])->name('security.edit');

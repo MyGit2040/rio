@@ -866,6 +866,81 @@ class AppSmokeTest extends TestCase
         $this->travelBack();
     }
 
+    public function test_super_admin_can_create_a_workspace_login(): void
+    {
+        $admin = $this->makeUser('HQ', 'admin@test.dev');
+        $admin->update(['is_super_admin' => true]);
+        $this->actingAs($admin);
+
+        $this->get('/admin')->assertOk();
+
+        $this->post('/admin/workspaces', [
+            'name'        => 'Colleague Co',
+            'owner_name'  => 'Colleague',
+            'owner_email' => 'colleague@test.dev',
+            'password'    => 'password123',
+            'plan_type'   => 'monthly',
+            'max_devices' => 3,
+            'modules'     => ['devices', 'campaigns'],
+        ])->assertRedirect();
+
+        $this->assertDatabaseHas('tenants', ['name' => 'Colleague Co', 'max_devices' => 3]);
+        $this->assertDatabaseHas('users', ['email' => 'colleague@test.dev', 'role' => 'owner']);
+    }
+
+    public function test_non_admin_cannot_reach_admin_panel(): void
+    {
+        $this->actingAs($this->makeUser());
+        $this->get('/admin')->assertForbidden();
+        $this->get('/admin/workspaces')->assertForbidden();
+    }
+
+    public function test_suspended_workspace_is_blocked(): void
+    {
+        $owner = $this->makeUser();
+        $owner->tenant->update(['status' => 'suspended']);
+        $this->actingAs($owner);
+
+        $this->get('/campaigns')->assertRedirect(route('subscription.inactive'));
+        $this->get('/subscription/inactive')->assertOk();
+    }
+
+    public function test_expired_workspace_is_blocked(): void
+    {
+        $owner = $this->makeUser();
+        $owner->tenant->update(['expires_at' => now()->subDay()]);
+        $this->actingAs($owner);
+
+        $this->get('/dashboard')->assertRedirect(route('subscription.inactive'));
+    }
+
+    public function test_disabled_module_route_is_forbidden(): void
+    {
+        $owner = $this->makeUser();
+        $owner->tenant->update(['enabled_modules' => ['contacts']]);
+        $this->actingAs($owner);
+
+        $this->get('/contacts')->assertOk();       // enabled
+        $this->get('/campaigns')->assertForbidden(); // not in plan
+    }
+
+    public function test_workspace_device_limit_overrides_plan(): void
+    {
+        $owner = $this->makeUser();
+        $owner->tenant->update(['plan' => 'free', 'max_devices' => 7]);
+        $this->actingAs($owner);
+
+        $this->assertSame(7, \App\Services\PlanLimit::for($owner->tenant->fresh())->limit('devices'));
+    }
+
+    public function test_make_admin_command_promotes_user(): void
+    {
+        $user = $this->makeUser('X', 'promote@test.dev');
+        $this->artisan('eagle:make-admin', ['email' => 'promote@test.dev'])->assertOk();
+
+        $this->assertTrue($user->fresh()->isSuperAdmin());
+    }
+
     public function test_spam_score_rates_clean_vs_spammy(): void
     {
         $service = new SpamScoreService;
