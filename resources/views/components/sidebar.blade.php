@@ -45,6 +45,7 @@
         @if ($can('suppression'))<x-nav-item :active="request()->routeIs('suppressions.*')" href="{{ route('suppressions.index') }}" icon="optout">Do-not-contact</x-nav-item>@endif
 
         <div class="pt-3 mt-3 border-t border-gray-100"></div>
+        <x-nav-item :active="request()->routeIs('help.*')" href="{{ route('help.index') }}" icon="doc">Help center</x-nav-item>
         <x-nav-item :active="request()->routeIs('settings.*') || request()->routeIs('users.*') || request()->routeIs('api-tokens.*') || request()->routeIs('backup.*') || request()->routeIs('security.*') || request()->routeIs('billing.*') || request()->routeIs('webhook-endpoints.*') || request()->routeIs('audit.*')" href="{{ route('settings.edit') }}" icon="cog">Settings</x-nav-item>
     </nav>
 </aside>

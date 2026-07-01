@@ -88,7 +88,9 @@ class SendCampaignMessage implements ShouldQueue
         $spinRandom = (bool) data_get($campaign->tenant?->settings, 'bulk_spintax', true);
 
         // Rotate across author-written message variants (A/B copy), then spin + personalize.
-        [$variantIndex, $body] = $this->chooseVariant($campaign);
+        // The variant slot is assigned round-robin at build time so each successive
+        // message uses the next variant in order (not random).
+        [$variantIndex, $body] = $this->variantFor($campaign, $recipient->variant_index);
 
         // A poll can't hold text/media itself, so send the message FIRST — the image with
         // the full text as its caption (bound together), or plain text — then the poll below.
@@ -219,12 +221,14 @@ class SendCampaignMessage implements ShouldQueue
     }
 
     /**
-     * Pick one message body to send. Rotates across the main body + author-written
-     * variants so consecutive sends use different (author-approved) copy.
+     * Pick the body to send for this recipient's assigned variant slot. The pool is
+     * [main body, ...variants]; the slot cycles 0,1,2,…,0,1,2 across the campaign so
+     * every consecutive message uses the next variant. Falls back to rotating by a
+     * random slot only when no slot was assigned (older campaigns).
      *
      * @return array{0: int, 1: ?string}  [variant index, body]
      */
-    private function chooseVariant(Campaign $campaign): array
+    private function variantFor(Campaign $campaign, ?int $slot): array
     {
         $pool = array_values(array_filter(
             array_merge([$campaign->body], $campaign->variants ?? []),
@@ -235,7 +239,7 @@ class SendCampaignMessage implements ShouldQueue
             return [0, $campaign->body];
         }
 
-        $index = array_rand($pool);
+        $index = $slot !== null ? ($slot % count($pool)) : array_rand($pool);
 
         return [$index, $pool[$index]];
     }

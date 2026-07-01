@@ -14,6 +14,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\GroupController;
 use App\Http\Controllers\HealthController;
+use App\Http\Controllers\HelpController;
 use App\Http\Controllers\InboxController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\LinkController;
@@ -135,6 +136,11 @@ Route::middleware('auth')->group(function () {
 
     // Audit log
     Route::get('/audit', [AuditController::class, 'index'])->name('audit.index');
+
+    // Help center
+    Route::get('/help', [HelpController::class, 'index'])->name('help.index');
+    Route::post('/help/ask', [HelpController::class, 'ask'])->name('help.ask');
+    Route::get('/help/{article}', [HelpController::class, 'show'])->name('help.show');
 
     // Shared attachment upload (returns a public URL)
     Route::post('/uploads', [UploadController::class, 'store'])->name('uploads.store');

@@ -67,14 +67,18 @@
                 Select all
             </label>
         </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
             @foreach ($modules as $key => $cfg)
-                <label class="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
+                <label class="flex items-start gap-3 px-3 py-2.5 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 has-[:checked]:border-brand has-[:checked]:bg-brand/5">
                     <input type="checkbox" name="modules[]" value="{{ $key }}" @checked($selectedModules->contains($key))
-                           class="mod-check rounded border-gray-300 text-brand focus:ring-brand">
-                    <span class="text-sm text-gray-700">{{ $cfg['label'] }}</span>
+                           class="mod-check mt-0.5 rounded border-gray-300 text-brand focus:ring-brand">
+                    <span class="min-w-0">
+                        <span class="block text-sm font-medium text-gray-800">{{ $cfg['label'] }}</span>
+                        <span class="block text-xs text-gray-500">{{ $cfg['desc'] ?? '' }}</span>
+                    </span>
                 </label>
             @endforeach
         </div>
+        <p class="text-xs text-gray-400 mt-3">Unticked modules are hidden from this client's menu and blocked if they try the URL directly.</p>
     </div>
 </div>

@@ -179,7 +179,14 @@ class CampaignService
         $deviceCount = max(1, count($deviceIds));
         $rotateEvery = (int) ($campaign->rotate_every ?? 0);
 
-        $query->select('id', 'phone')->distinct()->chunkById(500, function ($contacts) use ($campaign, $deviceIds, $deviceCount, $rotateEvery, &$count, &$index) {
+        // Message-variant rotation: [main body, ...variants]. Each recipient gets the
+        // next slot in order so variants rotate on every single message.
+        $variantCount = max(1, count(array_values(array_filter(
+            array_merge([$campaign->body], $campaign->variants ?? []),
+            fn ($v) => filled($v)
+        ))));
+
+        $query->select('id', 'phone')->distinct()->chunkById(500, function ($contacts) use ($campaign, $deviceIds, $deviceCount, $rotateEvery, $variantCount, &$count, &$index) {
             $rows = [];
 
             foreach ($contacts as $contact) {
@@ -193,6 +200,7 @@ class CampaignService
                     'tenant_id'            => $campaign->tenant_id,
                     'campaign_id'          => $campaign->id,
                     'whatsapp_instance_id' => $device,
+                    'variant_index'        => $index % $variantCount,
                     'contact_id'           => $contact->id,
                     'phone'                => $contact->phone,
                     'status'               => 'pending',

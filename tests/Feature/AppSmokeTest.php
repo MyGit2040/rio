@@ -78,6 +78,7 @@ class AppSmokeTest extends TestCase
             // New modules
             '/inbox', '/health', '/sequences', '/sequences/create', '/media',
             '/reports', '/suppressions', '/billing', '/webhook-endpoints', '/audit',
+            '/help', '/help/getting-started',
         ];
 
         foreach ($pages as $page) {
@@ -1027,6 +1028,36 @@ class AppSmokeTest extends TestCase
 
         $this->assertDatabaseHas('contacts', ['phone' => '971500000055', 'opted_out' => 1]);
         $this->assertDatabaseHas('suppressions', ['phone' => '971500000055', 'source' => 'opt_out']);
+    }
+
+    public function test_help_center(): void
+    {
+        $this->actingAs($this->makeUser());
+        $this->get('/help')->assertOk()->assertSee('Help center');
+        $this->get('/help/devices')->assertOk()->assertSee('Connecting a WhatsApp number');
+        $this->get('/help/does-not-exist')->assertNotFound();
+        $this->postJson('/help/ask', ['question' => 'How do I import contacts?'])->assertStatus(422); // no AI key configured
+    }
+
+    public function test_campaign_rotates_variants_on_every_message(): void
+    {
+        Queue::fake();
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $device = WhatsappInstance::create(['name' => 'L', 'instance_name' => 'var-dev', 'status' => 'open']);
+        for ($i = 1; $i <= 6; $i++) {
+            Contact::create(['phone' => '97155000000'.$i, 'name' => "C{$i}"]);
+        }
+        // Template pool = [main body, Var A, Var B] = 3 variants.
+        $t = Template::create(['tenant_id' => $owner->tenant_id, 'name' => 'V', 'type' => 'text', 'body' => 'Main', 'variants' => ['Var A', 'Var B']]);
+
+        $this->post('/campaigns', [
+            'name' => 'V', 'device_ids' => [$device->id], 'template_id' => $t->id,
+            'audience' => 'all', 'min_delay' => 1, 'max_delay' => 2, 'schedule' => 'now',
+        ])->assertRedirect();
+
+        $slots = Campaign::first()->recipients()->orderBy('id')->pluck('variant_index')->all();
+        $this->assertSame([0, 1, 2, 0, 1, 2], $slots); // rotates every message, cycling the pool
     }
 
     public function test_campaign_rotates_device_every_n_messages(): void
