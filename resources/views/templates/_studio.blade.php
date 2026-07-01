@@ -67,12 +67,32 @@
                             </span>
                         </div>
 
-                        <div class="space-y-2">
+                        <div class="space-y-3">
                             <template x-for="(v, i) in variants" :key="i">
-                                <div class="flex items-start gap-2">
-                                    <textarea name="variants[]" x-model="variants[i]" rows="2" :placeholder="'Variant ' + (i + 1)"
-                                              class="flex-1 rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500"></textarea>
-                                    <button type="button" @click="variants.splice(i, 1)" class="text-red-500 px-2 mt-2">&times;</button>
+                                <div>
+                                    <div class="flex items-start gap-2">
+                                        <textarea name="variants[]" x-model="variants[i]" rows="2" :placeholder="'Variant ' + (i + 1)"
+                                                  class="flex-1 rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500"></textarea>
+                                        <button type="button" @click="variants.splice(i, 1)" class="text-red-500 px-2 mt-2">&times;</button>
+                                    </div>
+                                    {{-- Live spam score for THIS variant (instant) + click-to-swap suggestions --}}
+                                    <div x-show="(variants[i] || '').trim()" class="flex items-center gap-2 mt-1 pr-7 flex-wrap">
+                                        <div class="flex items-center gap-2 flex-1 min-w-[120px]">
+                                            <div class="flex-1 h-1.5 rounded-full bg-gray-200 overflow-hidden">
+                                                <div class="h-full" :class="spamOf(variants[i]).level === 'high' ? 'bg-red-500' : (spamOf(variants[i]).level === 'medium' ? 'bg-yellow-500' : 'bg-green-500')" :style="`width:${spamOf(variants[i]).score}%`"></div>
+                                            </div>
+                                            <span class="text-[10px] shrink-0" :class="spamOf(variants[i]).level === 'high' ? 'text-red-600' : (spamOf(variants[i]).level === 'medium' ? 'text-yellow-700' : 'text-green-600')" x-text="spamOf(variants[i]).score + '/100'"></span>
+                                        </div>
+                                        <div class="flex gap-1 flex-wrap">
+                                            <template x-for="(f, fi) in spamOf(variants[i]).flagged.slice(0, 4)" :key="fi">
+                                                <button type="button" x-show="f.alt"
+                                                        @click="variants[i] = variants[i].replace(new RegExp(f.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig'), f.alt)"
+                                                        class="px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] hover:bg-red-200"
+                                                        :title="'Replace with: ' + f.alt"
+                                                        x-text="f.word + ' → ' + f.alt"></button>
+                                            </template>
+                                        </div>
+                                    </div>
                                 </div>
                             </template>
                         </div>
@@ -456,15 +476,21 @@
                     headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content, 'Accept': 'application/json' },
                     body: fd,
                 })
-                .then(r => r.json())
+                .then(async r => {
+                    const d = await r.json().catch(() => ({}));
+                    if (! r.ok) throw new Error(d.message || (d.errors && Object.values(d.errors)[0]) || ('Upload failed (' + r.status + ')'));
+                    return d;
+                })
                 .then(d => { this.uploading = false; d.url ? setter(d.url) : alert(d.message || 'Upload failed'); })
-                .catch(() => { this.uploading = false; alert('Upload failed'); });
+                .catch(e => { this.uploading = false; alert(e.message || 'Upload failed — check the file type/size.'); });
                 e.target.value = '';
             },
             removeOption(i) { if (this.options.length > 2) this.options.splice(i, 1); },
             mediaSrc() { return this.type === 'poll' ? this.pollMediaUrl : this.mediaUrl; },
             mediaKind() { return this.type === 'poll' ? this.pollMediaType : this.mediaType; },
             hasMedia() { return (this.type === 'media' || this.type === 'poll') && !! this.mediaSrc(); },
+            // Live spam score for a single variant (instant, shared scorer).
+            spamOf(text) { return window.eagleSpamScore ? window.eagleSpamScore(text || '') : { score: 0, level: 'low', flagged: [], tips: [] }; },
             // Resolve spintax (pick first choice) + merge tags for a readable preview.
             rendered() {
                 let t = this.body || '';

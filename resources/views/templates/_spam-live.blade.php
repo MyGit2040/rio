@@ -44,7 +44,7 @@
                 init() {
                     this.ta = document.getElementById(targetId);
                     if (! this.ta) return;
-                    const run = () => this.evaluate(this.ta.value);
+                    const run = () => { const r = window.eagleSpamScore(this.ta.value); this.score = r.score; this.level = r.level; this.flagged = r.flagged; this.tips = r.tips; };
                     this.ta.addEventListener('input', run);
                     run();
                 },
@@ -55,7 +55,10 @@
                     this.ta.dispatchEvent(new Event('input', { bubbles: true })); // re-scores + syncs Alpine x-model
                     this.ta.focus();
                 },
-                evaluate(text) {
+            };
+        }
+        // Shared, instant scorer — used by the main box AND every variant.
+        window.eagleSpamScore = function (text) {
                     text = text || '';
                     const lower = text.toLowerCase();
                     let score = 0; const flagged = []; const tips = [];
@@ -90,13 +93,9 @@
                     if (/(\$|€|£|aed|usd|inr|rs\.?)\s?\d|\d+%\s?(off|discount)/i.test(text)) { score += 5; }
 
                     score = Math.min(100, score);
-                    this.score = score;
-                    this.level = score <= 25 ? 'low' : (score <= 55 ? 'medium' : 'high');
-                    this.flagged = flagged;
-                    this.tips = tips.slice(0, 3);
-                },
-            };
-        }
+                    const level = score <= 25 ? 'low' : (score <= 55 ? 'medium' : 'high');
+                    return { score, level, flagged, tips: tips.slice(0, 3) };
+        };
     </script>
     @endpush
 @endonce
