@@ -11,13 +11,16 @@
         </div>
         <div class="space-y-3">
             <x-card>
-                <p class="text-sm font-medium text-gray-800 mb-2">Import contacts</p>
+                <div class="flex items-center gap-2 mb-2">
+                    <p class="text-sm font-medium text-gray-800">Import contacts</p>
+                    <a href="{{ route('contacts.import.sample') }}" class="ml-auto text-xs text-brand font-medium hover:underline">Download sample</a>
+                </div>
                 <form method="POST" action="{{ route('groups.import', $group) }}" enctype="multipart/form-data" class="space-y-2">
                     @csrf
-                    <input name="file" type="file" accept=".csv,.txt" required class="block w-full text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-brand file:text-white">
+                    <input name="file" type="file" accept=".csv,.txt,.xls,.xlsx" required class="block w-full text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-brand file:text-white">
                     <x-btn type="submit" variant="secondary" class="w-full">Import into group</x-btn>
                 </form>
-                <p class="text-xs text-gray-500 mt-1">CSV columns: name, phone, email, country.</p>
+                <p class="text-xs text-gray-500 mt-1">Needs a <strong>name</strong> and <strong>number</strong> column (with country code, e.g. 971501234567). Save Excel as <strong>CSV</strong> first. Duplicates are skipped.</p>
             </x-card>
             <form method="POST" action="{{ route('groups.verify', $group) }}" onsubmit="return confirm('Verify this group\'s WhatsApp numbers now? It runs gently in the background.')">
                 @csrf

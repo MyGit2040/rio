@@ -655,6 +655,25 @@ class AppSmokeTest extends TestCase
         $this->get("/templates/{$t->id}/preview")->assertOk()->assertSee('https://example.com/a.jpg');
     }
 
+    public function test_group_import_number_column_semicolon_and_bom(): void
+    {
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $group = ContactGroup::create(['name' => 'Biz']);
+        Contact::create(['tenant_id' => $owner->tenant_id, 'phone' => '971588902749', 'name' => 'Existing']);
+
+        // The real-world failure: "number" column, semicolon delimiter, and a UTF-8 BOM.
+        $csv = UploadedFile::fake()->createWithContent('list.csv',
+            "\xEF\xBB\xBFname;number\n0ne press razz;971588902749\n10Xm Hub;971522527368\n360 Biz;971552800427\n");
+
+        $this->post("/groups/{$group->id}/import", ['file' => $csv])->assertRedirect();
+
+        // 3 rows: 1 already existed (added to group), 2 new — all 3 in the group.
+        $this->assertSame(3, $group->contacts()->count());
+        $this->assertDatabaseHas('contacts', ['phone' => '971522527368', 'name' => '10Xm Hub']);
+        $this->assertDatabaseHas('contacts', ['phone' => '971588902749', 'name' => 'Existing']); // not overwritten
+    }
+
     public function test_clone_template(): void
     {
         $owner = $this->makeUser();

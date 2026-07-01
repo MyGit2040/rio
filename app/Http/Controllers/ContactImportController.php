@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Contact;
 use App\Models\ContactGroup;
+use App\Support\ContactCsv;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -35,10 +36,20 @@ class ContactImportController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $request->validate([
-            'file'         => ['required', 'file', 'mimes:csv,txt', 'max:5120'],
+            'file' => ['required', 'file', 'max:5120', function ($attribute, $value, $fail) {
+                if (! in_array(strtolower($value->getClientOriginalExtension()), ['csv', 'txt', 'xls', 'xlsx'], true)) {
+                    $fail('Upload a CSV file (or an Excel sheet saved as CSV).');
+                }
+            }],
             'group_id'     => ['nullable', 'integer', 'exists:contact_groups,id'],
             'new_group'    => ['nullable', 'string', 'max:255'],
         ]);
+
+        $path = $request->file('file')->getRealPath();
+
+        if (ContactCsv::looksBinary($path)) {
+            return back()->with('error', 'That looks like an Excel workbook (.xlsx). Open it and use File → Save As → CSV, then upload the .csv.');
+        }
 
         // Resolve target group (existing pick or a new named group).
         $groupId = $request->input('group_id');
@@ -46,7 +57,7 @@ class ContactImportController extends Controller
             $groupId = ContactGroup::create(['name' => $request->input('new_group')])->id;
         }
 
-        $rows = $this->readCsv($request->file('file')->getRealPath());
+        $rows = ContactCsv::rows($path);
 
         $imported = 0;
         $duplicates = 0;
@@ -54,8 +65,7 @@ class ContactImportController extends Controller
         $seen = [];
 
         foreach ($rows as $row) {
-            // Accept "number", "phone" or "mobile" as the number column.
-            $phone = preg_replace('/\D+/', '', (string) ($row['number'] ?? $row['phone'] ?? $row['mobile'] ?? ''));
+            $phone = ContactCsv::phone($row);
 
             if (strlen($phone) < 6) {
                 $skipped++;
@@ -88,45 +98,11 @@ class ContactImportController extends Controller
             $imported++;
         }
 
+        if ($imported === 0 && $duplicates === 0) {
+            return back()->with('error', 'No contacts found. Make sure the file has a "number" column with country codes, saved as CSV. '.($skipped ? "({$skipped} rows had no valid number.)" : ''));
+        }
+
         return redirect()->route('contacts.index')
             ->with('success', "Import complete: {$imported} new contacts, {$duplicates} duplicates skipped, {$skipped} invalid rows skipped.");
-    }
-
-    /**
-     * Read a CSV into an array of header-keyed rows.
-     *
-     * @return array<int, array<string, string>>
-     */
-    private function readCsv(string $path): array
-    {
-        $rows = [];
-        $handle = fopen($path, 'r');
-
-        if ($handle === false) {
-            return $rows;
-        }
-
-        $header = null;
-
-        while (($data = fgetcsv($handle, 0, ',')) !== false) {
-            // Normalise header names: lowercase, trim, spaces -> underscores.
-            if ($header === null) {
-                $header = array_map(
-                    fn ($h) => str_replace(' ', '_', strtolower(trim((string) $h))),
-                    $data
-                );
-                continue;
-            }
-
-            $row = [];
-            foreach ($header as $i => $key) {
-                $row[$key] = isset($data[$i]) ? trim((string) $data[$i]) : null;
-            }
-            $rows[] = $row;
-        }
-
-        fclose($handle);
-
-        return $rows;
     }
 }

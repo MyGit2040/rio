@@ -6,6 +6,7 @@ use App\Jobs\VerifyContactsBatch;
 use App\Models\Contact;
 use App\Models\ContactGroup;
 use App\Models\WhatsappInstance;
+use App\Support\ContactCsv;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -50,23 +51,51 @@ class GroupController extends Controller
 
     public function import(Request $request, ContactGroup $group): RedirectResponse
     {
-        $request->validate(['file' => ['required', 'file', 'mimes:csv,txt', 'max:5120']]);
+        $request->validate(['file' => ['required', 'file', 'max:5120', $this->csvExtension()]]);
 
-        $imported = 0;
-        foreach ($this->readCsv($request->file('file')->getRealPath()) as $row) {
-            $phone = preg_replace('/\D+/', '', (string) ($row['phone'] ?? ''));
+        $path = $request->file('file')->getRealPath();
+
+        if (ContactCsv::looksBinary($path)) {
+            return back()->with('error', 'That looks like an Excel workbook (.xlsx). Open it and use File → Save As → CSV, then upload the .csv.');
+        }
+
+        $new = 0;
+        $existing = 0;
+        $skipped = 0;
+
+        foreach (ContactCsv::rows($path) as $row) {
+            $phone = ContactCsv::phone($row);
             if (strlen($phone) < 6) {
+                $skipped++;
                 continue;
             }
-            $contact = Contact::updateOrCreate(
+
+            // Skip duplicate data: keep an existing contact as-is, just add it to the group.
+            $contact = Contact::firstOrCreate(
                 ['phone' => $phone],
                 ['name' => $row['name'] ?? null, 'email' => $row['email'] ?? null, 'country' => $row['country'] ?? null],
             );
+            $contact->wasRecentlyCreated ? $new++ : $existing++;
             $contact->groups()->syncWithoutDetaching([$group->id]);
-            $imported++;
         }
 
-        return back()->with('success', "Imported {$imported} contacts into {$group->name}.");
+        if ($new === 0 && $existing === 0) {
+            return back()->with('error', 'No contacts found. Check the file has a "number" column with country codes, saved as CSV. '.($skipped ? "({$skipped} rows had no valid number.)" : ''));
+        }
+
+        return back()->with('success', "Imported into {$group->name}: {$new} new, {$existing} already existed (added to group), {$skipped} invalid rows skipped.");
+    }
+
+    /**
+     * Validate by real filename extension (avoids Excel's misleading CSV mime type).
+     */
+    private function csvExtension(): \Closure
+    {
+        return function ($attribute, $value, $fail) {
+            if (! in_array(strtolower($value->getClientOriginalExtension()), ['csv', 'txt', 'xls', 'xlsx'], true)) {
+                $fail('Upload a CSV file (or an Excel sheet saved as CSV).');
+            }
+        };
     }
 
     public function verify(ContactGroup $group): RedirectResponse
@@ -105,35 +134,6 @@ class GroupController extends Controller
             'name'  => ['required', 'string', 'max:255'],
             'color' => ['nullable', 'string', 'max:9'],
         ]);
-    }
-
-    /**
-     * @return array<int, array<string, ?string>>
-     */
-    private function readCsv(string $path): array
-    {
-        $rows = [];
-        $handle = fopen($path, 'r');
-        if ($handle === false) {
-            return $rows;
-        }
-
-        $header = null;
-        while (($data = fgetcsv($handle, 0, ',')) !== false) {
-            if ($header === null) {
-                $header = array_map(fn ($h) => str_replace(' ', '_', strtolower(trim((string) $h))), $data);
-
-                continue;
-            }
-            $row = [];
-            foreach ($header as $i => $key) {
-                $row[$key] = isset($data[$i]) ? trim((string) $data[$i]) : null;
-            }
-            $rows[] = $row;
-        }
-        fclose($handle);
-
-        return $rows;
     }
 }
 
