@@ -312,26 +312,7 @@
                 </x-card>
             @endif
 
-            @if (auth()->user()->isOwner())
-                <x-card title="Workspace admin" subtitle="Team, API and backups.">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        @foreach ([
-                            ['Billing & plans', route('billing.index')],
-                            ['Team members', route('users.index')],
-                            ['REST API tokens', route('api-tokens.index')],
-                            ['Outbound webhooks', route('webhook-endpoints.index')],
-                            ['Audit log', route('audit.index')],
-                            ['Backup & restore', route('backup.index')],
-                            ['Two-factor (2FA)', route('security.edit')],
-                        ] as [$label, $href])
-                            <a href="{{ $href }}" class="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50">
-                                <span class="font-medium text-gray-800">{{ $label }}</span>
-                                <span class="ml-auto text-brand">→</span>
-                            </a>
-                        @endforeach
-                    </div>
-                </x-card>
-            @endif
+            {{-- "Workspace admin" links live in the sidebar's Workspace sub-menu now. --}}
         </div>
         </div>{{-- /right content --}}
     </div>{{-- /settings layout --}}
