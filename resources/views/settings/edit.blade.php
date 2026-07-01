@@ -26,6 +26,27 @@
                         {{ $label }}
                     </button>
                 @endforeach
+
+                {{-- Workspace admin — full pages, listed just below "Account & admin" (owner only). --}}
+                @if (auth()->user()?->isOwner())
+                    <div class="hidden lg:block pt-2 mt-2 border-t border-gray-100"></div>
+                    <p class="hidden lg:block px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Workspace</p>
+                    @foreach ([
+                        ['Billing & plans', route('billing.index'), 'chart'],
+                        ['Team members', route('users.index'), 'users'],
+                        ['REST API tokens', route('api-tokens.index'), 'doc'],
+                        ['Outbound webhooks', route('webhook-endpoints.index'), 'send'],
+                        ['Audit log', route('audit.index'), 'doc'],
+                        ['Backup & restore', route('backup.index'), 'doc'],
+                        ['Two-factor (2FA)', route('security.edit'), 'shield'],
+                    ] as [$wLabel, $wHref, $wIcon])
+                        <a href="{{ $wHref }}"
+                           class="flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm whitespace-nowrap transition text-gray-600 hover:bg-gray-100">
+                            <x-nav-icon :icon="$wIcon" class="w-4 h-4 shrink-0" />
+                            {{ $wLabel }}
+                        </a>
+                    @endforeach
+                @endif
             </nav>
         </aside>
 
