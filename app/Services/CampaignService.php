@@ -1,0 +1,178 @@
+<?php
+
+namespace App\Services;
+
+use App\Jobs\SendCampaignMessage;
+use App\Models\Campaign;
+use App\Models\Contact;
+use App\Models\Template;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+
+class CampaignService
+{
+    /**
+     * Create a campaign, snapshot its message, and build the recipient list.
+     *
+     * @param  array<string, mixed>  $data  Validated CampaignRequest data.
+     */
+    public function create(array $data): Campaign
+    {
+        return DB::transaction(function () use ($data) {
+            $message = $this->resolveMessage($data);
+            $deviceIds = array_values(array_map('intval', $data['device_ids']));
+
+            $scheduledAt = ($data['schedule'] ?? 'now') === 'later'
+                ? Carbon::parse($data['scheduled_at'])
+                : null;
+
+            $campaign = Campaign::create([
+                'whatsapp_instance_id' => $deviceIds[0],
+                'device_ids'           => $deviceIds,
+                'template_id'          => $data['template_id'] ?? null,
+                'name'                 => $data['name'],
+                'type'                 => $message['type'],
+                'body'                 => $message['body'],
+                'variants'             => $message['variants'],
+                'media_url'            => $message['media_url'],
+                'media_type'           => $message['media_type'],
+                'poll'                 => $message['poll'],
+                'buttons'              => $message['buttons'],
+                'cards'                => $message['cards'],
+                'min_delay'            => (int) $data['min_delay'],
+                'max_delay'            => (int) $data['max_delay'],
+                'max_retries'          => (int) ($data['max_retries'] ?? 3),
+                'scheduled_at'         => $scheduledAt,
+                'status'               => $scheduledAt ? 'scheduled' : 'draft',
+            ]);
+
+            $count = $this->buildRecipients($campaign, $data, $deviceIds);
+            $campaign->update(['total' => $count]);
+
+            return $campaign;
+        });
+    }
+
+    /**
+     * Dispatch the (pending) recipients as spaced-out queued jobs.
+     */
+    public function launch(Campaign $campaign): void
+    {
+        $campaign->update([
+            'status'     => 'sending',
+            'started_at' => $campaign->started_at ?? now(),
+        ]);
+
+        $cumulative = 0;
+        $count = 0;
+        $min = max(1, $campaign->min_delay);
+        $max = max($min, $campaign->max_delay);
+
+        // Optional "sleep after every N messages" pause (rate limiting).
+        $settings = $campaign->tenant?->settings ?? [];
+        $sleepAfter = (int) data_get($settings, 'bulk_sleep_after', 0);
+        $sleepSeconds = (int) data_get($settings, 'bulk_sleep_seconds', 0);
+
+        $campaign->recipients()
+            ->where('status', 'pending')
+            ->orderBy('id')
+            ->chunkById(500, function ($recipients) use (&$cumulative, &$count, $min, $max, $sleepAfter, $sleepSeconds) {
+                foreach ($recipients as $recipient) {
+                    SendCampaignMessage::dispatch($recipient->id)
+                        ->delay(now()->addSeconds($cumulative));
+
+                    $count++;
+                    $cumulative += random_int($min, $max);
+
+                    if ($sleepAfter > 0 && $count % $sleepAfter === 0) {
+                        $cumulative += $sleepSeconds;
+                    }
+                }
+            });
+    }
+
+    public function pause(Campaign $campaign): void
+    {
+        $campaign->update(['status' => 'paused']);
+    }
+
+    /**
+     * Resolve the message payload from a template or composed text.
+     *
+     * @return array{type: string, body: ?string, media_url: ?string, media_type: ?string, poll: ?array}
+     */
+    private function resolveMessage(array $data): array
+    {
+        if (! empty($data['template_id'])) {
+            /** @var Template $template */
+            $template = Template::findOrFail($data['template_id']);
+
+            return [
+                'type'       => $template->type,
+                'body'       => $template->body,
+                'variants'   => $template->variants,
+                'media_url'  => $template->media_url,
+                'media_type' => $template->media_type,
+                'poll'       => $template->poll,
+                'buttons'    => $template->buttons,
+                'cards'      => $template->cards,
+            ];
+        }
+
+        return [
+            'type'       => 'text',
+            'body'       => $data['body'] ?? '',
+            'variants'   => null,
+            'media_url'  => null,
+            'media_type' => null,
+            'poll'       => null,
+            'buttons'    => null,
+            'cards'      => null,
+        ];
+    }
+
+    /**
+     * Insert recipient rows from the chosen audience, sticky-assigning each contact
+     * to one device (same contact → same device every time). Returns the count.
+     *
+     * @param  array<int, int>  $deviceIds
+     */
+    private function buildRecipients(Campaign $campaign, array $data, array $deviceIds): int
+    {
+        $query = Contact::query()->reachable();
+
+        // Verification gate: permissive by default. Turn OFF "allow non-verified" in Settings
+        // to require every recipient be confirmed on WhatsApp first.
+        $allowNonVerified = (bool) data_get($campaign->tenant?->settings, 'allow_non_verified', true);
+        if (! $allowNonVerified) {
+            $query->whatsappValid();
+        }
+
+        if (($data['audience'] ?? 'all') === 'groups') {
+            $groupIds = $data['group_ids'] ?? [];
+            $query->whereHas('groups', fn ($g) => $g->whereIn('contact_groups.id', $groupIds));
+        }
+
+        $count = 0;
+        $deviceCount = max(1, count($deviceIds));
+
+        $query->select('id', 'phone')->distinct()->chunkById(500, function ($contacts) use ($campaign, $deviceIds, $deviceCount, &$count) {
+            $rows = $contacts->map(fn ($contact) => [
+                'tenant_id'            => $campaign->tenant_id,
+                'campaign_id'          => $campaign->id,
+                // Sticky: the same contact always maps to the same device.
+                'whatsapp_instance_id' => $deviceIds[crc32($contact->phone) % $deviceCount],
+                'contact_id'           => $contact->id,
+                'phone'                => $contact->phone,
+                'status'               => 'pending',
+                'created_at'           => now(),
+                'updated_at'           => now(),
+            ])->all();
+
+            $campaign->recipients()->insert($rows);
+            $count += count($rows);
+        });
+
+        return $count;
+    }
+}
