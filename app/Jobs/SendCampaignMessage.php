@@ -70,9 +70,16 @@ class SendCampaignMessage implements ShouldQueue
         // Rotate across author-written message variants (A/B copy), then spin + personalize.
         $body = $this->chooseVariant($campaign);
 
-        // WhatsApp polls can't embed media in one message — send the attachment first.
-        if ($campaign->type === 'poll' && $campaign->media_url) {
-            $engine->sendMedia($instance->instance_name, $number, $campaign->media_type ?: 'image', $campaign->media_url);
+        // A poll can't hold text/media itself, so send the message FIRST — the image with
+        // the full text as its caption (bound together), or plain text — then the poll below.
+        if ($campaign->type === 'poll') {
+            $caption = $this->personalize($body, $contact, $number, $spinRandom);
+
+            if ($campaign->media_url) {
+                $engine->sendMedia($instance->instance_name, $number, $campaign->media_type ?: 'image', $campaign->media_url, $caption !== '' ? $caption : null);
+            } elseif (trim($caption) !== '') {
+                $engine->sendText($instance->instance_name, $number, $caption);
+            }
         }
 
         $result = match ($campaign->type) {

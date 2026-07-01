@@ -114,7 +114,7 @@
                                     <input type="text" name="poll_media_url" x-model="pollMediaUrl" placeholder="https://…"
                                            class="col-span-2 rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500">
                                 </div>
-                                <p class="text-xs text-gray-500 mt-1">Sent as a separate message right before the poll (WhatsApp polls can't embed media).</p>
+                                <p class="text-xs text-gray-500 mt-1">Your <strong>Message</strong> above is sent with this image as its caption, then the poll appears below it.</p>
                             </div>
                         </div>
 
@@ -212,9 +212,14 @@
                     </div>
                     <div class="p-3 min-h-[22rem] space-y-2"
                          style="background-image:url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2240%22 height=%2240%22><circle cx=%221%22 cy=%221%22 r=%221%22 fill=%22%23000%22 opacity=%220.03%22/></svg>')">
-                        {{-- text / caption bubble --}}
-                        <div class="ml-auto max-w-[85%] bg-[#dcf8c6] rounded-lg rounded-tr-none px-3 py-2 shadow-sm" x-show="type !== 'poll' && type !== 'carousel'">
-                            <template x-if="type === 'media'">
+                        {{-- text / caption bubble (also shows for a poll's accompanying message) --}}
+                        <div class="ml-auto max-w-[85%] bg-[#dcf8c6] rounded-lg rounded-tr-none px-3 py-2 shadow-sm"
+                             x-show="type !== 'carousel' && (type !== 'poll' || body.trim() || pollMediaUrl)">
+                            {{-- actual image, when a URL is given (media type, or poll with image) --}}
+                            <template x-if="(type === 'media' && mediaUrl) || (type === 'poll' && pollMediaUrl)">
+                                <img :src="type === 'poll' ? pollMediaUrl : mediaUrl" class="mb-2 rounded w-full max-h-40 object-cover" x-on:error="$el.style.display='none'">
+                            </template>
+                            <template x-if="type === 'media' && ! mediaUrl">
                                 <div class="mb-2 rounded bg-black/5 h-24 grid place-items-center text-gray-400 text-xs" x-text="mediaType + ' attachment'"></div>
                             </template>
                             <p class="text-sm text-gray-800 whitespace-pre-line break-words" x-text="rendered() || 'Your message preview…'"></p>

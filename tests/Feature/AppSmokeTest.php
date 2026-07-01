@@ -561,6 +561,34 @@ class AppSmokeTest extends TestCase
         $this->assertStringContainsString('fallback', (string) $recipient->fresh()->error);
     }
 
+    public function test_poll_campaign_sends_image_caption_then_poll(): void
+    {
+        config(['evolution.base_url' => 'http://localhost:8080', 'evolution.api_key' => 'k']);
+        Http::fake(['*' => Http::response(['key' => ['id' => 'X']], 201)]);
+
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $device = WhatsappInstance::create(['name' => 'L', 'instance_name' => 'inst-poll', 'status' => 'open']);
+        $contact = Contact::create(['name' => 'Bob', 'phone' => '971500000070']);
+        $campaign = Campaign::create([
+            'whatsapp_instance_id' => $device->id, 'name' => 'P', 'type' => 'poll',
+            'body' => 'Dear {{name}}, 30% off!', 'media_url' => 'https://x.co/promo.jpg', 'media_type' => 'image',
+            'poll' => ['question' => 'Interested?', 'options' => ['Yes', 'No'], 'multiple' => false],
+            'status' => 'sending', 'total' => 1,
+        ]);
+        $recipient = $campaign->recipients()->create([
+            'whatsapp_instance_id' => $device->id, 'contact_id' => $contact->id, 'phone' => $contact->phone, 'status' => 'pending',
+        ]);
+
+        (new SendCampaignMessage($recipient->id))->handle();
+
+        // image with the personalised text as caption ...
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/message/sendMedia/inst-poll')
+            && str_contains((string) ($r['caption'] ?? ''), 'Dear Bob'));
+        // ... then the poll
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/message/sendPoll/inst-poll'));
+    }
+
     public function test_spam_score_rates_clean_vs_spammy(): void
     {
         $service = new SpamScoreService;
