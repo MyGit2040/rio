@@ -46,17 +46,25 @@
                     {{-- Message variants (A/B copy rotation) --}}
                     <div x-show="type !== 'poll'" x-cloak>
                         <x-input-label value="Message variants (optional)" />
-                        <p class="text-xs text-gray-500 mb-2">Add alternative wordings. Each send randomly rotates between your main message and these — keeps copy fresh.</p>
+                        <p class="text-xs text-gray-500 mb-2">Add alternative wordings — type them, <strong>✨ Generate</strong> with AI, or <strong>⬆ Import</strong> a list you wrote elsewhere (.txt / .csv / .md, one per line). Each message rotates through your main message and these in turn — keeps copy fresh.</p>
 
                         <div class="flex items-center gap-2 mb-3 flex-wrap rounded-lg bg-gray-50 border border-gray-200 px-3 py-2">
                             <span class="text-xs text-gray-600">Auto-write</span>
                             <input type="number" x-model="variantCount" min="1" max="20" class="w-16 rounded-lg border-gray-300 text-sm py-1">
                             <span class="text-xs text-gray-600">variants of the message above:</span>
-                            <button type="button" @click="generateVariants()" :disabled="variantGenerating"
-                                    class="ml-auto text-sm font-medium text-brand disabled:opacity-50">
-                                <span x-show="!variantGenerating">✨ Generate</span>
-                                <span x-show="variantGenerating" x-cloak>Generating…</span>
-                            </button>
+                            <span class="ml-auto flex items-center gap-3">
+                                {{-- Import ready-made variants from a file (e.g. written elsewhere with any AI) --}}
+                                <label class="text-sm font-medium text-brand cursor-pointer whitespace-nowrap"
+                                       title="Import variants from a .txt, .csv or .md file — one variant per line">
+                                    ⬆ Import
+                                    <input type="file" accept=".txt,.csv,.md,.text,text/plain,text/csv" class="hidden" @change="importVariants($event)">
+                                </label>
+                                <button type="button" @click="generateVariants()" :disabled="variantGenerating"
+                                        class="text-sm font-medium text-brand disabled:opacity-50">
+                                    <span x-show="!variantGenerating">✨ Generate</span>
+                                    <span x-show="variantGenerating" x-cloak>Generating…</span>
+                                </button>
+                            </span>
                         </div>
 
                         <div class="space-y-2">
@@ -342,6 +350,36 @@
                     this.variants = d.variants || [];
                 })
                 .catch(() => { this.variantGenerating = false; alert('Could not generate variants.'); });
+            },
+            importVariants(e) {
+                const file = e.target.files[0];
+                if (! file) return;
+                if (/\.(xlsx|xls)$/i.test(file.name)) {
+                    alert('Excel (.xlsx) can’t be read directly. In Excel choose “Save As → CSV” (or .txt) with one variant per row, then Import that file.');
+                    e.target.value = '';
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const lines = String(reader.result)
+                        .split(/\r\n|\r|\n/)
+                        .map(l => l.trim())
+                        .filter(l => l.length)
+                        .map(l => {
+                            // Unwrap a quoted CSV cell:  "text with ""quotes"""
+                            if (l.startsWith('"') && l.endsWith('"')) {
+                                l = l.slice(1, -1).replace(/""/g, '"');
+                            }
+                            return l.trim();
+                        })
+                        .filter(l => l.length)
+                        .slice(0, 50);
+                    if (! lines.length) { alert('No variants found — put one variant per line in the file.'); return; }
+                    this.variants = lines;
+                };
+                reader.onerror = () => alert('Could not read that file.');
+                reader.readAsText(file);
+                e.target.value = ''; // let the same file be re-imported
             },
             addCard() { if (this.cards.length < 10) this.cards.push({ image: '', title: '', body: '', buttons: [] }); },
             addCardButton(ci) { if (this.cards[ci].buttons.length < 2) this.cards[ci].buttons.push({ type: 'url', text: '', value: '' }); },
