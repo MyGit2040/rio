@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\ResourceController;
+use App\Http\Controllers\Api\TemplateController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -22,6 +23,9 @@ Route::middleware('api.token')->group(function () {
 
     Route::get('/devices', [ResourceController::class, 'devices']);
     Route::get('/campaigns', [ResourceController::class, 'campaigns']);
+
+    Route::get('/templates', [TemplateController::class, 'index']);
+    Route::post('/templates/send', [TemplateController::class, 'send']);
 
     Route::post('/messages', [MessageController::class, 'send']);
 });
