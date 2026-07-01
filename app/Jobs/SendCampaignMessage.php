@@ -104,6 +104,12 @@ class SendCampaignMessage implements ShouldQueue
         // message uses the next variant in order (not random).
         [$variantIndex, $body] = $this->variantFor($campaign, $recipient->variant_index);
 
+        // Footer (signature) is stored separately and merged onto the message here, so
+        // every variant stays clean and the footer is appended automatically to all.
+        if (($footer = trim((string) $campaign->footer)) !== '') {
+            $body = rtrim((string) $body)."\n\n".$footer;
+        }
+
         // A poll can't hold text/media itself, so send the message FIRST — the image with
         // the full text as its caption (bound together), or plain text — then the poll below.
         if ($campaign->type === 'poll') {

@@ -43,8 +43,8 @@
                         @include('templates._spam-live', ['target' => 'body'])
                     </div>
 
-                    {{-- Message variants (A/B copy rotation) --}}
-                    <div x-show="type !== 'poll'" x-cloak>
+                    {{-- Message variants (A/B copy rotation) — always available, incl. poll pre-text --}}
+                    <div>
                         <x-input-label value="Message variants (optional)" />
                         <p class="text-xs text-gray-500 mb-2">Add alternative wordings — type them, <strong>✨ Generate</strong> with AI, or <strong>⬆ Import</strong> a list you wrote elsewhere (.txt / .csv / .md, one per line). Each message rotates through your main message and these in turn — keeps copy fresh.</p>
 
@@ -77,6 +77,15 @@
                             </template>
                         </div>
                         <button type="button" @click="variants.push('')" class="mt-2 text-sm text-green-600 font-medium">+ Add variant</button>
+                    </div>
+
+                    {{-- Footer / signature — kept separate, auto-merged onto every message + variant --}}
+                    <div x-show="type !== 'carousel'" x-cloak>
+                        <x-input-label value="Footer / signature (optional)" />
+                        <p class="text-xs text-gray-500 mb-1">Added to the end of every message <strong>and every variant</strong> automatically — keep your sign-off here instead of repeating it in each one.</p>
+                        <textarea name="footer" x-model="footer" rows="2"
+                                  placeholder="Powered by Your Company"
+                                  class="block w-full rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500"></textarea>
                     </div>
 
                     {{-- Media --}}
@@ -317,6 +326,7 @@
             type: @js(old('type', $template->type ?? 'text')),
             name: @js(old('name', $template->name ?? '')),
             body: @js(old('body', $template->body ?? '')),
+            footer: @js(old('footer', $template->footer ?? '')),
             mediaType: @js(old('media_type', $template->type === 'media' ? ($template->media_type ?? 'image') : 'image')),
             mediaUrl: @js(old('media_url', $template->type === 'media' ? ($template->media_url ?? '') : '')),
             pollQuestion: @js(old('poll_question', data_get($template, 'poll.question', ''))),
@@ -355,31 +365,49 @@
                 const file = e.target.files[0];
                 if (! file) return;
                 if (/\.(xlsx|xls)$/i.test(file.name)) {
-                    alert('Excel (.xlsx) can’t be read directly. In Excel choose “Save As → CSV” (or .txt) with one variant per row, then Import that file.');
+                    alert('Excel (.xlsx) can’t be read directly. In Excel choose “Save As → CSV” (or .txt), then Import that file.');
                     e.target.value = '';
                     return;
                 }
                 const reader = new FileReader();
                 reader.onload = () => {
-                    const lines = String(reader.result)
-                        .split(/\r\n|\r|\n/)
-                        .map(l => l.trim())
-                        .filter(l => l.length)
-                        .map(l => {
-                            // Unwrap a quoted CSV cell:  "text with ""quotes"""
-                            if (l.startsWith('"') && l.endsWith('"')) {
-                                l = l.slice(1, -1).replace(/""/g, '"');
-                            }
-                            return l.trim();
-                        })
-                        .filter(l => l.length)
-                        .slice(0, 50);
-                    if (! lines.length) { alert('No variants found — put one variant per line in the file.'); return; }
-                    this.variants = lines;
+                    let items = this.parseVariants(String(reader.result));
+                    if (! items.length) { alert('No variants found in that file.'); return; }
+                    // Lift a trailing sign-off block into the Footer field (kept separate).
+                    const last = items[items.length - 1] || '';
+                    if (items.length > 1 && last.length <= 250 && /powered by|smarter office|©|®|™/i.test(last)) {
+                        this.footer = last;
+                        items.pop();
+                    }
+                    this.variants = items.slice(0, 50);
                 };
                 reader.onerror = () => alert('Could not read that file.');
                 reader.readAsText(file);
                 e.target.value = ''; // let the same file be re-imported
+            },
+            // Split an imported file into ONE variant per block (not per line).
+            parseVariants(text) {
+                text = String(text).replace(/\r\n?/g, '\n');
+                let blocks;
+                if (/^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$/m.test(text)) {
+                    blocks = text.split(/^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$/m);   // markdown --- / *** / ___ rules
+                } else if (/^#{1,6}[ \t]+/m.test(text)) {
+                    blocks = text.split(/(?=^#{1,6}[ \t]+)/m);                       // each ## heading starts one
+                } else if (/\n[ \t]*\n/.test(text)) {
+                    blocks = text.split(/\n[ \t]*\n+/);                              // blank-line separated
+                } else {
+                    blocks = text.split(/\n/);                                       // one variant per line
+                }
+                return blocks.map(b => this.cleanVariant(b)).filter(b => b.length);
+            },
+            cleanVariant(block) {
+                return String(block)
+                    .split('\n')
+                    .filter(l => ! /^[ \t]*#{1,6}[ \t]+/.test(l))                    // drop markdown title / heading lines
+                    .filter(l => ! /^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$/.test(l))    // drop stray rules
+                    .join('\n')
+                    .replace(/\n{3,}/g, '\n\n')                                       // collapse big gaps
+                    .trim();
             },
             addCard() { if (this.cards.length < 10) this.cards.push({ image: '', title: '', body: '', buttons: [] }); },
             addCardButton(ci) { if (this.cards[ci].buttons.length < 2) this.cards[ci].buttons.push({ type: 'url', text: '', value: '' }); },

@@ -27,6 +27,7 @@ class CampaignRequest extends FormRequest
                 Rule::exists('templates', 'id')->where('tenant_id', $tenantId),
             ],
             'body'        => ['nullable', 'string', 'max:4096', 'required_without:template_id'],
+            'footer'      => ['nullable', 'string', 'max:1000'],
             'audience'    => ['required', 'in:all,groups,tag'],
             'group_ids'   => ['array', 'required_if:audience,groups'],
             'group_ids.*' => [Rule::exists('contact_groups', 'id')->where('tenant_id', $tenantId)],

@@ -40,6 +40,7 @@ class CampaignService
                 'name'                 => $data['name'],
                 'type'                 => $message['type'],
                 'body'                 => $message['body'],
+                'footer'               => $message['footer'] ?? null,
                 'variants'             => $message['variants'],
                 'media_url'            => $message['media_url'],
                 'media_type'           => $message['media_type'],
@@ -171,6 +172,7 @@ class CampaignService
             return [
                 'type'       => $template->type,
                 'body'       => $template->body,
+                'footer'     => $template->footer,
                 'variants'   => $template->variants,
                 'media_url'  => $template->media_url,
                 'media_type' => $template->media_type,
@@ -183,6 +185,7 @@ class CampaignService
         return [
             'type'       => 'text',
             'body'       => $data['body'] ?? '',
+            'footer'     => $data['footer'] ?? null,
             'variants'   => null,
             'media_url'  => null,
             'media_type' => null,

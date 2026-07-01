@@ -79,6 +79,14 @@
                                   placeholder="Hi @{{name}}, ...">{{ old('body') }}</textarea>
                         @include('templates._spam-live', ['target' => 'body'])
                         <p class="text-xs text-gray-500 mt-1">Use <code>@{{name}}</code> and <code>@{{phone}}</code> to personalise.</p>
+
+                        <div class="mt-3">
+                            <x-input-label for="footer" value="Footer / signature (optional)" />
+                            <textarea id="footer" name="footer" rows="2" :disabled="source !== 'compose'"
+                                      class="mt-1 block w-full rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500"
+                                      placeholder="Powered by Your Company">{{ old('footer') }}</textarea>
+                            <p class="text-xs text-gray-500 mt-1">Auto-added to the end of every message and variant.</p>
+                        </div>
                     </div>
 
                     <div x-show="source === 'template'" x-cloak>

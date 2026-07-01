@@ -13,7 +13,7 @@ class Campaign extends Model
 
     protected $fillable = [
         'tenant_id', 'whatsapp_instance_id', 'device_ids', 'rotate_every', 'template_id', 'name', 'type',
-        'body', 'variants', 'media_url', 'media_type', 'poll', 'buttons', 'cards', 'track_links', 'status',
+        'body', 'footer', 'variants', 'media_url', 'media_type', 'poll', 'buttons', 'cards', 'track_links', 'status',
         'min_delay', 'max_delay', 'max_retries', 'scheduled_at', 'started_at', 'completed_at',
         'total', 'sent', 'failed',
     ];

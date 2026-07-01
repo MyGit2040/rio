@@ -10,7 +10,7 @@ class Template extends Model
     use BelongsToTenant;
 
     protected $fillable = [
-        'tenant_id', 'name', 'type', 'body', 'variants', 'media_url', 'media_type', 'poll', 'buttons', 'cards',
+        'tenant_id', 'name', 'type', 'body', 'footer', 'variants', 'media_url', 'media_type', 'poll', 'buttons', 'cards',
     ];
 
     protected $casts = [

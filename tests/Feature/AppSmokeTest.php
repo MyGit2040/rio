@@ -1636,6 +1636,41 @@ class AppSmokeTest extends TestCase
         $this->assertDatabaseHas('templates', ['id' => $foreign->id]); // tenant scope protects it
     }
 
+    public function test_template_footer_is_saved(): void
+    {
+        $this->actingAs($this->makeUser());
+        $this->post('/templates', [
+            'type' => 'text', 'name' => 'Sig', 'body' => 'Hello', 'footer' => 'Powered by Us',
+        ])->assertRedirect('/templates');
+        $this->assertDatabaseHas('templates', ['name' => 'Sig', 'footer' => 'Powered by Us']);
+    }
+
+    public function test_campaign_footer_is_appended_to_every_message(): void
+    {
+        config(['evolution.base_url' => 'http://localhost:8080', 'evolution.api_key' => 'k']);
+        Http::fake(['*' => Http::response(['key' => ['id' => 'X']], 201)]);
+
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $device = WhatsappInstance::create(['name' => 'L', 'instance_name' => 'ft-dev', 'status' => 'open']);
+        $contact = Contact::create(['name' => 'A', 'phone' => '971500000070']);
+        $campaign = Campaign::create([
+            'whatsapp_instance_id' => $device->id, 'device_ids' => [$device->id],
+            'name' => 'F', 'type' => 'text', 'body' => 'Hello there', 'footer' => 'Powered by Us',
+            'status' => 'sending', 'total' => 1,
+        ]);
+        $recipient = $campaign->recipients()->create([
+            'contact_id' => $contact->id, 'phone' => $contact->phone,
+            'whatsapp_instance_id' => $device->id, 'status' => 'pending',
+        ]);
+
+        (new SendCampaignMessage($recipient->id))->handle();
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/message/sendText/ft-dev')
+            && str_contains($r['text'], 'Hello there')
+            && str_contains($r['text'], 'Powered by Us'));
+    }
+
     public function test_spam_score_rates_clean_vs_spammy(): void
     {
         $service = new SpamScoreService;
