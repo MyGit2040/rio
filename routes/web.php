@@ -142,6 +142,7 @@ Route::middleware('auth')->group(function () {
     // Message templates (text / media / poll)
     Route::post('/templates/variants', [TemplateController::class, 'variants'])->name('templates.variants');
     Route::resource('templates', TemplateController::class)->except('show');
+    Route::get('/templates/{template}/preview', [TemplateController::class, 'preview'])->name('templates.preview');
     Route::post('/templates/{template}/clone', [TemplateController::class, 'clone'])->name('templates.clone');
 
     // Campaigns (bulk send)

@@ -641,6 +641,19 @@ class AppSmokeTest extends TestCase
         Queue::assertPushed(\App\Jobs\VerifyContactsBatch::class);
     }
 
+    public function test_template_edit_studio_and_preview_render(): void
+    {
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $t = Template::create([
+            'tenant_id' => $owner->tenant_id, 'name' => 'MediaTpl', 'type' => 'media',
+            'media_type' => 'image', 'media_url' => 'https://example.com/a.jpg', 'body' => 'Hello',
+        ]);
+
+        $this->get("/templates/{$t->id}/edit")->assertOk()->assertSee('MediaTpl');
+        $this->get("/templates/{$t->id}/preview")->assertOk()->assertSee('https://example.com/a.jpg');
+    }
+
     public function test_clone_template(): void
     {
         $owner = $this->makeUser();

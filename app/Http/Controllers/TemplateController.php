@@ -43,6 +43,14 @@ class TemplateController extends Controller
         return view('templates.edit', compact('template'));
     }
 
+    /**
+     * Read-only WhatsApp-style preview of a saved template.
+     */
+    public function preview(Template $template): View
+    {
+        return view('templates.preview', compact('template'));
+    }
+
     public function update(TemplateRequest $request, Template $template): RedirectResponse
     {
         $template->update($request->toTemplate());
