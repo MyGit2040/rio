@@ -82,15 +82,24 @@ class DeviceController extends Controller
     /**
      * Request a fresh QR for an existing device.
      */
-    public function connect(WhatsappInstance $device): JsonResponse
+    public function connect(Request $request, WhatsappInstance $device): JsonResponse
     {
         $engine = EvolutionApiService::forInstance($device);
 
+        // A phone number requests an 8-digit pairing code; without it we just refresh the QR.
+        $number = preg_replace('/\D+/', '', (string) $request->input('number')) ?: null;
+
         try {
-            $response = $engine->connect($device->instance_name);
+            $response = $engine->connect($device->instance_name, $number);
             $qr = $this->extractQr($response);
             $pairing = $this->extractPairing($response);
-            $device->update(['qr_code' => $qr, 'pairing_code' => $pairing, 'status' => 'connecting']);
+
+            $device->update([
+                'qr_code'      => $qr ?: $device->qr_code,
+                // Keep an existing code when a plain QR refresh returns none.
+                'pairing_code' => $pairing ?: $device->pairing_code,
+                'status'       => 'connecting',
+            ]);
 
             return response()->json(['ok' => true, 'qr' => $qr, 'pairing' => $pairing]);
         } catch (\Throwable $e) {

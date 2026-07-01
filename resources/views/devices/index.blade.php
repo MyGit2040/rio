@@ -59,23 +59,37 @@
                                     @if ($device->phone_number)<p class="text-gray-400">+{{ $device->phone_number }}</p>@endif
                                 </div>
                             @else
-                                @if ($device->qr_code)
-                                    <div class="mt-4 text-center" data-qr-wrap>
-                                        <img src="{{ $device->qr_code }}" alt="QR code" class="mx-auto w-44 h-44 rounded-lg border border-gray-200">
-                                        <p class="text-xs text-gray-500 mt-2">Scan with WhatsApp → Linked devices</p>
+                                <div class="mt-4 space-y-3" data-connect-block>
+                                    @if ($device->qr_code)
+                                        <div class="text-center" data-qr-wrap>
+                                            <img src="{{ $device->qr_code }}" alt="QR code" class="mx-auto w-44 h-44 rounded-lg border border-gray-200">
+                                            <p class="text-xs text-gray-500 mt-2">Scan with WhatsApp → Linked devices</p>
+                                        </div>
+                                    @else
+                                        <div class="text-center">
+                                            <button type="button" class="text-sm text-brand font-medium" onclick="refreshQr({{ $device->id }})">Show QR code</button>
+                                        </div>
+                                    @endif
+
+                                    {{-- Link with a phone code (no scanning) --}}
+                                    <div class="rounded-lg bg-gray-50 border border-gray-100 p-3">
+                                        <p class="text-xs text-gray-500 mb-2 text-center">Or link with a code — no scanning</p>
+
+                                        <div data-pairing-input class="{{ $device->pairing_code ? 'hidden' : '' }} flex gap-2 justify-center">
+                                            <input type="text" inputmode="numeric" placeholder="9715XXXXXXXX" data-pairing-phone
+                                                   value="{{ $device->phone_number }}"
+                                                   class="rounded-lg border-gray-300 text-sm w-44 focus:ring-brand focus:border-brand">
+                                            <button type="button" onclick="getPairingCode({{ $device->id }}, this)"
+                                                    class="shrink-0 px-3 rounded-lg bg-brand text-white text-sm font-medium">Get code</button>
+                                        </div>
+
+                                        <div data-pairing-code class="{{ $device->pairing_code ? '' : 'hidden' }} text-center">
+                                            <p class="text-[11px] text-gray-500">On your phone: <strong>Linked devices → Link with phone number</strong>, then enter:</p>
+                                            <p class="text-2xl font-bold tracking-[0.2em] text-gray-800 mt-1 select-all" data-code-value>{{ $device->pairing_code }}</p>
+                                            <button type="button" onclick="getPairingCode({{ $device->id }}, this)" class="text-[11px] text-gray-400 hover:text-gray-600 mt-1">Get a new code</button>
+                                        </div>
                                     </div>
-                                @endif
-                                @if ($device->pairing_code)
-                                    <div class="mt-3 text-center">
-                                        <p class="text-xs text-gray-500">Or on your phone: <strong>Linked devices → Link with phone number</strong> → enter:</p>
-                                        <p class="text-xl font-bold tracking-widest text-gray-800 mt-1 select-all">{{ $device->pairing_code }}</p>
-                                    </div>
-                                @endif
-                                @if (! $device->qr_code && ! $device->pairing_code)
-                                    <div class="mt-4">
-                                        <button type="button" class="text-sm text-green-600 font-medium" onclick="refreshQr({{ $device->id }})">Get QR code</button>
-                                    </div>
-                                @endif
+                                </div>
                             @endif
 
                             <div class="mt-4 flex items-center gap-2">
@@ -101,6 +115,36 @@
                 .then(r => r.json())
                 .then(d => { if (d.ok) location.reload(); else alert(d.error || 'Could not get a QR code.'); })
                 .catch(() => alert('Could not reach the engine.'));
+        }
+
+        // Request an 8-digit pairing code for a phone number and show it in place.
+        function getPairingCode(id, btn) {
+            const block = btn.closest('[data-connect-block]');
+            const input = block.querySelector('[data-pairing-phone]');
+            const phone = (input.value || '').replace(/\D+/g, '');
+            if (phone.length < 8) { alert('Enter the full phone number including country code (digits only).'); input.focus(); return; }
+
+            const original = btn.textContent;
+            btn.disabled = true; btn.textContent = '…';
+
+            fetch(`/devices/${id}/connect`, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                body: JSON.stringify({ number: phone }),
+            })
+                .then(r => r.json())
+                .then(d => {
+                    if (d.ok && d.pairing) {
+                        block.querySelector('[data-pairing-input]').classList.add('hidden');
+                        const codeWrap = block.querySelector('[data-pairing-code]');
+                        codeWrap.classList.remove('hidden');
+                        codeWrap.querySelector('[data-code-value]').textContent = d.pairing;
+                    } else {
+                        alert(d.error || 'Could not get a code. Check the number and that the device is not already linked.');
+                    }
+                })
+                .catch(() => alert('Could not reach the engine.'))
+                .finally(() => { btn.disabled = false; btn.textContent = original; });
         }
 
         // Poll connection state for devices that are waiting to be scanned.

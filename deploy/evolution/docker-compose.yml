@@ -22,6 +22,12 @@ services:
       - "8080:8080"
     env_file:
       - .env
+    environment:
+      # Name shown under WhatsApp → Linked devices. Overrides the default
+      # "Evolution API". CLIENT is the app name in parentheses; NAME is the browser.
+      # These win over anything in .env. Re-link a device for the new name to apply.
+      CONFIG_SESSION_PHONE_CLIENT: "Eag"
+      CONFIG_SESSION_PHONE_NAME: "Chrome"
     volumes:
       - evolution_instances:/evolution/instances   # linked WhatsApp sessions persist here
     networks:
