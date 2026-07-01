@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Plan;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -33,7 +34,7 @@ class WorkspaceService
             $tenant = Tenant::create([
                 'name'            => $data['name'],
                 'slug'            => $this->uniqueSlug($data['name']),
-                'plan'            => 'business',
+                'plan'            => $data['plan'] ?? (Plan::defaultPlan()?->key ?? 'business'),
                 'status'          => 'active',
                 'expires_at'      => $this->expiryFor($data['plan_type'] ?? 'monthly'),
                 'max_devices'     => (int) ($data['max_devices'] ?? 0),
@@ -62,6 +63,10 @@ class WorkspaceService
             'max_devices'     => (int) ($data['max_devices'] ?? 0),
             'enabled_modules' => $data['modules'] ?? [],
         ]);
+
+        if (! empty($data['plan'])) {
+            $tenant->plan = $data['plan'];
+        }
 
         // Renew: (re)set the subscription window from today when a plan type is chosen.
         if (! empty($data['plan_type'])) {

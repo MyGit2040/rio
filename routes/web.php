@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\Admin\PlanController as AdminPlanController;
 use App\Http\Controllers\Admin\WorkspaceController;
 use App\Http\Controllers\ApiTokenController;
 use App\Http\Controllers\AuditController;
@@ -64,6 +65,9 @@ Route::middleware('auth')->group(function () {
         Route::put('/workspaces/{workspace}', [WorkspaceController::class, 'update'])->name('workspaces.update');
         Route::post('/workspaces/{workspace}/status', [WorkspaceController::class, 'toggleStatus'])->name('workspaces.status');
         Route::delete('/workspaces/{workspace}', [WorkspaceController::class, 'destroy'])->name('workspaces.destroy');
+
+        // Subscription plans / pricing (manage the tiers shown on Billing)
+        Route::resource('plans', AdminPlanController::class)->except('show');
     });
 
     // Account security (2FA)

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Plan;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Models\WhatsappInstance;
@@ -47,6 +48,7 @@ class WorkspaceController extends Controller
     {
         return view('admin.workspaces.create', [
             'planTypes' => WorkspaceService::PLAN_TYPES,
+            'plans'     => Plan::active()->ordered()->get(),
             'modules'   => config('modules'),
         ]);
     }
@@ -68,6 +70,7 @@ class WorkspaceController extends Controller
             'owner'     => $workspace->users()->where('role', 'owner')->orderBy('id')->first(),
             'deviceCount' => WhatsappInstance::withoutGlobalScopes()->where('tenant_id', $workspace->id)->count(),
             'planTypes' => WorkspaceService::PLAN_TYPES,
+            'plans'     => Plan::active()->ordered()->get(),
             'modules'   => config('modules'),
         ]);
     }
@@ -106,6 +109,7 @@ class WorkspaceController extends Controller
             'owner_email' => [Rule::requiredIf($creating), 'nullable', 'email', 'max:255', Rule::unique('users', 'email')],
             'password'    => [Rule::requiredIf($creating), 'nullable', 'string', 'min:8'],
             'plan_type'   => ['nullable', Rule::in(array_keys(WorkspaceService::PLAN_TYPES))],
+            'plan'        => ['nullable', Rule::exists('plans', 'key')],
             'max_devices' => ['required', 'integer', 'min:0', 'max:100000'],
             'modules'     => ['array'],
             'modules.*'   => [Rule::in(array_keys(config('modules')))],

@@ -27,34 +27,50 @@
     </x-card>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        @foreach ($tiers as $key => $tier)
-            <x-card class="{{ $current === $key ? 'ring-2 ring-brand' : '' }}">
+        @forelse ($plans as $plan)
+            @php($isCurrent = $current === $plan->key)
+            @php($price = rtrim(rtrim(number_format($plan->price, 2), '0'), '.'))
+            <x-card class="relative {{ $isCurrent ? 'ring-2 ring-brand' : '' }}">
+                @if ($plan->is_popular)
+                    <span class="absolute -top-2 right-4 px-2 py-0.5 rounded-full bg-brand text-white text-[11px] font-semibold">Most popular</span>
+                @endif
                 <div class="flex items-center gap-2">
-                    <h3 class="text-lg font-bold text-gray-800">{{ $tier['name'] }}</h3>
-                    @if ($current === $key)<x-badge color="purple">Current</x-badge>@endif
+                    <h3 class="text-lg font-bold text-gray-800">{{ $plan->name }}</h3>
+                    @if ($isCurrent)<x-badge color="purple">Current</x-badge>@endif
                 </div>
-                <p class="mt-2"><span class="text-3xl font-bold text-gray-900">${{ $tier['price'] }}</span><span class="text-sm text-gray-500">/mo</span></p>
+                @if ($plan->description)<p class="mt-1 text-sm text-gray-500">{{ $plan->description }}</p>@endif
+                <p class="mt-2">
+                    <span class="text-3xl font-bold text-gray-900">${{ $price }}</span>
+                    <span class="text-sm text-gray-500">/mo</span>
+                    @if ($plan->annual_price)<span class="block text-xs text-gray-400">or ${{ rtrim(rtrim(number_format($plan->annual_price, 2), '0'), '.') }}/yr</span>@endif
+                </p>
                 <ul class="mt-4 space-y-2 text-sm text-gray-600">
-                    @foreach ($tier['features'] as $feature)
-                        <li class="flex items-start gap-2">
-                            <svg class="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                            <span>{{ $feature }}</span>
+                    @foreach ($plan->featureList as $feature)
+                        <li class="flex items-start gap-2 {{ $feature['included'] ? '' : 'text-gray-400 line-through' }}">
+                            @if ($feature['included'])
+                                <svg class="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                            @else
+                                <svg class="w-4 h-4 text-gray-300 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            @endif
+                            <span>{{ $feature['value'] }}</span>
                         </li>
                     @endforeach
                 </ul>
                 <div class="mt-5">
-                    @if ($current === $key)
+                    @if ($isCurrent)
                         <x-btn variant="secondary" class="w-full opacity-60 pointer-events-none">Your plan</x-btn>
                     @else
                         <form method="POST" action="{{ route('billing.update') }}">
                             @csrf @method('PUT')
-                            <input type="hidden" name="plan" value="{{ $key }}">
-                            <x-btn type="submit" variant="primary" class="w-full">Switch to {{ $tier['name'] }}</x-btn>
+                            <input type="hidden" name="plan" value="{{ $plan->key }}">
+                            <x-btn type="submit" variant="primary" class="w-full">Switch to {{ $plan->name }}</x-btn>
                         </form>
                     @endif
                 </div>
             </x-card>
-        @endforeach
+        @empty
+            <p class="text-gray-500">No plans are available yet.</p>
+        @endforelse
     </div>
 
     <p class="mt-4 text-xs text-gray-400">Plan changes take effect immediately. Payment is arranged with your account manager.</p>

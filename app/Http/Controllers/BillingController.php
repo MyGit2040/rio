@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Plan;
 use App\Services\PlanLimit;
 use App\Support\Audit;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class BillingController extends Controller
@@ -25,10 +27,10 @@ class BillingController extends Controller
         ]])->all();
 
         return view('billing.index', [
-            'tenant'   => $tenant,
-            'current'  => $limits->planKey(),
-            'tiers'    => config('plans.tiers'),
-            'usage'    => $usage,
+            'tenant'  => $tenant,
+            'current' => $limits->planKey(),
+            'plans'   => Plan::active()->ordered()->get(),
+            'usage'   => $usage,
         ]);
     }
 
@@ -40,14 +42,15 @@ class BillingController extends Controller
         abort_unless(auth()->user()->isOwner(), 403);
 
         $data = $request->validate([
-            'plan' => ['required', 'in:'.implode(',', array_keys(config('plans.tiers')))],
+            'plan' => ['required', Rule::exists('plans', 'key')->where('is_active', true)],
         ]);
 
         $tenant = auth()->user()->tenant;
         $tenant->update(['plan' => $data['plan']]);
 
+        $plan = Plan::byKey($data['plan']);
         Audit::log('billing.plan_changed', $tenant, 'Switched to '.$data['plan']);
 
-        return back()->with('success', 'Your plan is now '.config("plans.tiers.{$data['plan']}.name").'.');
+        return back()->with('success', 'Your plan is now '.($plan?->name ?? $data['plan']).'.');
     }
 }

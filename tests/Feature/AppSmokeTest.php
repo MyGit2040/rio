@@ -11,6 +11,7 @@ use App\Models\Campaign;
 use App\Models\Contact;
 use App\Models\ContactGroup;
 use App\Models\MediaAsset;
+use App\Models\Plan;
 use App\Models\Message;
 use App\Models\Sequence;
 use App\Models\Suppression;
@@ -1020,6 +1021,86 @@ class AppSmokeTest extends TestCase
         $this->actingAs($this->makeUser());
         $this->get('/admin')->assertForbidden();
         $this->get('/admin/workspaces')->assertForbidden();
+    }
+
+    public function test_plans_are_seeded_from_config(): void
+    {
+        $this->assertDatabaseHas('plans', ['key' => 'free']);
+        $this->assertDatabaseHas('plans', ['key' => 'pro']);
+        $this->assertDatabaseHas('plans', ['key' => 'business']);
+        $this->assertSame(5, Plan::byKey('pro')->limit('devices'));
+    }
+
+    public function test_super_admin_can_manage_plans(): void
+    {
+        $admin = $this->makeUser('HQ', 'admin@test.dev');
+        $admin->update(['is_super_admin' => true]);
+        $this->actingAs($admin);
+
+        $this->get('/admin/plans')->assertOk()->assertSee('Pro');
+        $this->get('/admin/plans/create')->assertOk();
+
+        // Create.
+        $this->post('/admin/plans', [
+            'key' => 'starter', 'name' => 'Starter', 'price' => 9, 'billing_period' => 'monthly',
+            'limit_devices' => 2, 'limit_contacts' => 1000, 'limit_monthly_messages' => 5000,
+            'features' => "2 numbers\n-Priority support", 'is_active' => 1, 'is_default' => 1,
+        ])->assertRedirect('/admin/plans');
+
+        $plan = Plan::byKey('starter');
+        $this->assertNotNull($plan);
+        $this->assertSame(2, $plan->limit('devices'));
+        $this->assertTrue($plan->is_default);
+        $this->assertSame(1, Plan::where('is_default', true)->count()); // default is exclusive
+
+        // Edit.
+        $this->put("/admin/plans/{$plan->id}", [
+            'key' => 'starter', 'name' => 'Starter Plus', 'price' => 12, 'billing_period' => 'monthly',
+            'limit_devices' => 3, 'limit_contacts' => 2000, 'limit_monthly_messages' => 8000, 'is_active' => 1,
+        ])->assertRedirect('/admin/plans');
+        $this->assertDatabaseHas('plans', ['key' => 'starter', 'name' => 'Starter Plus']);
+
+        // Cannot delete a plan a workspace is on.
+        $admin->tenant->update(['plan' => 'starter']);
+        $this->delete("/admin/plans/{$plan->id}");
+        $this->assertDatabaseHas('plans', ['key' => 'starter']);
+
+        // Delete once nobody uses it.
+        $admin->tenant->update(['plan' => 'business']);
+        $this->delete("/admin/plans/{$plan->id}")->assertRedirect('/admin/plans');
+        $this->assertDatabaseMissing('plans', ['key' => 'starter']);
+    }
+
+    public function test_only_super_admin_can_manage_plans(): void
+    {
+        $this->actingAs($this->makeUser());
+        $this->get('/admin/plans')->assertForbidden();
+    }
+
+    public function test_billing_lists_db_plans_and_owner_can_switch(): void
+    {
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+
+        $this->get('/billing')->assertOk()->assertSee('Pro')->assertSee('Business');
+
+        $this->from('/billing')->put('/billing', ['plan' => 'business'])->assertRedirect();
+        $this->assertSame('business', $owner->tenant->fresh()->plan);
+    }
+
+    public function test_plan_limits_come_from_the_database(): void
+    {
+        $owner = $this->makeUser();
+        $owner->tenant->update(['plan' => 'pro', 'max_devices' => 0]);
+
+        $limits = \App\Services\PlanLimit::for($owner->tenant->fresh());
+        $this->assertSame(5, $limits->limit('devices'));       // pro seed
+        $this->assertSame(25000, $limits->limit('contacts'));
+        $this->assertSame('Pro', $limits->planName());
+
+        // Editing the plan in the DB changes enforcement immediately.
+        Plan::byKey('pro')->update(['limits' => ['devices' => 9, 'contacts' => 100, 'monthly_messages' => 200]]);
+        $this->assertSame(9, \App\Services\PlanLimit::for($owner->tenant->fresh())->limit('devices'));
     }
 
     public function test_suspended_workspace_is_blocked(): void

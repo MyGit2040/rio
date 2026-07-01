@@ -30,9 +30,11 @@ self-hosted [Evolution API](https://github.com/EvolutionAPI/evolution-api) (Bail
 | **Auto-reply** | Keyword chatbot rules |
 | **Compliance** | Opt-out keywords, suppression (do-not-contact) list, quiet hours |
 | **Analytics** | Reports overview, per-campaign A/B, link-click tracking |
-| **Platform** | Media library, outbound webhooks (HMAC-signed), billing & plans, audit log, REST API tokens, backup/restore, per-workspace SMTP & branding, AI keys (ChatGPT/Gemini/Claude) |
+| **Platform** | Media library, outbound webhooks (HMAC-signed), audit log, REST API tokens, backup/restore, per-workspace SMTP & branding, AI keys (ChatGPT/Gemini/Claude) |
+| **Plans & billing** | Database-driven subscription plans managed in **Super-Admin → Plans** (name, monthly/annual price, usage limits, feature list, popular/default flags); owners self-switch on the Billing page; limits (devices/contacts/monthly messages) enforced live by `PlanLimit` |
+| **Lists** | Tick-box bulk actions on every list (delete, and add/remove-group + opt-out on Contacts) via one shared `bulkSelect()` helper; collapsible Workspace sub-menu; per-page "?" help |
 
-All modules are built and covered by `tests/Feature/AppSmokeTest.php` (53 tests).
+All modules are built and covered by `tests/Feature/AppSmokeTest.php` (113 tests).
 
 ## Local setup
 

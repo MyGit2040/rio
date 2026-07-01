@@ -4,14 +4,21 @@ namespace App\Services;
 
 use App\Models\Contact;
 use App\Models\Message;
+use App\Models\Plan;
 use App\Models\Tenant;
 use App\Models\WhatsappInstance;
 
 /**
  * Resolves the current workspace's plan and enforces its usage limits.
+ * Plans live in the `plans` table (managed in Super-Admin); config/plans.php
+ * is used only as a fallback when the table hasn't been populated yet.
  */
 class PlanLimit
 {
+    private ?Plan $resolved = null;
+
+    private bool $resolvedDone = false;
+
     public function __construct(private readonly Tenant $tenant)
     {
     }
@@ -21,18 +28,25 @@ class PlanLimit
         return new self($tenant);
     }
 
-    /** @return array<string, mixed> */
-    public function plan(): array
+    /** The tenant's Plan model (or the default plan). Null only if no plans exist. */
+    public function plan(): ?Plan
     {
-        $tiers = config('plans.tiers');
-        $key = $this->tenant->plan ?: config('plans.default');
+        if (! $this->resolvedDone) {
+            $this->resolved = Plan::byKey($this->tenant->plan) ?? Plan::defaultPlan();
+            $this->resolvedDone = true;
+        }
 
-        return $tiers[$key] ?? $tiers[config('plans.default')];
+        return $this->resolved;
     }
 
     public function planKey(): string
     {
-        return $this->tenant->plan ?: config('plans.default', 'free');
+        return $this->tenant->plan ?: (optional($this->plan())->key ?? config('plans.default', 'free'));
+    }
+
+    public function planName(): string
+    {
+        return optional($this->plan())->name ?? ucfirst($this->planKey());
     }
 
     public function limit(string $key): int
@@ -42,7 +56,14 @@ class PlanLimit
             return (int) $this->tenant->max_devices;
         }
 
-        return (int) data_get($this->plan(), "limits.$key", 0);
+        $plan = $this->plan();
+
+        if ($plan) {
+            return $plan->limit($key);
+        }
+
+        // Fallback: plans table empty — read the config tier.
+        return (int) data_get(config('plans.tiers.'.$this->planKey()), "limits.$key", 0);
     }
 
     public function usage(string $key): int

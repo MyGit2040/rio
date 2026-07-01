@@ -29,6 +29,7 @@
             <nav class="hidden sm:flex items-center gap-1 text-sm">
                 <a href="{{ route('admin.dashboard') }}" @class(['px-3 py-2 rounded-lg hover:bg-white/10', 'bg-white/10' => request()->routeIs('admin.dashboard')])>Dashboard</a>
                 <a href="{{ route('admin.workspaces.index') }}" @class(['px-3 py-2 rounded-lg hover:bg-white/10', 'bg-white/10' => request()->routeIs('admin.workspaces.*')])>Workspaces</a>
+                <a href="{{ route('admin.plans.index') }}" @class(['px-3 py-2 rounded-lg hover:bg-white/10', 'bg-white/10' => request()->routeIs('admin.plans.*')])>Plans</a>
             </nav>
             <div class="ml-auto flex items-center gap-3 text-sm">
                 <a href="{{ route('dashboard') }}" class="text-gray-300 hover:text-white">Back to app →</a>

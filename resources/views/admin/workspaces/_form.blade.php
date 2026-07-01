@@ -38,6 +38,15 @@
         <h3 class="font-semibold text-gray-800 mb-4">Subscription</h3>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
+                <label class="block text-sm text-gray-600 mb-1">Plan (tier)</label>
+                <select name="plan" class="block w-full rounded-lg border-gray-300 text-sm focus:ring-brand focus:border-brand">
+                    @foreach ($plans as $p)
+                        <option value="{{ $p->key }}" @selected(old('plan', $ws->plan ?? 'business') === $p->key)>{{ $p->name }} — ${{ rtrim(rtrim(number_format($p->price, 2), '0'), '.') }}/mo</option>
+                    @endforeach
+                </select>
+                <p class="text-xs text-gray-400 mt-1">Sets usage limits (devices, contacts, messages).</p>
+            </div>
+            <div>
                 <label class="block text-sm text-gray-600 mb-1">Plan type</label>
                 <select name="plan_type" class="block w-full rounded-lg border-gray-300 text-sm focus:ring-brand focus:border-brand">
                     @if (isset($owner))<option value="">Keep current ({{ $ws->expires_at?->format('M j, Y') ?? 'Never' }})</option>@endif
