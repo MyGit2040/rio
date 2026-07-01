@@ -275,7 +275,7 @@
                         <template x-if="type === 'media' && ! mediaUrl">
                             <div class="mb-2 rounded bg-black/5 h-24 grid place-items-center text-gray-400 text-xs" x-text="mediaType + ' attachment'"></div>
                         </template>
-                        <p class="text-sm text-gray-800 whitespace-pre-line break-words" x-text="rendered() || (hasMedia() ? '' : 'Your message preview…')"></p>
+                        <p class="text-sm text-gray-800 whitespace-pre-line break-words" x-html="renderedHtml()"></p>
                         <p class="text-[10px] text-gray-500 text-right mt-1">12:00 ✓✓</p>
                     </div>
                     {{-- poll bubble --}}
@@ -427,13 +427,21 @@
                 return { footer, body: items.shift() || '', variants: items };
             },
             cleanVariant(block) {
-                return String(block).split('\n')
+                const t = String(block).split('\n')
                     .filter((l, i) => ! (i === 0 && /^[ \t]*[#*_ ]*Variant[ \t]*\d+/i.test(l))) // leading "Variant N" label
                     .filter(l => ! /^[ \t]*#{1,6}[ \t]+/.test(l))                               // markdown headings
                     .filter(l => ! /^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$/.test(l))               // stray rules
                     .join('\n')
                     .replace(/\n{3,}/g, '\n\n')
                     .trim();
+                return this.mdToWa(t);
+            },
+            // Markdown → WhatsApp: **bold**→*bold*, *italic*→_italic_ (WhatsApp uses single * for bold).
+            mdToWa(t) {
+                // Markdown -> WhatsApp: **bold** becomes *bold*, *italic* becomes _italic_.
+                return String(t)
+                    .replace(/\*\*([^\n]+?)\*\*|\*([^*\n]+?)\*/g, (m, b, i) => b !== undefined ? "*" + b + "*" : "_" + i + "_")
+                    .replace(/\*\*/g, "");  // drop any leftover unpaired **
             },
             addCard() { if (this.cards.length < 10) this.cards.push({ image: '', title: '', body: '', buttons: [] }); },
             addCardButton(ci) { if (this.cards[ci].buttons.length < 2) this.cards[ci].buttons.push({ type: 'url', text: '', value: '' }); },
@@ -469,6 +477,17 @@
                      .replace(/\{\{\s*phone\s*\}\}/gi, '+9715xxxxxxx')
                      .replace(/\{\{\s*date\s*\}\}/gi, today);
                 return t;
+            },
+            // Same text, but with WhatsApp markup shown as real bold/italic/strike/mono.
+            renderedHtml() {
+                let t = this.rendered();
+                if (! t) return this.hasMedia() ? '' : 'Your message preview…';
+                t = t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); // escape first (safe)
+                return t
+                    .replace(/```([\s\S]+?)```/g, '<code>$1</code>')      // ```mono```
+                    .replace(/\*([^*\n]+?)\*/g, '<strong>$1</strong>')    // *bold*
+                    .replace(/_([^_\n]+?)_/g, '<em>$1</em>')              // _italic_
+                    .replace(/~([^~\n]+?)~/g, '<del>$1</del>');           // ~strike~
             },
         };
     }
