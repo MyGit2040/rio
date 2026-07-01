@@ -7,6 +7,7 @@ use App\Models\Campaign;
 use App\Models\Contact;
 use App\Models\Suppression;
 use App\Models\Template;
+use App\Models\WhatsappInstance;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -70,6 +71,11 @@ class CampaignService
      */
     public function launch(Campaign $campaign): void
     {
+        // Resilience: move any still-pending recipients onto the campaign's devices that
+        // are CONNECTED right now. So if some numbers were locked when it paused, resuming
+        // sends the remaining batches from whatever accounts have recovered — nothing is lost.
+        $this->reassignPendingToConnected($campaign);
+
         $campaign->update([
             'status'     => 'sending',
             'started_at' => $campaign->started_at ?? now(),
@@ -106,6 +112,49 @@ class CampaignService
     public function pause(Campaign $campaign): void
     {
         $campaign->update(['status' => 'paused']);
+    }
+
+    /**
+     * How many of this campaign's devices are connected right now (for the UI).
+     */
+    public function connectedDeviceCount(Campaign $campaign): int
+    {
+        $ids = $campaign->device_ids ?: array_filter([$campaign->whatsapp_instance_id]);
+
+        return empty($ids) ? 0 : WhatsappInstance::whereIn('id', $ids)->where('status', 'open')->count();
+    }
+
+    /**
+     * Reassign every still-pending recipient onto the campaign's currently-connected
+     * devices, spreading them by the same rule (rotate-every or sticky). If nothing is
+     * connected, assignments are left untouched (the circuit breaker will pause again).
+     */
+    private function reassignPendingToConnected(Campaign $campaign): void
+    {
+        $ids = $campaign->device_ids ?: array_filter([$campaign->whatsapp_instance_id]);
+        $connected = WhatsappInstance::whereIn('id', $ids)->where('status', 'open')->pluck('id')->all();
+
+        if (empty($connected)) {
+            return;
+        }
+
+        $count = count($connected);
+        $rotateEvery = (int) ($campaign->rotate_every ?? 0);
+        $i = 0;
+
+        $campaign->recipients()->where('status', 'pending')->orderBy('id')
+            ->chunkById(500, function ($recipients) use ($connected, $count, $rotateEvery, &$i) {
+                foreach ($recipients as $recipient) {
+                    $device = $rotateEvery > 0
+                        ? $connected[intdiv($i, $rotateEvery) % $count]
+                        : $connected[crc32($recipient->phone) % $count];
+
+                    if ((int) $recipient->whatsapp_instance_id !== $device) {
+                        $recipient->update(['whatsapp_instance_id' => $device]);
+                    }
+                    $i++;
+                }
+            });
     }
 
     /**

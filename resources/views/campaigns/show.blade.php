@@ -4,7 +4,7 @@
     @if ($campaign->status === 'paused')
         <div class="mb-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 px-5 py-4 text-sm flex items-center gap-2 flex-wrap">
             <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            <span><strong>Circuit breaker tripped.</strong> Sending paused — the device may have disconnected. Reconnect it on the Devices page, then press Resume. No recipients were lost.</span>
+            <span><strong>Sending paused</strong> — a WhatsApp number disconnected. Reconnect <strong>any</strong> of this campaign's numbers on the Devices page, then press <strong>Resume</strong>: it continues from exactly where it stopped and spreads the remaining messages across whatever numbers are back online. Nothing is lost.</span>
         </div>
     @endif
 

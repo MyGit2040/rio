@@ -145,10 +145,20 @@ class CampaignController extends Controller
             return back()->with('error', 'This campaign has no recipients.');
         }
 
-        $this->campaigns->launch($campaign);
-        Audit::log('campaign.launched', $campaign, $campaign->name);
+        $connected = $this->campaigns->connectedDeviceCount($campaign);
+        if ($connected === 0) {
+            return back()->with('error', "None of this campaign's WhatsApp numbers are connected. Reconnect at least one on the Devices page, then Resume — no messages are lost.");
+        }
 
-        return back()->with('success', 'Campaign launched.');
+        $wasResume = $campaign->status === 'paused';
+        $pending = $campaign->recipients()->where('status', 'pending')->count();
+
+        $this->campaigns->launch($campaign);
+        Audit::log($wasResume ? 'campaign.resumed' : 'campaign.launched', $campaign, $campaign->name);
+
+        return back()->with('success', $wasResume
+            ? "Resumed — sending the remaining {$pending} message(s) from {$connected} connected number(s)."
+            : 'Campaign launched.');
     }
 
     public function pause(Campaign $campaign): RedirectResponse
@@ -208,9 +218,20 @@ class CampaignController extends Controller
         $engine = EvolutionApiService::forInstance($device);
         $body = str_replace(['{{name}}', '{{phone}}'], ['there', $number], (string) $campaign->body);
 
+        // A poll can't carry text/media, so (like a real send) send the message FIRST —
+        // the image with the caption, or plain text — then the poll below it.
+        if ($campaign->type === 'poll') {
+            if ($campaign->media_url) {
+                $engine->sendMedia($device->instance_name, $number, $campaign->media_type ?: 'image', $campaign->media_url, $body !== '' ? $body : null);
+            } elseif (trim($body) !== '') {
+                $engine->sendText($device->instance_name, $number, $body);
+            }
+        }
+
         $result = match ($campaign->type) {
             'media' => $engine->sendMedia($device->instance_name, $number, $campaign->media_type ?: 'image', $campaign->media_url, $body),
             'poll'  => $engine->sendPoll($device->instance_name, $number, $campaign->poll['question'] ?? 'Poll', $campaign->poll['options'] ?? []),
+            'buttons' => $engine->sendButtons($device->instance_name, $number, data_get($campaign->buttons, 'title', 'Menu'), $body, data_get($campaign->buttons, 'footer'), collect(data_get($campaign->buttons, 'items', []))->map(fn ($b) => ['type' => $b['type'] ?? 'reply', 'displayText' => $b['text'] ?? ''])->all()),
             default => $engine->sendText($device->instance_name, $number, $body ?: 'Test message'),
         };
 

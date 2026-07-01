@@ -734,6 +734,59 @@ class AppSmokeTest extends TestCase
         $this->get("/campaigns/{$campaign->id}/export")->assertOk();
     }
 
+    public function test_test_send_poll_also_sends_the_message_and_image(): void
+    {
+        config(['evolution.base_url' => 'http://localhost:8080', 'evolution.api_key' => 'k']);
+        Http::fake(['*' => Http::response(['key' => ['id' => 'X']], 201)]);
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $device = WhatsappInstance::create(['name' => 'L', 'instance_name' => 'tp-dev', 'status' => 'open']);
+        $campaign = Campaign::create([
+            'whatsapp_instance_id' => $device->id, 'name' => 'P', 'type' => 'poll', 'body' => 'Vote please',
+            'media_url' => 'https://x/y.jpg', 'media_type' => 'image',
+            'poll' => ['question' => 'Q', 'options' => ['a', 'b']], 'status' => 'draft', 'total' => 0,
+        ]);
+
+        $this->post("/campaigns/{$campaign->id}/test", ['phone' => '971500000009'])->assertRedirect();
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/message/sendMedia/tp-dev')); // image + caption first
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/message/sendPoll/tp-dev'));  // then the poll
+    }
+
+    public function test_resume_reassigns_pending_to_connected_device(): void
+    {
+        Queue::fake();
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $up   = WhatsappInstance::create(['name' => 'Up', 'instance_name' => 'up-dev', 'status' => 'open']);
+        $down = WhatsappInstance::create(['name' => 'Down', 'instance_name' => 'down-dev', 'status' => 'close']);
+        $campaign = Campaign::create([
+            'whatsapp_instance_id' => $down->id, 'device_ids' => [$up->id, $down->id],
+            'name' => 'C', 'type' => 'text', 'body' => 'hi', 'status' => 'paused', 'total' => 2,
+        ]);
+        $r1 = $campaign->recipients()->create(['tenant_id' => $owner->tenant_id, 'whatsapp_instance_id' => $down->id, 'phone' => '971500000001', 'status' => 'pending']);
+        $r2 = $campaign->recipients()->create(['tenant_id' => $owner->tenant_id, 'whatsapp_instance_id' => $down->id, 'phone' => '971500000002', 'status' => 'pending']);
+
+        $this->post("/campaigns/{$campaign->id}/launch")->assertRedirect();
+
+        // Both pending messages now go through the connected number — no batch stuck on the locked one.
+        $this->assertSame($up->id, $r1->fresh()->whatsapp_instance_id);
+        $this->assertSame($up->id, $r2->fresh()->whatsapp_instance_id);
+        Queue::assertPushed(SendCampaignMessage::class, 2);
+    }
+
+    public function test_launch_blocked_when_no_device_connected(): void
+    {
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $down = WhatsappInstance::create(['name' => 'Down', 'instance_name' => 'x-dev', 'status' => 'close']);
+        $campaign = Campaign::create(['whatsapp_instance_id' => $down->id, 'device_ids' => [$down->id], 'name' => 'C', 'type' => 'text', 'body' => 'hi', 'status' => 'paused', 'total' => 1]);
+        $campaign->recipients()->create(['tenant_id' => $owner->tenant_id, 'whatsapp_instance_id' => $down->id, 'phone' => '971500000001', 'status' => 'pending']);
+
+        $this->post("/campaigns/{$campaign->id}/launch")->assertRedirect();
+        $this->assertSame('paused', $campaign->fresh()->status); // stays paused, not sent
+    }
+
     public function test_campaign_test_send(): void
     {
         config(['evolution.base_url' => 'http://localhost:8080', 'evolution.api_key' => 'k']);
