@@ -17,6 +17,7 @@
                         <th class="px-5 py-3 font-medium">Workspace</th>
                         <th class="px-5 py-3 font-medium">Owner login</th>
                         <th class="px-5 py-3 font-medium">Devices</th>
+                        <th class="px-5 py-3 font-medium">Modules</th>
                         <th class="px-5 py-3 font-medium">Expires</th>
                         <th class="px-5 py-3 font-medium">Status</th>
                         <th class="px-5 py-3 font-medium text-right">Actions</th>
@@ -28,6 +29,10 @@
                             <td class="px-5 py-3 font-medium text-gray-800 whitespace-nowrap">{{ $t->name }}</td>
                             <td class="px-5 py-3 text-gray-600 whitespace-nowrap">{{ $owners[$t->id]->email ?? '—' }}</td>
                             <td class="px-5 py-3 text-gray-600">{{ $deviceCounts[$t->id] ?? 0 }}{{ $t->max_devices > 0 ? ' / '.$t->max_devices : '' }}</td>
+                            <td class="px-5 py-3 text-gray-600 whitespace-nowrap">
+                                @php($total = count(config('modules')))
+                                {{ empty($t->enabled_modules) ? 'All ('.$total.')' : count($t->enabled_modules).' / '.$total }}
+                            </td>
                             <td class="px-5 py-3 text-gray-500 whitespace-nowrap">{{ $t->expires_at?->format('M j, Y') ?? 'Never' }}</td>
                             <td class="px-5 py-3">
                                 @if ($t->isBlocked())
@@ -51,7 +56,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="px-5 py-10 text-center text-gray-500">No workspaces yet.</td></tr>
+                        <tr><td colspan="7" class="px-5 py-10 text-center text-gray-500">No workspaces yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>

@@ -4,13 +4,38 @@
     @php
         $s = $tenant->settings ?? [];
         $logoPath = data_get($s, 'logo_path');
+        $tabs = [
+            'branding' => ['Branding', 'tag'],
+            'engine'   => ['WhatsApp engine', 'device'],
+            'sending'  => ['Sending & safety', 'send'],
+            'email'    => ['Email (SMTP)', 'doc'],
+            'ai'       => ['AI content', 'bot'],
+            'account'  => ['Account & admin', 'cog'],
+        ];
     @endphp
 
-    <form method="POST" action="{{ route('settings.update') }}" enctype="multipart/form-data" class="max-w-2xl space-y-6">
+    <div x-data="{ tab: (location.hash || '#branding').slice(1) }" class="lg:grid lg:grid-cols-4 lg:gap-6 max-w-5xl">
+        {{-- LEFT sub-menu --}}
+        <aside class="lg:col-span-1 mb-4 lg:mb-0">
+            <nav class="lg:sticky lg:top-20 flex lg:flex-col gap-1 overflow-x-auto bg-white lg:bg-transparent rounded-xl lg:rounded-none border lg:border-0 border-gray-200 p-1 lg:p-0">
+                @foreach ($tabs as $key => [$label, $icon])
+                    <button type="button" @click="tab = '{{ $key }}'; location.hash = '{{ $key }}'"
+                            :class="tab === '{{ $key }}' ? 'sidebar-active font-semibold' : 'text-gray-600 hover:bg-gray-100'"
+                            class="flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm whitespace-nowrap transition">
+                        <x-nav-icon :icon="$icon" class="w-4 h-4 shrink-0" />
+                        {{ $label }}
+                    </button>
+                @endforeach
+            </nav>
+        </aside>
+
+        {{-- RIGHT content --}}
+        <div class="lg:col-span-3">
+    <form method="POST" action="{{ route('settings.update') }}" enctype="multipart/form-data" class="space-y-6">
         @csrf @method('PUT')
 
         {{-- Branding --}}
-        <x-card title="Branding" subtitle="Your logo, name and accent colour appear across the app.">
+        <x-card title="Branding" subtitle="Your logo, name and accent colour appear across the app." x-show="tab === 'branding'" x-cloak>
             <div class="space-y-4">
                 <div class="flex items-center gap-4">
                     <span class="grid place-items-center w-14 h-14 rounded-xl bg-gray-100 overflow-hidden">
@@ -41,7 +66,7 @@
         </x-card>
 
         {{-- Engine --}}
-        <x-card title="WhatsApp engine (Evolution API)" subtitle="Where your messages are actually sent from.">
+        <x-card title="WhatsApp engine (Evolution API)" subtitle="Where your messages are actually sent from." x-show="tab === 'engine'" x-cloak>
             <div class="space-y-4">
                 <div class="rounded-lg px-4 py-3 text-sm {{ $engineReady ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-yellow-50 text-yellow-800 border border-yellow-200' }}">
                     {{ $engineReady ? 'Engine is configured.' : 'Engine not configured yet — add the URL and key below.' }}
@@ -67,7 +92,7 @@
         </x-card>
 
         {{-- Bulk messaging safety --}}
-        <x-card title="Bulk messaging" subtitle="Pacing &amp; safety for campaigns. Defaults can be overridden per campaign.">
+        <x-card title="Bulk messaging" subtitle="Pacing &amp; safety for campaigns. Defaults can be overridden per campaign." x-show="tab === 'sending'" x-cloak>
             <div class="space-y-5">
                 <label class="flex items-start gap-3">
                     <input type="hidden" name="bulk_spintax" value="0">
@@ -125,7 +150,7 @@
         </x-card>
 
         {{-- Quiet hours --}}
-        <x-card title="Quiet hours" subtitle="Hold campaign sends overnight — messages queued during this window go out when it ends.">
+        <x-card title="Quiet hours" subtitle="Hold campaign sends overnight — messages queued during this window go out when it ends." x-show="tab === 'sending'" x-cloak>
             <div class="space-y-4">
                 <label class="flex items-start gap-3">
                     <input type="hidden" name="quiet_hours_enabled" value="0">
@@ -151,7 +176,7 @@
         </x-card>
 
         {{-- Opt-out handling --}}
-        <x-card title="Opt-out keywords" subtitle="When a contact replies one of these words, they're unsubscribed and added to the do-not-contact list automatically.">
+        <x-card title="Opt-out keywords" subtitle="When a contact replies one of these words, they're unsubscribed and added to the do-not-contact list automatically." x-show="tab === 'sending'" x-cloak>
             <div class="space-y-4">
                 <div>
                     <x-input-label for="optout_keywords" value="Keywords (comma separated)" />
@@ -168,7 +193,7 @@
         </x-card>
 
         {{-- SMTP --}}
-        <x-card title="Email (SMTP)" subtitle="Used for login codes and notifications. Leave blank to use the platform default.">
+        <x-card title="Email (SMTP)" subtitle="Used for login codes and notifications. Leave blank to use the platform default." x-show="tab === 'email'" x-cloak>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                     <x-input-label for="smtp_host" value="Host" />
@@ -208,7 +233,7 @@
         </x-card>
 
         {{-- AI content generation --}}
-        <x-card title="AI content generation" subtitle="Your own key for ChatGPT, Gemini or Claude — powers the ✨ Generate variants button in templates.">
+        <x-card title="AI content generation" subtitle="Your own key for ChatGPT, Gemini or Claude — powers the ✨ Generate variants button in templates." x-show="tab === 'ai'" x-cloak>
             <div class="space-y-4">
                 <div>
                     <x-input-label for="ai_provider" value="Which AI to use" />
@@ -242,7 +267,7 @@
             </div>
         </x-card>
 
-        <x-btn type="submit" variant="primary">Save settings</x-btn>
+        <x-btn type="submit" variant="primary" x-show="tab !== 'account'" x-cloak>Save settings</x-btn>
     </form>
 
     @push('scripts')
@@ -268,37 +293,46 @@
     </script>
     @endpush
 
-    <div class="max-w-2xl mt-6">
-        <x-card title="Workspace">
-            <dl class="text-sm space-y-2">
-                <div class="flex justify-between"><dt class="text-gray-500">Name</dt><dd class="text-gray-800">{{ $tenant->name }}</dd></div>
-                <div class="flex justify-between"><dt class="text-gray-500">Plan</dt><dd class="text-gray-800">{{ ucfirst($tenant->plan) }}</dd></div>
-                <div class="flex justify-between"><dt class="text-gray-500">Your account</dt><dd><a href="{{ route('profile.edit') }}" class="text-brand">Edit profile →</a></dd></div>
-                <div class="flex justify-between"><dt class="text-gray-500">Login security</dt><dd><a href="{{ route('security.edit') }}" class="text-brand">Two-factor (2FA) →</a></dd></div>
-            </dl>
-        </x-card>
-    </div>
-
-    @if (auth()->user()->isOwner())
-        <div class="max-w-2xl mt-6">
-            <x-card title="Workspace admin" subtitle="Team, API and backups live here — kept out of the main menu.">
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    @foreach ([
-                        ['Billing & plans', route('billing.index')],
-                        ['Team members', route('users.index')],
-                        ['REST API tokens', route('api-tokens.index')],
-                        ['Outbound webhooks', route('webhook-endpoints.index')],
-                        ['Audit log', route('audit.index')],
-                        ['Backup & restore', route('backup.index')],
-                        ['Two-factor (2FA)', route('security.edit')],
-                    ] as [$label, $href])
-                        <a href="{{ $href }}" class="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50">
-                            <span class="font-medium text-gray-800">{{ $label }}</span>
-                            <span class="ml-auto text-brand">→</span>
-                        </a>
-                    @endforeach
-                </div>
+        {{-- Account & admin --}}
+        <div x-show="tab === 'account'" x-cloak class="space-y-6">
+            <x-card title="Workspace">
+                <dl class="text-sm space-y-2">
+                    <div class="flex justify-between"><dt class="text-gray-500">Name</dt><dd class="text-gray-800">{{ $tenant->name }}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500">Plan</dt><dd class="text-gray-800">{{ ucfirst($tenant->plan) }}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500">Your account</dt><dd><a href="{{ route('profile.edit') }}" class="text-brand">Edit profile →</a></dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500">Login security</dt><dd><a href="{{ route('security.edit') }}" class="text-brand">Two-factor (2FA) →</a></dd></div>
+                </dl>
             </x-card>
+
+            @if (auth()->user()->isSuperAdmin())
+                <x-card title="Platform admin" subtitle="Manage client workspaces, plans and module access.">
+                    <a href="{{ route('admin.workspaces.index') }}" class="flex items-center gap-3 p-3 rounded-lg border border-brand/30 bg-brand/5 hover:bg-brand/10">
+                        <span class="font-medium text-brand">Workspaces &amp; module access →</span>
+                    </a>
+                </x-card>
+            @endif
+
+            @if (auth()->user()->isOwner())
+                <x-card title="Workspace admin" subtitle="Team, API and backups.">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        @foreach ([
+                            ['Billing & plans', route('billing.index')],
+                            ['Team members', route('users.index')],
+                            ['REST API tokens', route('api-tokens.index')],
+                            ['Outbound webhooks', route('webhook-endpoints.index')],
+                            ['Audit log', route('audit.index')],
+                            ['Backup & restore', route('backup.index')],
+                            ['Two-factor (2FA)', route('security.edit')],
+                        ] as [$label, $href])
+                            <a href="{{ $href }}" class="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50">
+                                <span class="font-medium text-gray-800">{{ $label }}</span>
+                                <span class="ml-auto text-brand">→</span>
+                            </a>
+                        @endforeach
+                    </div>
+                </x-card>
+            @endif
         </div>
-    @endif
+        </div>{{-- /right content --}}
+    </div>{{-- /settings layout --}}
 </x-app-layout>

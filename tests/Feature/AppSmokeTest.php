@@ -906,6 +906,8 @@ class AppSmokeTest extends TestCase
         $this->actingAs($admin);
 
         $this->get('/admin')->assertOk();
+        $this->get('/admin/workspaces')->assertOk();
+        $this->get('/admin/workspaces/create')->assertOk()->assertSee('Enabled modules');
 
         $this->post('/admin/workspaces', [
             'name'        => 'Colleague Co',
@@ -919,6 +921,10 @@ class AppSmokeTest extends TestCase
 
         $this->assertDatabaseHas('tenants', ['name' => 'Colleague Co', 'max_devices' => 3]);
         $this->assertDatabaseHas('users', ['email' => 'colleague@test.dev', 'role' => 'owner']);
+
+        // The module toggles render on the edit form too.
+        $created = \App\Models\Tenant::where('name', 'Colleague Co')->first();
+        $this->get("/admin/workspaces/{$created->id}/edit")->assertOk()->assertSee('Enabled modules');
     }
 
     public function test_non_admin_cannot_reach_admin_panel(): void
