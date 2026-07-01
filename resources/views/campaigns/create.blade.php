@@ -31,7 +31,7 @@
                     </div>
                     <div>
                         <x-input-label value="Send from device(s)" />
-                        <p class="text-xs text-gray-500 mb-2">Pick one or more numbers. Each contact is stuck to one — the same customer always hears from the same account.</p>
+                        <p class="text-xs text-gray-500 mb-2">Pick one or more numbers to send from.</p>
                         <div class="space-y-2">
                             @foreach ($devices as $device)
                                 <label class="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
@@ -45,6 +45,15 @@
                                 </label>
                             @endforeach
                         </div>
+                    </div>
+
+                    <div>
+                        <x-input-label for="rotate_every" value="Rotate to the next number after every … messages" />
+                        <x-text-input id="rotate_every" name="rotate_every" type="number" min="0" class="block mt-1 w-40" :value="old('rotate_every', 0)" />
+                        <p class="text-xs text-gray-500 mt-1">
+                            e.g. <strong>50</strong> = send 50 messages from the first number, then switch to the next, and so on (only matters when you pick more than one number).<br>
+                            <strong>0</strong> = spread evenly by contact — the same customer always hears from the same number.
+                        </p>
                     </div>
                 </div>
             </x-card>

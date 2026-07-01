@@ -34,6 +34,7 @@ class CampaignService
             $campaign = Campaign::create([
                 'whatsapp_instance_id' => $deviceIds[0],
                 'device_ids'           => $deviceIds,
+                'rotate_every'         => (int) ($data['rotate_every'] ?? 0),
                 'template_id'          => $data['template_id'] ?? null,
                 'name'                 => $data['name'],
                 'type'                 => $message['type'],
@@ -174,20 +175,32 @@ class CampaignService
         }
 
         $count = 0;
+        $index = 0;
         $deviceCount = max(1, count($deviceIds));
+        $rotateEvery = (int) ($campaign->rotate_every ?? 0);
 
-        $query->select('id', 'phone')->distinct()->chunkById(500, function ($contacts) use ($campaign, $deviceIds, $deviceCount, &$count) {
-            $rows = $contacts->map(fn ($contact) => [
-                'tenant_id'            => $campaign->tenant_id,
-                'campaign_id'          => $campaign->id,
-                // Sticky: the same contact always maps to the same device.
-                'whatsapp_instance_id' => $deviceIds[crc32($contact->phone) % $deviceCount],
-                'contact_id'           => $contact->id,
-                'phone'                => $contact->phone,
-                'status'               => 'pending',
-                'created_at'           => now(),
-                'updated_at'           => now(),
-            ])->all();
+        $query->select('id', 'phone')->distinct()->chunkById(500, function ($contacts) use ($campaign, $deviceIds, $deviceCount, $rotateEvery, &$count, &$index) {
+            $rows = [];
+
+            foreach ($contacts as $contact) {
+                // rotate_every > 0: send N in a row from one number, then switch to the next.
+                // rotate_every = 0: sticky — the same contact always maps to the same device.
+                $device = $rotateEvery > 0
+                    ? $deviceIds[intdiv($index, $rotateEvery) % $deviceCount]
+                    : $deviceIds[crc32($contact->phone) % $deviceCount];
+
+                $rows[] = [
+                    'tenant_id'            => $campaign->tenant_id,
+                    'campaign_id'          => $campaign->id,
+                    'whatsapp_instance_id' => $device,
+                    'contact_id'           => $contact->id,
+                    'phone'                => $contact->phone,
+                    'status'               => 'pending',
+                    'created_at'           => now(),
+                    'updated_at'           => now(),
+                ];
+                $index++;
+            }
 
             $campaign->recipients()->insert($rows);
             $count += count($rows);

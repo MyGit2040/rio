@@ -21,6 +21,7 @@ class CampaignRequest extends FormRequest
             'name'          => ['required', 'string', 'max:255'],
             'device_ids'    => ['required', 'array', 'min:1'],
             'device_ids.*'  => [Rule::exists('whatsapp_instances', 'id')->where('tenant_id', $tenantId)],
+            'rotate_every'  => ['nullable', 'integer', 'min:0', 'max:100000'],
             'template_id' => [
                 'nullable',
                 Rule::exists('templates', 'id')->where('tenant_id', $tenantId),

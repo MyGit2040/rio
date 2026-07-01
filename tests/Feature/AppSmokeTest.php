@@ -1016,6 +1016,26 @@ class AppSmokeTest extends TestCase
         $this->assertDatabaseHas('suppressions', ['phone' => '971500000055', 'source' => 'opt_out']);
     }
 
+    public function test_campaign_rotates_device_every_n_messages(): void
+    {
+        Queue::fake();
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $d1 = WhatsappInstance::create(['name' => 'A', 'instance_name' => 'rot-a', 'status' => 'open']);
+        $d2 = WhatsappInstance::create(['name' => 'B', 'instance_name' => 'rot-b', 'status' => 'open']);
+        for ($i = 1; $i <= 4; $i++) {
+            Contact::create(['phone' => '97150000000'.$i, 'name' => "C{$i}"]);
+        }
+
+        $this->post('/campaigns', [
+            'name' => 'Rot', 'device_ids' => [$d1->id, $d2->id], 'body' => 'hi',
+            'audience' => 'all', 'rotate_every' => 2, 'min_delay' => 1, 'max_delay' => 2, 'schedule' => 'now',
+        ])->assertRedirect();
+
+        $devices = Campaign::first()->recipients()->orderBy('id')->pluck('whatsapp_instance_id')->all();
+        $this->assertSame([$d1->id, $d1->id, $d2->id, $d2->id], $devices); // 2 from A, then 2 from B
+    }
+
     public function test_spam_score_rates_clean_vs_spammy(): void
     {
         $service = new SpamScoreService;
