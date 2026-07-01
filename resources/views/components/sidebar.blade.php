@@ -46,15 +46,31 @@
         @if ($can('suppression'))<x-nav-item :active="request()->routeIs('suppressions.*')" href="{{ route('suppressions.index') }}" icon="optout">Do-not-contact</x-nav-item>@endif
 
         @if (auth()->user()?->isOwner())
+            @php($workspaceActive = request()->routeIs('billing.*', 'users.*', 'api-tokens.*', 'webhook-endpoints.*', 'audit.*', 'backup.*', 'security.*'))
             <div class="pt-3 mt-3 border-t border-gray-100"></div>
-            <p class="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Workspace</p>
-            <x-nav-item :active="request()->routeIs('billing.*')" href="{{ route('billing.index') }}" icon="chart">Billing &amp; plans</x-nav-item>
-            <x-nav-item :active="request()->routeIs('users.*')" href="{{ route('users.index') }}" icon="users">Team members</x-nav-item>
-            <x-nav-item :active="request()->routeIs('api-tokens.*')" href="{{ route('api-tokens.index') }}" icon="doc">REST API tokens</x-nav-item>
-            <x-nav-item :active="request()->routeIs('webhook-endpoints.*')" href="{{ route('webhook-endpoints.index') }}" icon="send">Outbound webhooks</x-nav-item>
-            <x-nav-item :active="request()->routeIs('audit.*')" href="{{ route('audit.index') }}" icon="doc">Audit log</x-nav-item>
-            <x-nav-item :active="request()->routeIs('backup.*')" href="{{ route('backup.index') }}" icon="doc">Backup &amp; restore</x-nav-item>
-            <x-nav-item :active="request()->routeIs('security.*')" href="{{ route('security.edit') }}" icon="shield">Two-factor (2FA)</x-nav-item>
+            <div x-data="{ open: {{ $workspaceActive ? 'true' : 'false' }} }">
+                {{-- Parent: click to expand/collapse the workspace sub-menu --}}
+                <button type="button" @click="open = ! open"
+                    @class([
+                        'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition',
+                        'sidebar-active font-semibold' => $workspaceActive,
+                        'text-gray-600 hover:bg-gray-100' => ! $workspaceActive,
+                    ])>
+                    <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
+                    <span class="truncate flex-1 text-left">Workspace</span>
+                    <svg class="w-4 h-4 shrink-0 transition-transform" :class="open && 'rotate-90'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                </button>
+                {{-- Sub-menu: indented children, hidden until the parent is expanded --}}
+                <div x-show="open" x-cloak class="mt-1 ml-4 pl-3 border-l border-gray-100 space-y-0.5">
+                    <x-nav-item :active="request()->routeIs('billing.*')" href="{{ route('billing.index') }}" icon="chart">Billing &amp; plans</x-nav-item>
+                    <x-nav-item :active="request()->routeIs('users.*')" href="{{ route('users.index') }}" icon="users">Team members</x-nav-item>
+                    <x-nav-item :active="request()->routeIs('api-tokens.*')" href="{{ route('api-tokens.index') }}" icon="doc">REST API tokens</x-nav-item>
+                    <x-nav-item :active="request()->routeIs('webhook-endpoints.*')" href="{{ route('webhook-endpoints.index') }}" icon="send">Outbound webhooks</x-nav-item>
+                    <x-nav-item :active="request()->routeIs('audit.*')" href="{{ route('audit.index') }}" icon="doc">Audit log</x-nav-item>
+                    <x-nav-item :active="request()->routeIs('backup.*')" href="{{ route('backup.index') }}" icon="doc">Backup &amp; restore</x-nav-item>
+                    <x-nav-item :active="request()->routeIs('security.*')" href="{{ route('security.edit') }}" icon="shield">Two-factor (2FA)</x-nav-item>
+                </div>
+            </div>
         @endif
 
         <div class="pt-3 mt-3 border-t border-gray-100"></div>
