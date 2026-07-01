@@ -1211,6 +1211,37 @@ class AppSmokeTest extends TestCase
         $this->assertSame($up->id, $recipient->fresh()->whatsapp_instance_id);
     }
 
+    public function test_failover_rotates_across_connected_numbers(): void
+    {
+        config(['evolution.base_url' => 'http://localhost:8080', 'evolution.api_key' => 'k']);
+        Http::fake(['*' => Http::response(['key' => ['id' => 'X']], 201)]);
+
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+
+        $down = WhatsappInstance::create(['name' => 'D', 'instance_name' => 'rot-down', 'status' => 'close']);
+        $a    = WhatsappInstance::create(['name' => 'A', 'instance_name' => 'rot-a', 'status' => 'open']);
+        $b    = WhatsappInstance::create(['name' => 'B', 'instance_name' => 'rot-b', 'status' => 'open']);
+
+        $campaign = Campaign::create([
+            'whatsapp_instance_id' => $down->id, 'device_ids' => [$down->id, $a->id, $b->id],
+            'name' => 'Rot', 'type' => 'text', 'body' => 'hi', 'status' => 'sending', 'total' => 4,
+        ]);
+
+        $used = [];
+        foreach (range(1, 4) as $n) {
+            $c = Contact::create(['name' => "C{$n}", 'phone' => '97150000006'.$n]);
+            $r = $campaign->recipients()->create(['contact_id' => $c->id, 'phone' => $c->phone, 'whatsapp_instance_id' => $down->id, 'status' => 'pending']);
+            (new SendCampaignMessage($r->id))->handle();
+            $used[] = $r->fresh()->whatsapp_instance_id;
+        }
+
+        // Never the down number; both live numbers used → it rotated.
+        $this->assertNotContains($down->id, $used);
+        $this->assertContains($a->id, $used);
+        $this->assertContains($b->id, $used);
+    }
+
     public function test_device_failover_can_be_turned_off(): void
     {
         config(['evolution.base_url' => 'http://localhost:8080', 'evolution.api_key' => 'k']);

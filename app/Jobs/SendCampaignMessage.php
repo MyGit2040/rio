@@ -183,32 +183,36 @@ class SendCampaignMessage implements ShouldQueue
      */
     private function resolveSendingDevice(CampaignRecipient $recipient, Campaign $campaign): ?WhatsappInstance
     {
-        $sticky = $recipient->instance ?: $campaign->instance;
+        $poolIds = $campaign->device_ids ?: array_filter([$campaign->whatsapp_instance_id]);
 
-        if ($sticky && $sticky->isConnected()) {
-            return $sticky;
+        // Connected numbers, kept in the campaign's pool order.
+        $connectedIds = WhatsappInstance::whereIn('id', $poolIds)->where('status', 'open')->pluck('id')->all();
+        $connected = array_values(array_filter(
+            array_map('intval', $poolIds),
+            fn ($id) => in_array($id, array_map('intval', $connectedIds), true)
+        ));
+
+        if (empty($connected)) {
+            return null; // nothing connected → circuit breaker (campaign pauses, nothing lost)
         }
 
-        // Automatic failover to another available number (a workspace can turn it off).
+        // Stick to the assigned number while it's active.
+        $sticky = (int) ($recipient->whatsapp_instance_id ?: $campaign->whatsapp_instance_id);
+        if ($sticky && in_array($sticky, $connected, true)) {
+            return WhatsappInstance::find($sticky);
+        }
+
+        // Assigned number is down: only rotate away if failover is on (default).
         if (! (bool) data_get($campaign->tenant?->settings, 'bulk_device_failover', true)) {
             return null;
         }
 
-        $poolIds = $campaign->device_ids ?: array_filter([$campaign->whatsapp_instance_id]);
+        // Rotate to the next connected number — the pointer advances every message, so
+        // successive sends spread across all live numbers instead of piling on one.
+        $deviceId = $connected[(int) ($campaign->sent + $campaign->failed) % count($connected)];
+        $recipient->update(['whatsapp_instance_id' => $deviceId]);
 
-        $fallback = WhatsappInstance::whereIn('id', $poolIds)
-            ->where('status', 'open')
-            ->when($sticky, fn ($q) => $q->where('id', '!=', $sticky->id))
-            ->first();
-
-        if ($fallback) {
-            // Re-stick this contact to the working number so its next message uses it too.
-            $recipient->update(['whatsapp_instance_id' => $fallback->id]);
-
-            return $fallback;
-        }
-
-        return null;
+        return WhatsappInstance::find($deviceId);
     }
 
     private function markFailed(CampaignRecipient $recipient, Campaign $campaign, string $error): void
