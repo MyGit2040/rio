@@ -88,10 +88,12 @@ Route::middleware('auth')->group(function () {
     Route::get('/contacts/import', [ContactImportController::class, 'create'])->name('contacts.import.create');
     Route::post('/contacts/import', [ContactImportController::class, 'store'])->name('contacts.import.store');
     Route::get('/contacts/export', [ContactController::class, 'export'])->name('contacts.export');
+    Route::post('/contacts/bulk', [ContactController::class, 'bulk'])->name('contacts.bulk');
     Route::post('/contacts/verify', [ContactController::class, 'verify'])->name('contacts.verify');
     Route::resource('contacts', ContactController::class)->except('show');
 
     // Contact groups
+    Route::post('/groups/bulk', [GroupController::class, 'bulk'])->name('groups.bulk');
     Route::resource('groups', GroupController::class)->except('show');
     Route::get('/groups/{group}', [GroupController::class, 'show'])->name('groups.show');
     Route::post('/groups/{group}/import', [GroupController::class, 'import'])->name('groups.import');
@@ -108,6 +110,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/suppressions', [SuppressionController::class, 'index'])->name('suppressions.index');
     Route::post('/suppressions', [SuppressionController::class, 'store'])->name('suppressions.store');
     Route::post('/suppressions/import', [SuppressionController::class, 'import'])->name('suppressions.import');
+    Route::post('/suppressions/bulk', [SuppressionController::class, 'bulk'])->name('suppressions.bulk');
     Route::delete('/suppressions/{suppression}', [SuppressionController::class, 'destroy'])->name('suppressions.destroy');
 
     // Two-way inbox
@@ -116,6 +119,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/inbox/{contact}/reply', [InboxController::class, 'reply'])->name('inbox.reply');
 
     // Drip / follow-up sequences
+    Route::post('/sequences/bulk', [SequenceController::class, 'bulk'])->name('sequences.bulk');
     Route::resource('sequences', SequenceController::class);
     Route::post('/sequences/{sequence}/enroll', [SequenceController::class, 'enroll'])->name('sequences.enroll');
 
@@ -125,6 +129,7 @@ Route::middleware('auth')->group(function () {
     // Media library
     Route::get('/media', [MediaController::class, 'index'])->name('media.index');
     Route::post('/media', [MediaController::class, 'store'])->name('media.store');
+    Route::post('/media/bulk', [MediaController::class, 'bulk'])->name('media.bulk');
     Route::delete('/media/{asset}', [MediaController::class, 'destroy'])->name('media.destroy');
 
     // Reports (performance + link clicks)
@@ -152,6 +157,7 @@ Route::middleware('auth')->group(function () {
 
     // Message templates (text / media / poll)
     Route::post('/templates/variants', [TemplateController::class, 'variants'])->name('templates.variants');
+    Route::post('/templates/bulk', [TemplateController::class, 'bulk'])->name('templates.bulk');
     Route::resource('templates', TemplateController::class)->except('show');
     Route::get('/templates/{template}/preview', [TemplateController::class, 'preview'])->name('templates.preview');
     Route::post('/templates/{template}/clone', [TemplateController::class, 'clone'])->name('templates.clone');
@@ -161,6 +167,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/single-message', [SingleMessageController::class, 'send'])->name('single-message.send');
 
     // Campaigns (bulk send)
+    Route::post('/campaigns/bulk', [CampaignController::class, 'bulk'])->name('campaigns.bulk');
     Route::resource('campaigns', CampaignController::class)->except('edit', 'update');
     Route::post('/campaigns/{campaign}/launch', [CampaignController::class, 'launch'])->name('campaigns.launch');
     Route::post('/campaigns/{campaign}/pause', [CampaignController::class, 'pause'])->name('campaigns.pause');

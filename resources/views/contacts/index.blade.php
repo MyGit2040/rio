@@ -1,7 +1,7 @@
 <x-app-layout>
     <x-slot name="header">Contacts</x-slot>
 
-    <x-card flush>
+    <x-card flush x-data="bulkSelect(@js($contacts->pluck('id')->values()->all()))">
         <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-100 flex-wrap">
             <h2 class="font-semibold text-gray-800">All contacts</h2>
             <div class="ml-auto flex items-center gap-2 flex-wrap">
@@ -37,10 +37,23 @@
             @endif
         </form>
 
+        {{-- Bulk action bar --}}
+        <x-bulk-bar :action="route('contacts.bulk')">
+            <select name="group_id" x-model="groupId" class="rounded-lg border-gray-300 text-sm focus:ring-brand focus:border-brand">
+                <option value="">Choose group…</option>
+                @foreach ($groups as $g)<option value="{{ $g->id }}">{{ $g->name }}</option>@endforeach
+            </select>
+            <button type="button" @click="run('add_group', { needGroup: true })" class="px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-sm hover:bg-gray-50">Add to group</button>
+            <button type="button" @click="run('remove_group', { needGroup: true })" class="px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-sm hover:bg-gray-50">Remove from group</button>
+            <button type="button" @click="run('opt_out')" class="px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-sm hover:bg-gray-50">Opt out</button>
+            <button type="button" @click="run('delete', { confirm: 'Delete %d contact(s)? This cannot be undone.' })" class="px-3 py-1.5 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700">Delete</button>
+        </x-bulk-bar>
+
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead class="bg-gray-50 text-gray-500 text-left">
                     <tr>
+                        <th class="px-5 py-3 w-10"><x-bulk-check /></th>
                         <th class="px-5 py-3 font-medium">Name</th>
                         <th class="px-5 py-3 font-medium">Phone</th>
                         <th class="px-5 py-3 font-medium">Email</th>
@@ -52,7 +65,8 @@
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                     @forelse ($contacts as $contact)
-                        <tr class="hover:bg-gray-50">
+                        <tr class="hover:bg-gray-50" :class="selected.includes({{ $contact->id }}) && 'bg-brand/5'">
+                            <td class="px-5 py-3"><x-bulk-check :id="$contact->id" /></td>
                             <td class="px-5 py-3 font-medium text-gray-800 whitespace-nowrap"><a href="{{ route('contacts.show', $contact) }}" class="hover:text-green-600">{{ $contact->name ?: '—' }}</a></td>
                             <td class="px-5 py-3 text-gray-600 whitespace-nowrap">+{{ $contact->phone }}</td>
                             <td class="px-5 py-3 text-gray-600 whitespace-nowrap">{{ $contact->email ?: '—' }}</td>
@@ -81,7 +95,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="px-5 py-10 text-center text-gray-500">No contacts found.</td></tr>
+                        <tr><td colspan="8" class="px-5 py-10 text-center text-gray-500">No contacts found.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -91,4 +105,5 @@
             <div class="px-5 py-3 border-t border-gray-100">{{ $contacts->links() }}</div>
         @endif
     </x-card>
+
 </x-app-layout>

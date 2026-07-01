@@ -50,4 +50,21 @@ class MediaController extends Controller
 
         return back()->with('success', 'File deleted.');
     }
+
+    public function bulk(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'action' => ['required', 'in:delete'],
+            'ids'    => ['required', 'array', 'min:1'],
+            'ids.*'  => ['integer'],
+        ]);
+
+        $assets = MediaAsset::whereIn('id', $data['ids'])->get();
+        foreach ($assets as $asset) {
+            Storage::disk('public')->delete($asset->path);
+            $asset->delete();
+        }
+
+        return back()->with('success', $assets->count().' file(s) deleted.');
+    }
 }

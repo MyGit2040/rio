@@ -1264,6 +1264,63 @@ class AppSmokeTest extends TestCase
             ->assertJsonPath('latest.0.body', 'Yes');
     }
 
+    public function test_contacts_bulk_actions(): void
+    {
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $group = ContactGroup::create(['name' => 'G']);
+        $c1 = Contact::create(['phone' => '971500000001', 'name' => 'A']);
+        $c2 = Contact::create(['phone' => '971500000002', 'name' => 'B']);
+
+        $this->post('/contacts/bulk', ['action' => 'add_group', 'ids' => [$c1->id, $c2->id], 'group_id' => $group->id])->assertRedirect();
+        $this->assertSame(2, $group->contacts()->count());
+
+        $this->post('/contacts/bulk', ['action' => 'delete', 'ids' => [$c1->id]])->assertRedirect();
+        $this->assertDatabaseMissing('contacts', ['id' => $c1->id]);
+        $this->assertDatabaseHas('contacts', ['id' => $c2->id]);
+    }
+
+    public function test_context_help_button_points_to_page_guide(): void
+    {
+        $this->actingAs($this->makeUser());
+        $this->get('/devices')->assertOk()->assertSee(route('help.show', 'devices'), false);
+        $this->get('/contacts')->assertOk()->assertSee(route('help.show', 'contacts'), false);
+    }
+
+    public function test_bulk_delete_groups_and_suppressions(): void
+    {
+        $this->actingAs($this->makeUser());
+
+        $g1 = ContactGroup::create(['name' => 'One']);
+        $g2 = ContactGroup::create(['name' => 'Two']);
+        $this->post('/groups/bulk', ['action' => 'delete', 'ids' => [$g1->id, $g2->id]])->assertRedirect();
+        $this->assertDatabaseMissing('contact_groups', ['id' => $g1->id]);
+        $this->assertDatabaseMissing('contact_groups', ['id' => $g2->id]);
+
+        $this->post('/suppressions', ['phone' => '971500000009'])->assertRedirect();
+        $s = Suppression::firstWhere('phone', '971500000009');
+        $this->post('/suppressions/bulk', ['action' => 'delete', 'ids' => [$s->id]])->assertRedirect();
+        $this->assertDatabaseMissing('suppressions', ['id' => $s->id]);
+    }
+
+    public function test_bulk_delete_is_tenant_scoped(): void
+    {
+        $tenantA = $this->makeUser('Tenant A', 'a@test.dev');
+        $tenantB = $this->makeUser('Tenant B', 'b@test.dev');
+
+        $this->actingAs($tenantB);
+        $foreign = Template::create(['name' => 'B-tpl', 'type' => 'text', 'body' => 'x']);
+
+        $this->actingAs($tenantA);
+        $mine = Template::create(['name' => 'A-tpl', 'type' => 'text', 'body' => 'y']);
+
+        // Try to delete BOTH my row and the other tenant's row in one request.
+        $this->post('/templates/bulk', ['action' => 'delete', 'ids' => [$mine->id, $foreign->id]])->assertRedirect();
+
+        $this->assertDatabaseMissing('templates', ['id' => $mine->id]);
+        $this->assertDatabaseHas('templates', ['id' => $foreign->id]); // tenant scope protects it
+    }
+
     public function test_spam_score_rates_clean_vs_spammy(): void
     {
         $service = new SpamScoreService;

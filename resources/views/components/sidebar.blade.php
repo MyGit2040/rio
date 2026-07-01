@@ -45,8 +45,20 @@
         @if ($can('contacts'))<x-nav-item :active="request()->routeIs('contacts.index') && request('status') === 'opted_out'" href="{{ route('contacts.index', ['status' => 'opted_out']) }}" icon="optout">Opt-out management</x-nav-item>@endif
         @if ($can('suppression'))<x-nav-item :active="request()->routeIs('suppressions.*')" href="{{ route('suppressions.index') }}" icon="optout">Do-not-contact</x-nav-item>@endif
 
+        @if (auth()->user()?->isOwner())
+            <div class="pt-3 mt-3 border-t border-gray-100"></div>
+            <p class="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Workspace</p>
+            <x-nav-item :active="request()->routeIs('billing.*')" href="{{ route('billing.index') }}" icon="chart">Billing &amp; plans</x-nav-item>
+            <x-nav-item :active="request()->routeIs('users.*')" href="{{ route('users.index') }}" icon="users">Team members</x-nav-item>
+            <x-nav-item :active="request()->routeIs('api-tokens.*')" href="{{ route('api-tokens.index') }}" icon="doc">REST API tokens</x-nav-item>
+            <x-nav-item :active="request()->routeIs('webhook-endpoints.*')" href="{{ route('webhook-endpoints.index') }}" icon="send">Outbound webhooks</x-nav-item>
+            <x-nav-item :active="request()->routeIs('audit.*')" href="{{ route('audit.index') }}" icon="doc">Audit log</x-nav-item>
+            <x-nav-item :active="request()->routeIs('backup.*')" href="{{ route('backup.index') }}" icon="doc">Backup &amp; restore</x-nav-item>
+            <x-nav-item :active="request()->routeIs('security.*')" href="{{ route('security.edit') }}" icon="shield">Two-factor (2FA)</x-nav-item>
+        @endif
+
         <div class="pt-3 mt-3 border-t border-gray-100"></div>
         <x-nav-item :active="request()->routeIs('help.*')" href="{{ route('help.index') }}" icon="doc">Help center</x-nav-item>
-        <x-nav-item :active="request()->routeIs('settings.*') || request()->routeIs('users.*') || request()->routeIs('api-tokens.*') || request()->routeIs('backup.*') || request()->routeIs('security.*') || request()->routeIs('billing.*') || request()->routeIs('webhook-endpoints.*') || request()->routeIs('audit.*')" href="{{ route('settings.edit') }}" icon="cog">Settings</x-nav-item>
+        <x-nav-item :active="request()->routeIs('settings.*')" href="{{ route('settings.edit') }}" icon="cog">Settings</x-nav-item>
     </nav>
 </aside>

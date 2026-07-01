@@ -94,6 +94,50 @@ class ContactController extends Controller
     }
 
     /**
+     * Bulk actions on selected contacts: delete, add/remove group, opt-out.
+     */
+    public function bulk(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'action'   => ['required', 'in:delete,add_group,remove_group,opt_out,opt_in'],
+            'ids'      => ['required', 'array', 'min:1'],
+            'ids.*'    => ['integer'],
+            'group_id' => ['nullable', 'integer', 'exists:contact_groups,id'],
+        ]);
+
+        $query = Contact::whereIn('id', $data['ids']); // tenant-scoped by the global scope
+        $count = (clone $query)->count();
+
+        if (in_array($data['action'], ['add_group', 'remove_group'], true) && empty($data['group_id'])) {
+            return back()->with('error', 'Pick a group first.');
+        }
+
+        switch ($data['action']) {
+            case 'delete':
+                $query->delete();
+                $msg = "{$count} contact(s) deleted.";
+                break;
+            case 'add_group':
+                (clone $query)->get()->each(fn ($c) => $c->groups()->syncWithoutDetaching([$data['group_id']]));
+                $msg = "{$count} contact(s) added to the group.";
+                break;
+            case 'remove_group':
+                (clone $query)->get()->each(fn ($c) => $c->groups()->detach($data['group_id']));
+                $msg = "{$count} contact(s) removed from the group.";
+                break;
+            case 'opt_out':
+                $query->update(['opted_out' => true]);
+                $msg = "{$count} contact(s) opted out.";
+                break;
+            default: // opt_in
+                $query->update(['opted_out' => false]);
+                $msg = "{$count} contact(s) opted back in.";
+        }
+
+        return back()->with('success', $msg);
+    }
+
+    /**
      * Export the current (filtered) contact list as a CSV.
      */
     public function export(Request $request): StreamedResponse

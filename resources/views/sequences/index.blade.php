@@ -1,7 +1,7 @@
 <x-app-layout>
     <x-slot name="header">Drip sequences</x-slot>
 
-    <x-card flush>
+    <x-card flush x-data="bulkSelect(@js($sequences->pluck('id')->values()->all()))">
         <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
             <h2 class="font-semibold text-gray-800">Follow-up sequences</h2>
             <x-btn :href="route('sequences.create')" variant="primary" class="ml-auto">New sequence</x-btn>
@@ -12,10 +12,15 @@
             ]" />
         </div>
 
+        <x-bulk-bar :action="route('sequences.bulk')">
+            <button type="button" @click="run('delete', { confirm: 'Delete %d sequence(s)? This cannot be undone.' })" class="px-3 py-1.5 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700">Delete</button>
+        </x-bulk-bar>
+
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead class="bg-gray-50 text-gray-500 text-left">
                     <tr>
+                        <th class="px-5 py-3 w-10"><x-bulk-check /></th>
                         <th class="px-5 py-3 font-medium">Name</th>
                         <th class="px-5 py-3 font-medium">Steps</th>
                         <th class="px-5 py-3 font-medium">Enrolled</th>
@@ -25,7 +30,8 @@
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                     @forelse ($sequences as $sequence)
-                        <tr class="hover:bg-gray-50">
+                        <tr class="hover:bg-gray-50" :class="selected.includes({{ $sequence->id }}) && 'bg-brand/5'">
+                            <td class="px-5 py-3"><x-bulk-check :id="$sequence->id" /></td>
                             <td class="px-5 py-3 font-medium text-gray-800 whitespace-nowrap">
                                 <a href="{{ route('sequences.show', $sequence) }}" class="hover:text-green-600">{{ $sequence->name }}</a>
                             </td>
@@ -43,7 +49,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="px-5 py-10 text-center text-gray-500">No sequences yet. Create one to automatically follow up with contacts over time.</td></tr>
+                        <tr><td colspan="6" class="px-5 py-10 text-center text-gray-500">No sequences yet. Create one to automatically follow up with contacts over time.</td></tr>
                     @endforelse
                 </tbody>
             </table>

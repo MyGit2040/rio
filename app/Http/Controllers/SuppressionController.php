@@ -80,4 +80,19 @@ class SuppressionController extends Controller
 
         return back()->with('success', "+{$phone} removed from the do-not-contact list.");
     }
+
+    public function bulk(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'action' => ['required', 'in:delete'],
+            'ids'    => ['required', 'array', 'min:1'],
+            'ids.*'  => ['integer'],
+        ]);
+
+        $count = Suppression::whereIn('id', $data['ids'])->count();
+        Suppression::whereIn('id', $data['ids'])->delete();
+        Audit::log('suppression.removed', null, "Bulk-unblocked {$count} number(s)");
+
+        return back()->with('success', "{$count} number(s) removed from the do-not-contact list.");
+    }
 }

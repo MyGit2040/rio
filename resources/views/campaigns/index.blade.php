@@ -37,7 +37,7 @@
         @endforeach
     </div>
 
-    <x-card flush>
+    <x-card flush x-data="bulkSelect(@js($campaigns->pluck('id')->values()->all()))">
         <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
             <h2 class="font-semibold text-gray-800">Campaigns</h2>
             <x-btn :href="route('campaigns.create')" variant="primary" class="ml-auto">New campaign</x-btn>
@@ -49,10 +49,15 @@
             ]" :dates="['created_from' => 'Created from', 'created_to' => 'Created to']" />
         </div>
 
+        <x-bulk-bar :action="route('campaigns.bulk')">
+            <button type="button" @click="run('delete', { confirm: 'Delete %d campaign(s)? This cannot be undone.' })" class="px-3 py-1.5 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700">Delete</button>
+        </x-bulk-bar>
+
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead class="bg-gray-50 text-gray-500 text-left">
                     <tr>
+                        <th class="px-5 py-3 w-10"><x-bulk-check /></th>
                         <th class="px-5 py-3 font-medium">Campaign</th>
                         <th class="px-5 py-3 font-medium">Device</th>
                         <th class="px-5 py-3 font-medium">Progress</th>
@@ -63,7 +68,8 @@
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                     @forelse ($campaigns as $campaign)
-                        <tr class="hover:bg-gray-50">
+                        <tr class="hover:bg-gray-50" :class="selected.includes({{ $campaign->id }}) && 'bg-brand/5'">
+                            <td class="px-5 py-3"><x-bulk-check :id="$campaign->id" /></td>
                             <td class="px-5 py-3 font-medium text-gray-800 whitespace-nowrap">
                                 <a href="{{ route('campaigns.show', $campaign) }}" class="hover:text-green-600">{{ $campaign->name }}</a>
                             </td>
@@ -91,7 +97,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="px-5 py-10 text-center text-gray-500">No campaigns yet.</td></tr>
+                        <tr><td colspan="7" class="px-5 py-10 text-center text-gray-500">No campaigns yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>

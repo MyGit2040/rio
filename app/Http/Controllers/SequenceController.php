@@ -89,6 +89,21 @@ class SequenceController extends Controller
         return redirect()->route('sequences.index')->with('success', 'Sequence deleted.');
     }
 
+    public function bulk(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'action' => ['required', 'in:delete'],
+            'ids'    => ['required', 'array', 'min:1'],
+            'ids.*'  => ['integer'],
+        ]);
+
+        $count = Sequence::whereIn('id', $data['ids'])->count();
+        Sequence::whereIn('id', $data['ids'])->delete();
+        Audit::log('sequence.bulk_deleted', null, "Deleted {$count} sequence(s)");
+
+        return back()->with('success', "{$count} sequence(s) deleted.");
+    }
+
     public function enroll(Request $request, Sequence $sequence): RedirectResponse
     {
         $data = $request->validate([

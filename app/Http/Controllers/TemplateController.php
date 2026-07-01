@@ -65,6 +65,20 @@ class TemplateController extends Controller
         return redirect()->route('templates.index')->with('success', 'Template deleted.');
     }
 
+    public function bulk(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'action' => ['required', 'in:delete'],
+            'ids'    => ['required', 'array', 'min:1'],
+            'ids.*'  => ['integer'],
+        ]);
+
+        $count = Template::whereIn('id', $data['ids'])->count();
+        Template::whereIn('id', $data['ids'])->delete();
+
+        return back()->with('success', "{$count} template(s) deleted.");
+    }
+
     public function clone(Template $template): RedirectResponse
     {
         $copy = $template->replicate();

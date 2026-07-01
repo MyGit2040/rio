@@ -226,6 +226,20 @@ class CampaignController extends Controller
         return redirect()->route('campaigns.index')->with('success', 'Campaign deleted.');
     }
 
+    public function bulk(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'action' => ['required', 'in:delete'],
+            'ids'    => ['required', 'array', 'min:1'],
+            'ids.*'  => ['integer'],
+        ]);
+
+        $count = Campaign::whereIn('id', $data['ids'])->count();
+        Campaign::whereIn('id', $data['ids'])->delete();
+
+        return back()->with('success', "{$count} campaign(s) deleted.");
+    }
+
     /**
      * Re-queue only the recipients that failed.
      */

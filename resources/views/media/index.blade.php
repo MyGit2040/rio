@@ -15,20 +15,31 @@
         </div>
 
         <div class="lg:col-span-3">
-            <x-card flush>
+            <x-card flush x-data="bulkSelect(@js($assets->pluck('id')->values()->all()))">
                 <div class="px-5 py-4 border-b border-gray-100 flex items-center gap-3 flex-wrap">
                     <h2 class="font-semibold text-gray-800">Your files ({{ $assets->total() }})</h2>
+                    @if ($assets->count())
+                        <label class="flex items-center gap-1.5 text-sm text-gray-500"><x-bulk-check /> Select all</label>
+                    @endif
                     <div class="ml-auto">
                         <x-filter-bar search="Search files…" :filters="[
                             'kind' => ['all' => 'All Types', 'options' => ['image' => 'Images', 'file' => 'Files']],
                         ]" />
                     </div>
                 </div>
+
+                <x-bulk-bar :action="route('media.bulk')">
+                    <button type="button" @click="run('delete', { confirm: 'Delete %d file(s)? This cannot be undone.' })" class="px-3 py-1.5 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700">Delete</button>
+                </x-bulk-bar>
+
                 <div class="p-5">
                     @if ($assets->count())
-                        <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4" x-data>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
                             @foreach ($assets as $asset)
-                                <div class="rounded-xl border border-gray-200 overflow-hidden group">
+                                <div class="relative rounded-xl border border-gray-200 overflow-hidden group" :class="selected.includes({{ $asset->id }}) && 'ring-2 ring-brand'">
+                                    <label class="absolute top-2 left-2 z-10 bg-white/90 rounded p-0.5 shadow-sm cursor-pointer">
+                                        <x-bulk-check :id="$asset->id" />
+                                    </label>
                                     <div class="h-28 bg-gray-50 grid place-items-center overflow-hidden">
                                         @if ($asset->is_image)
                                             <img src="{{ $asset->url }}" alt="{{ $asset->name }}" class="w-full h-full object-cover">
