@@ -12,7 +12,7 @@ class WhatsappInstance extends Model
 
     protected $fillable = [
         'tenant_id', 'name', 'instance_name', 'token', 'status', 'daily_limit',
-        'phone_number', 'profile_name', 'qr_code', 'connected_at',
+        'phone_number', 'profile_name', 'qr_code', 'pairing_code', 'connected_at',
     ];
 
     protected $casts = [

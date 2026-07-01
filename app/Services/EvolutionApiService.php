@@ -62,13 +62,18 @@ class EvolutionApiService
     // Instance lifecycle
     // ----------------------------------------------------------------------
 
-    public function createInstance(string $instanceName, ?string $webhookUrl = null): array
+    public function createInstance(string $instanceName, ?string $webhookUrl = null, ?string $number = null): array
     {
         $payload = [
             'instanceName' => $instanceName,
             'integration'  => config('evolution.integration', 'WHATSAPP-BAILEYS'),
             'qrcode'       => true,
         ];
+
+        // Supplying a number makes Evolution return a pairing code (link-by-code).
+        if ($number) {
+            $payload['number'] = $number;
+        }
 
         if ($webhookUrl) {
             $payload['webhook'] = [
@@ -86,9 +91,14 @@ class EvolutionApiService
     /**
      * Ask the engine for a fresh QR code to link a phone.
      */
-    public function connect(string $instanceName): array
+    public function connect(string $instanceName, ?string $number = null): array
     {
-        return $this->http()->get("/instance/connect/{$instanceName}")->throw()->json() ?? [];
+        $url = "/instance/connect/{$instanceName}";
+        if ($number) {
+            $url .= '?number='.urlencode($number);
+        }
+
+        return $this->http()->get($url)->throw()->json() ?? [];
     }
 
     public function connectionState(string $instanceName): array

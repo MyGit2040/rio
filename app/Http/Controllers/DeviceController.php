@@ -28,8 +28,9 @@ class DeviceController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'name'        => ['required', 'string', 'max:255'],
-            'daily_limit' => ['nullable', 'integer', 'min:0', 'max:100000'],
+            'name'             => ['required', 'string', 'max:255'],
+            'daily_limit'      => ['nullable', 'integer', 'min:0', 'max:100000'],
+            'phone_for_pairing' => ['nullable', 'string', 'max:32'],
         ]);
 
         $tenant = auth()->user()->tenant;
@@ -48,13 +49,16 @@ class DeviceController extends Controller
             'daily_limit'   => (int) ($data['daily_limit'] ?? 0),
         ]);
 
+        $pairingNumber = preg_replace('/\D+/', '', (string) ($data['phone_for_pairing'] ?? '')) ?: null;
+
         try {
-            $response = $engine->createInstance($instanceName, $this->webhookUrl());
+            $response = $engine->createInstance($instanceName, $this->webhookUrl(), $pairingNumber);
 
             $device->update([
-                'token'   => data_get($response, 'hash.apikey') ?? data_get($response, 'hash') ?? null,
-                'qr_code' => $this->extractQr($response),
-                'status'  => 'connecting',
+                'token'        => data_get($response, 'hash.apikey') ?? data_get($response, 'hash') ?? null,
+                'qr_code'      => $this->extractQr($response),
+                'pairing_code' => $this->extractPairing($response),
+                'status'       => 'connecting',
             ]);
         } catch (\Throwable $e) {
             Log::error('Evolution createInstance failed', ['error' => $e->getMessage()]);
@@ -77,9 +81,10 @@ class DeviceController extends Controller
         try {
             $response = $engine->connect($device->instance_name);
             $qr = $this->extractQr($response);
-            $device->update(['qr_code' => $qr, 'status' => 'connecting']);
+            $pairing = $this->extractPairing($response);
+            $device->update(['qr_code' => $qr, 'pairing_code' => $pairing, 'status' => 'connecting']);
 
-            return response()->json(['ok' => true, 'qr' => $qr]);
+            return response()->json(['ok' => true, 'qr' => $qr, 'pairing' => $pairing]);
         } catch (\Throwable $e) {
             Log::error('Evolution connect failed', ['error' => $e->getMessage()]);
 
@@ -182,6 +187,13 @@ class DeviceController extends Controller
         return $secret
             ? route('webhooks.evolution', ['secret' => $secret])
             : route('webhooks.evolution');
+    }
+
+    private function extractPairing(array $response): ?string
+    {
+        $code = data_get($response, 'qrcode.pairingCode') ?? data_get($response, 'pairingCode') ?? null;
+
+        return $code ?: null;
     }
 
     private function extractQr(array $response): ?string

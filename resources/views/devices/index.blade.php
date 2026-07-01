@@ -21,7 +21,12 @@
                         <x-input-label for="daily_limit" value="Daily send cap (0 = unlimited)" />
                         <x-text-input id="daily_limit" name="daily_limit" type="number" min="0" class="block mt-1 w-full" :value="old('daily_limit', 0)" :disabled="! $engineReady" />
                     </div>
-                    <x-btn type="submit" variant="primary" class="w-full" :disabled="! $engineReady">Create &amp; show QR</x-btn>
+                    <div>
+                        <x-input-label for="phone_for_pairing" value="Phone number (optional — link by code)" />
+                        <x-text-input id="phone_for_pairing" name="phone_for_pairing" class="block mt-1 w-full" placeholder="971501234567" :value="old('phone_for_pairing')" :disabled="! $engineReady" />
+                        <p class="text-xs text-gray-500 mt-1">Fill this to get an 8-digit code instead of scanning a QR.</p>
+                    </div>
+                    <x-btn type="submit" variant="primary" class="w-full" :disabled="! $engineReady">Create &amp; link</x-btn>
                     <p class="text-xs text-gray-500">After creating, scan the QR code with WhatsApp → Linked devices.</p>
                 </form>
             </x-card>
@@ -53,15 +58,24 @@
                                     <p>{{ $device->profile_name ?? 'WhatsApp linked' }}</p>
                                     @if ($device->phone_number)<p class="text-gray-400">+{{ $device->phone_number }}</p>@endif
                                 </div>
-                            @elseif ($device->qr_code)
-                                <div class="mt-4 text-center" data-qr-wrap>
-                                    <img src="{{ $device->qr_code }}" alt="QR code" class="mx-auto w-44 h-44 rounded-lg border border-gray-200">
-                                    <p class="text-xs text-gray-500 mt-2">Scan with WhatsApp → Linked devices</p>
-                                </div>
                             @else
-                                <div class="mt-4">
-                                    <button type="button" class="text-sm text-green-600 font-medium" onclick="refreshQr({{ $device->id }})">Get QR code</button>
-                                </div>
+                                @if ($device->qr_code)
+                                    <div class="mt-4 text-center" data-qr-wrap>
+                                        <img src="{{ $device->qr_code }}" alt="QR code" class="mx-auto w-44 h-44 rounded-lg border border-gray-200">
+                                        <p class="text-xs text-gray-500 mt-2">Scan with WhatsApp → Linked devices</p>
+                                    </div>
+                                @endif
+                                @if ($device->pairing_code)
+                                    <div class="mt-3 text-center">
+                                        <p class="text-xs text-gray-500">Or on your phone: <strong>Linked devices → Link with phone number</strong> → enter:</p>
+                                        <p class="text-xl font-bold tracking-widest text-gray-800 mt-1 select-all">{{ $device->pairing_code }}</p>
+                                    </div>
+                                @endif
+                                @if (! $device->qr_code && ! $device->pairing_code)
+                                    <div class="mt-4">
+                                        <button type="button" class="text-sm text-green-600 font-medium" onclick="refreshQr({{ $device->id }})">Get QR code</button>
+                                    </div>
+                                @endif
                             @endif
 
                             <div class="mt-4 flex items-center gap-2">

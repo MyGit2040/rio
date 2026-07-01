@@ -381,6 +381,22 @@ class AppSmokeTest extends TestCase
         $this->assertAuthenticatedAs($user->fresh());
     }
 
+    public function test_device_pairing_code_login(): void
+    {
+        config(['evolution.base_url' => 'http://localhost:8080', 'evolution.api_key' => 'k']);
+        Http::fake(['*instance/create*' => Http::response(['hash' => ['apikey' => 'x'], 'qrcode' => ['pairingCode' => 'ABCD-1234']], 201)]);
+
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+
+        $this->post('/devices', ['name' => 'Line', 'phone_for_pairing' => '+971 50 123 4567'])
+            ->assertRedirect('/devices');
+
+        $device = WhatsappInstance::withoutGlobalScopes()->where('name', 'Line')->first();
+        $this->assertSame('ABCD-1234', $device->pairing_code);
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/instance/create') && ($r['number'] ?? null) === '971501234567');
+    }
+
     public function test_device_daily_cap_defers_send(): void
     {
         config(['evolution.base_url' => 'http://localhost:8080', 'evolution.api_key' => 'k']);
