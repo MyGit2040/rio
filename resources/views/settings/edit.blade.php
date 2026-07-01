@@ -4,6 +4,7 @@
     @php
         $s = $tenant->settings ?? [];
         $logoPath = data_get($s, 'logo_path');
+        $faviconPath = data_get($s, 'favicon_path');
         $tabs = [
             'branding' => ['Branding', 'tag'],
             'engine'   => ['WhatsApp engine', 'device'],
@@ -70,6 +71,23 @@
                         <x-input-label for="logo" value="Logo (PNG, JPG, SVG — max 2MB)" />
                         <input id="logo" name="logo" type="file" accept="image/*"
                                class="mt-1 block w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-brand file:text-white">
+                    </div>
+                </div>
+
+                {{-- Favicon — shows in the browser tab / address bar --}}
+                <div class="flex items-center gap-4">
+                    <span class="grid place-items-center w-14 h-14 rounded-xl bg-gray-100 overflow-hidden">
+                        @if ($faviconPath)
+                            <img src="{{ \Illuminate\Support\Facades\Storage::url($faviconPath) }}" alt="favicon" class="w-8 h-8 object-contain">
+                        @else
+                            <span class="text-gray-400 text-[10px] text-center leading-tight">No<br>icon</span>
+                        @endif
+                    </span>
+                    <div class="flex-1">
+                        <x-input-label for="favicon" value="Favicon (browser tab icon — PNG, ICO, SVG · square · max 1MB)" />
+                        <input id="favicon" name="favicon" type="file" accept="image/png,image/x-icon,image/svg+xml,image/webp,.ico"
+                               class="mt-1 block w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-brand file:text-white">
+                        <p class="text-xs text-gray-400 mt-1">Appears in the browser tab and address bar.</p>
                     </div>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -230,7 +248,7 @@
                 </div>
                 <div>
                     <x-input-label for="smtp_pass" value="Password" />
-                    <x-text-input id="smtp_pass" name="smtp_pass" type="password" class="block mt-1 w-full" placeholder="{{ data_get($s, 'smtp_pass') ? '••••••• (unchanged)' : '' }}" autocomplete="new-password" />
+                    <x-password-input id="smtp_pass" name="smtp_pass" placeholder="{{ data_get($s, 'smtp_pass') ? '••••••• (unchanged)' : '' }}" autocomplete="new-password" />
                 </div>
                 <div>
                     <x-input-label for="smtp_from" value="From address" />
@@ -267,15 +285,15 @@
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                         <x-input-label for="ai_openai_key" value="ChatGPT key" />
-                        <x-text-input id="ai_openai_key" name="ai_openai_key" type="password" class="block mt-1 w-full" autocomplete="off" placeholder="{{ data_get($s, 'ai_openai_key') ? '•••• saved' : 'sk-…' }}" />
+                        <x-password-input id="ai_openai_key" name="ai_openai_key" autocomplete="off" placeholder="{{ data_get($s, 'ai_openai_key') ? '•••• saved' : 'sk-…' }}" />
                     </div>
                     <div>
                         <x-input-label for="ai_gemini_key" value="Gemini key" />
-                        <x-text-input id="ai_gemini_key" name="ai_gemini_key" type="password" class="block mt-1 w-full" autocomplete="off" placeholder="{{ data_get($s, 'ai_gemini_key') ? '•••• saved' : 'AIza…' }}" />
+                        <x-password-input id="ai_gemini_key" name="ai_gemini_key" autocomplete="off" placeholder="{{ data_get($s, 'ai_gemini_key') ? '•••• saved' : 'AIza…' }}" />
                     </div>
                     <div>
                         <x-input-label for="ai_claude_key" value="Claude key" />
-                        <x-text-input id="ai_claude_key" name="ai_claude_key" type="password" class="block mt-1 w-full" autocomplete="off" placeholder="{{ data_get($s, 'ai_claude_key') ? '•••• saved' : 'sk-ant-…' }}" />
+                        <x-password-input id="ai_claude_key" name="ai_claude_key" autocomplete="off" placeholder="{{ data_get($s, 'ai_claude_key') ? '•••• saved' : 'sk-ant-…' }}" />
                     </div>
                 </div>
                 <p class="text-xs text-gray-500">Only the selected provider's key is used. Leave a field blank to keep its saved key.</p>

@@ -880,7 +880,7 @@ class AppSmokeTest extends TestCase
 
         $this->post('/sequences', [
             'name' => 'Onboarding', 'is_active' => '1',
-            'steps' => [['delay_minutes' => 0, 'body' => 'Welcome {{name}}']],
+            'steps' => [['delay_value' => 0, 'delay_unit' => 'minutes', 'body' => 'Welcome {{name}}']],
         ])->assertRedirect();
 
         $sequence = Sequence::first();
@@ -1144,6 +1144,42 @@ class AppSmokeTest extends TestCase
             'name' => 'Co', 'owner_name' => 'O', 'owner_email' => 'o@test.dev', 'password' => 'password123',
             'plan' => 'pro', 'max_devices' => 1,
         ])->assertSessionHasErrors('plan');
+    }
+
+    public function test_drip_step_delay_units_convert_to_minutes(): void
+    {
+        $this->actingAs($this->makeUser());
+
+        $this->post('/sequences', [
+            'name'  => 'Units',
+            'is_active' => '1',
+            'steps' => [
+                ['delay_value' => 0, 'delay_unit' => 'minutes', 'body' => 'A'],
+                ['delay_value' => 3, 'delay_unit' => 'hours',   'body' => 'B'],
+                ['delay_value' => 2, 'delay_unit' => 'days',    'body' => 'C'],
+                ['delay_value' => 1, 'delay_unit' => 'weeks',   'body' => 'D'],
+                ['delay_value' => 1, 'delay_unit' => 'months',  'body' => 'E'],
+            ],
+        ])->assertRedirect();
+
+        $delays = Sequence::firstWhere('name', 'Units')->steps()->orderBy('position')->pluck('delay_minutes')->all();
+        // minutes, 3h=180, 2d=2880, 1w=10080, 1mo=43200
+        $this->assertSame([0, 180, 2880, 10080, 43200], $delays);
+    }
+
+    public function test_favicon_upload_is_saved(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+
+        $this->put('/settings', [
+            'favicon' => \Illuminate\Http\UploadedFile::fake()->image('fav.png', 32, 32),
+        ])->assertRedirect();
+
+        $path = data_get($owner->tenant->fresh()->settings, 'favicon_path');
+        $this->assertNotNull($path);
+        \Illuminate\Support\Facades\Storage::disk('public')->assertExists($path);
     }
 
     public function test_monthly_message_cap_blocks_single_send(): void

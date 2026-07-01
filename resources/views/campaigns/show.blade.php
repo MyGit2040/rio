@@ -30,7 +30,9 @@
                     <x-btn type="submit" variant="secondary">Retry {{ $campaign->failed }} failed</x-btn>
                 </form>
             @endif
-            <x-btn :href="route('campaigns.export', $campaign)" variant="ghost">Export CSV</x-btn>
+            <x-btn :href="route('campaigns.export', $campaign)" variant="ghost" title="Export CSV" aria-label="Export CSV" class="!px-2.5">
+                <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            </x-btn>
         </div>
     </div>
 

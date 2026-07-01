@@ -1,11 +1,18 @@
 @php
+    // Show the stored delay_minutes in the largest whole unit (minutes→months).
+    $toValueUnit = function ($minutes) {
+        $minutes = (int) $minutes;
+        foreach (['months' => 43200, 'weeks' => 10080, 'days' => 1440, 'hours' => 60] as $unit => $m) {
+            if ($minutes > 0 && $minutes % $m === 0) return ['value' => intdiv($minutes, $m), 'unit' => $unit];
+        }
+        return ['value' => $minutes, 'unit' => 'minutes'];
+    };
     $initialSteps = old('steps', isset($sequence) && $sequence->steps->count()
-        ? $sequence->steps->map(fn ($s) => [
-            'delay_minutes' => $s->delay_minutes,
-            'template_id'   => $s->template_id,
-            'body'          => $s->body,
-          ])->values()->all()
-        : [['delay_minutes' => 0, 'template_id' => null, 'body' => '']]);
+        ? $sequence->steps->map(function ($s) use ($toValueUnit) {
+            $vu = $toValueUnit($s->delay_minutes);
+            return ['delay_value' => $vu['value'], 'delay_unit' => $vu['unit'], 'template_id' => $s->template_id, 'body' => $s->body];
+          })->values()->all()
+        : [['delay_value' => 0, 'delay_unit' => 'minutes', 'template_id' => null, 'body' => '']]);
 @endphp
 
 <div x-data="{ steps: @js(array_values($initialSteps)) }" class="space-y-5">
@@ -46,9 +53,16 @@
                     </div>
                     <div class="flex items-center gap-2 flex-wrap">
                         <span class="text-sm text-gray-600" x-text="i === 0 ? 'Send after' : 'Then wait'"></span>
-                        <input type="number" min="0" :name="'steps[' + i + '][delay_minutes]'" x-model.number="step.delay_minutes"
+                        <input type="number" min="0" :name="'steps[' + i + '][delay_value]'" x-model.number="step.delay_value"
                                class="w-24 rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500">
-                        <span class="text-sm text-gray-600">minutes</span>
+                        <select :name="'steps[' + i + '][delay_unit]'" x-model="step.delay_unit"
+                                class="rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500">
+                            <option value="minutes">minutes</option>
+                            <option value="hours">hours</option>
+                            <option value="days">days</option>
+                            <option value="weeks">weeks</option>
+                            <option value="months">months</option>
+                        </select>
                     </div>
                     <select :name="'steps[' + i + '][template_id]'" x-model="step.template_id"
                             class="block w-full rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500">
@@ -63,7 +77,7 @@
             </template>
         </div>
 
-        <button type="button" @click="steps.push({ delay_minutes: 1440, template_id: null, body: '' })"
+        <button type="button" @click="steps.push({ delay_value: 1, delay_unit: 'days', template_id: null, body: '' })"
                 class="mt-3 text-sm text-green-600 font-medium">+ Add step</button>
     </div>
 </div>

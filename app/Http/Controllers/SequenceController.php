@@ -121,14 +121,24 @@ class SequenceController extends Controller
      */
     private function validated(Request $request): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'name'                    => ['required', 'string', 'max:255'],
             'whatsapp_instance_id'    => ['nullable', 'integer', 'exists:whatsapp_instances,id'],
             'is_active'               => ['sometimes', 'boolean'],
             'steps'                   => ['required', 'array', 'min:1'],
-            'steps.*.delay_minutes'   => ['required', 'integer', 'min:0', 'max:525600'],
+            'steps.*.delay_value'     => ['required', 'integer', 'min:0', 'max:100000'],
+            'steps.*.delay_unit'      => ['required', 'in:minutes,hours,days,weeks,months'],
             'steps.*.template_id'     => ['nullable', 'integer', 'exists:templates,id'],
             'steps.*.body'            => ['nullable', 'string', 'max:4096'],
         ]);
+
+        // Convert the chosen value + unit back to delay_minutes (DB + scheduler unchanged).
+        $mult = ['minutes' => 1, 'hours' => 60, 'days' => 1440, 'weeks' => 10080, 'months' => 43200];
+        foreach ($data['steps'] as &$step) {
+            $step['delay_minutes'] = min(525600, (int) $step['delay_value'] * ($mult[$step['delay_unit']] ?? 1));
+            unset($step['delay_value'], $step['delay_unit']);
+        }
+
+        return $data;
     }
 }

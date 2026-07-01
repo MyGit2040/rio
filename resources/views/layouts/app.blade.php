@@ -4,6 +4,7 @@
     $tenant = auth()->user()?->tenant;
     $brand  = data_get($tenant?->settings, 'accent_color', '#8b5cf6');
     $logo   = data_get($tenant?->settings, 'logo_path');
+    $favicon = data_get($tenant?->settings, 'favicon_path') ?: $logo; // dedicated favicon, else fall back to the logo
     $brandName = data_get($tenant?->settings, 'brand_name') ?: config('app.name', 'Eagle');
 @endphp
 <head>
@@ -12,9 +13,9 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $brandName }}</title>
 
-    @if ($logo)
-        <link rel="icon" href="{{ \Illuminate\Support\Facades\Storage::url($logo) }}">
-        <link rel="apple-touch-icon" href="{{ \Illuminate\Support\Facades\Storage::url($logo) }}">
+    @if ($favicon)
+        <link rel="icon" href="{{ \Illuminate\Support\Facades\Storage::url($favicon) }}">
+        <link rel="apple-touch-icon" href="{{ \Illuminate\Support\Facades\Storage::url($favicon) }}">
     @endif
 
     <link rel="preconnect" href="https://fonts.bunny.net">

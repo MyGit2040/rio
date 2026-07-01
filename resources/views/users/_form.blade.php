@@ -19,10 +19,10 @@
 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
     <div>
         <x-input-label for="password" value="{{ isset($user) ? 'New password (leave blank to keep)' : 'Password' }}" />
-        <x-text-input id="password" name="password" type="password" class="block mt-1 w-full" autocomplete="new-password" :required="! isset($user)" />
+        <x-password-input id="password" name="password" autocomplete="new-password" :required="! isset($user)" />
     </div>
     <div>
         <x-input-label for="password_confirmation" value="Confirm password" />
-        <x-text-input id="password_confirmation" name="password_confirmation" type="password" class="block mt-1 w-full" autocomplete="new-password" />
+        <x-password-input id="password_confirmation" name="password_confirmation" autocomplete="new-password" />
     </div>
 </div>

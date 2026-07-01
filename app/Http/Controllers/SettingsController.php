@@ -35,6 +35,7 @@ class SettingsController extends Controller
             'brand_name'         => ['nullable', 'string', 'max:60'],
             'accent_color'       => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'logo'               => ['nullable', 'image', 'mimes:png,jpg,jpeg,svg,webp', 'max:2048'],
+            'favicon'            => ['nullable', 'file', 'mimes:png,jpg,jpeg,svg,webp,ico', 'max:1024'],
             // Bulk-messaging safety (compliant rate-limiting only).
             'bulk_delay_min'     => ['nullable', 'integer', 'min:1', 'max:600'],
             'bulk_delay_max'     => ['nullable', 'integer', 'gte:bulk_delay_min', 'max:600'],
@@ -107,6 +108,10 @@ class SettingsController extends Controller
 
         if ($request->hasFile('logo')) {
             $settings['logo_path'] = $request->file('logo')->store("logos/{$tenant->id}", 'public');
+        }
+
+        if ($request->hasFile('favicon')) {
+            $settings['favicon_path'] = $request->file('favicon')->store("favicons/{$tenant->id}", 'public');
         }
 
         $tenant->update([

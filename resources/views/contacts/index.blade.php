@@ -10,8 +10,12 @@
                     <input type="hidden" name="group" value="{{ request('group') }}">
                     <x-btn type="submit" variant="secondary">Verify WhatsApp</x-btn>
                 </form>
-                <x-btn :href="route('contacts.export', request()->only('q', 'group', 'status', 'tag'))" variant="secondary">Export</x-btn>
-                <x-btn :href="route('contacts.import.create')" variant="secondary">Import CSV</x-btn>
+                <x-btn :href="route('contacts.export', request()->only('q', 'group', 'status', 'tag'))" variant="secondary" title="Export contacts (CSV)" aria-label="Export" class="!px-2.5">
+                    <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                </x-btn>
+                <x-btn :href="route('contacts.import.create')" variant="secondary" title="Import contacts (CSV)" aria-label="Import CSV" class="!px-2.5">
+                    <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                </x-btn>
                 <x-btn :href="route('contacts.create')" variant="primary">Add contact</x-btn>
             </div>
         </div>
