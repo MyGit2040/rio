@@ -46,7 +46,7 @@
                     {{-- Message variants (A/B copy rotation) — always available, incl. poll pre-text --}}
                     <div>
                         <x-input-label value="Message variants (optional)" />
-                        <p class="text-xs text-gray-500 mb-2">Add alternative wordings — type them, <strong>✨ Generate</strong> with AI, or <strong>⬆ Import</strong> a list you wrote elsewhere (.txt / .csv / .md, one per line). Each message rotates through your main message and these in turn — keeps copy fresh.</p>
+                        <p class="text-xs text-gray-500 mb-2">Add alternative wordings — type them, <strong>✨ Generate</strong> with AI, or <strong>⬆ Import</strong> a file (.txt / .csv / .md) you wrote elsewhere. On import the <strong>first message fills the box above</strong> and the rest fill these; separate variants with <code>---</code>, <code>## Variant N</code>, or a blank line. Each message rotates through them in turn — keeps copy fresh.</p>
 
                         <div class="flex items-center gap-2 mb-3 flex-wrap rounded-lg bg-gray-50 border border-gray-200 px-3 py-2">
                             <span class="text-xs text-gray-600">Auto-write</span>
@@ -55,7 +55,7 @@
                             <span class="ml-auto flex items-center gap-3">
                                 {{-- Import ready-made variants from a file (e.g. written elsewhere with any AI) --}}
                                 <label class="text-sm font-medium text-brand cursor-pointer whitespace-nowrap"
-                                       title="Import variants from a .txt, .csv or .md file — one variant per line">
+                                       title="Import from a .txt / .csv / .md file — first message fills the box above, the rest fill the variants (separate with --- , ## Variant N, or a blank line)">
                                     ⬆ Import
                                     <input type="file" accept=".txt,.csv,.md,.text,text/plain,text/csv" class="hidden" @change="importVariants($event)">
                                 </label>
@@ -371,42 +371,68 @@
                 }
                 const reader = new FileReader();
                 reader.onload = () => {
-                    let items = this.parseVariants(String(reader.result));
-                    if (! items.length) { alert('No variants found in that file.'); return; }
-                    // Lift a trailing sign-off block into the Footer field (kept separate).
-                    const last = items[items.length - 1] || '';
-                    if (items.length > 1 && last.length <= 250 && /powered by|smarter office|©|®|™/i.test(last)) {
-                        this.footer = last;
-                        items.pop();
-                    }
-                    this.variants = items.slice(0, 50);
+                    const res = this.parseImport(String(reader.result));
+                    if (! res.body && ! res.variants.length) { alert('No content found in that file.'); return; }
+                    if (res.footer) this.footer = res.footer;   // sign-off → Footer field
+                    if (res.body) this.body = res.body;         // first item → MAIN message box
+                    this.variants = res.variants.slice(0, 20);  // the rest → variant boxes
                 };
                 reader.onerror = () => alert('Could not read that file.');
                 reader.readAsText(file);
                 e.target.value = ''; // let the same file be re-imported
             },
-            // Split an imported file into ONE variant per block (not per line).
-            parseVariants(text) {
-                text = String(text).replace(/\r\n?/g, '\n');
+            // Turn an imported file into { body, variants[], footer } — first item fills the
+            // main message box, the rest fill the variant boxes.
+            parseImport(raw) {
+                let text = String(raw).replace(/\r\n?/g, '\n').trim();
                 let blocks;
-                if (/^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$/m.test(text)) {
-                    blocks = text.split(/^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$/m);   // markdown --- / *** / ___ rules
+
+                if (/^[ \t]*[#*_ ]*Variant[ \t]*\d+/im.test(text)) {
+                    // Explicit "Variant N" labels → use them as boundaries; drop title/intro.
+                    blocks = text.split(/(?=^[ \t]*[#*_ ]*Variant[ \t]*\d+)/im)
+                                 .filter(p => /^[ \t]*[#*_ ]*Variant[ \t]*\d+/im.test(p));
+                } else if (/^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$/m.test(text)) {
+                    blocks = text.split(/^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$/m);   // markdown --- / *** / ___
                 } else if (/^#{1,6}[ \t]+/m.test(text)) {
-                    blocks = text.split(/(?=^#{1,6}[ \t]+)/m);                       // each ## heading starts one
+                    blocks = text.split(/(?=^#{1,6}[ \t]+)/m);                       // each ## heading
                 } else if (/\n[ \t]*\n/.test(text)) {
                     blocks = text.split(/\n[ \t]*\n+/);                              // blank-line separated
                 } else {
-                    blocks = text.split(/\n/);                                       // one variant per line
+                    blocks = text.split(/\n/);                                       // one per line
                 }
-                return blocks.map(b => this.cleanVariant(b)).filter(b => b.length);
+
+                let items = blocks.map(b => this.cleanVariant(b)).filter(Boolean);
+
+                // Peel a trailing sign-off — its own block OR stuck to the last variant —
+                // into the footer, keeping the variant content that comes before it.
+                let footer = '';
+                const footRe = /powered by|smarter office|©|®|™/i;
+                if (items.length) {
+                    const li = items.length - 1;
+                    const lines = items[li].split('\n');
+                    const fi = lines.findIndex(l => footRe.test(l));
+                    if (fi !== -1) {
+                        const footPart = lines.slice(fi).join('\n').trim();
+                        const keep = lines.slice(0, fi).join('\n').trim();
+                        if (footPart.length <= 300) {
+                            footer = footPart;
+                            if (keep) items[li] = keep;             // footer was stuck to a variant → keep the variant
+                            else if (items.length > 1) items.pop(); // footer was its own block → drop it
+                            else items[li] = '';
+                        }
+                    }
+                }
+                items = items.filter(Boolean);
+
+                return { footer, body: items.shift() || '', variants: items };
             },
             cleanVariant(block) {
-                return String(block)
-                    .split('\n')
-                    .filter(l => ! /^[ \t]*#{1,6}[ \t]+/.test(l))                    // drop markdown title / heading lines
-                    .filter(l => ! /^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$/.test(l))    // drop stray rules
+                return String(block).split('\n')
+                    .filter((l, i) => ! (i === 0 && /^[ \t]*[#*_ ]*Variant[ \t]*\d+/i.test(l))) // leading "Variant N" label
+                    .filter(l => ! /^[ \t]*#{1,6}[ \t]+/.test(l))                               // markdown headings
+                    .filter(l => ! /^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$/.test(l))               // stray rules
                     .join('\n')
-                    .replace(/\n{3,}/g, '\n\n')                                       // collapse big gaps
+                    .replace(/\n{3,}/g, '\n\n')
                     .trim();
             },
             addCard() { if (this.cards.length < 10) this.cards.push({ image: '', title: '', body: '', buttons: [] }); },
