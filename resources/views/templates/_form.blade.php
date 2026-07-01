@@ -66,6 +66,7 @@
         <textarea id="body" name="body" rows="5"
                   class="block w-full rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500"
                   placeholder="Hi @{{name}}, ...">{{ old('body', $template->body ?? '') }}</textarea>
+        @include('templates._spam-live', ['target' => 'body'])
         <p class="text-xs text-gray-500 mt-1">Use <code>@{{name}}</code> and <code>@{{phone}}</code> to personalise each message.</p>
     </div>
 

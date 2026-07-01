@@ -82,8 +82,10 @@ Route::middleware('auth')->group(function () {
     Route::delete('/devices/{device}', [DeviceController::class, 'destroy'])->name('devices.destroy');
 
     // Contacts
+    Route::get('/contacts/import/sample', [ContactImportController::class, 'sample'])->name('contacts.import.sample');
     Route::get('/contacts/import', [ContactImportController::class, 'create'])->name('contacts.import.create');
     Route::post('/contacts/import', [ContactImportController::class, 'store'])->name('contacts.import.store');
+    Route::get('/contacts/export', [ContactController::class, 'export'])->name('contacts.export');
     Route::post('/contacts/verify', [ContactController::class, 'verify'])->name('contacts.verify');
     Route::resource('contacts', ContactController::class)->except('show');
 
@@ -178,6 +180,8 @@ Route::middleware('auth')->group(function () {
     // Settings (Evolution connection + AI)
     Route::get('/settings', [SettingsController::class, 'edit'])->name('settings.edit');
     Route::put('/settings', [SettingsController::class, 'update'])->name('settings.update');
+    Route::post('/settings/test-email', [SettingsController::class, 'testEmail'])->name('settings.test-email');
+    Route::post('/settings/test-ai', [SettingsController::class, 'testAi'])->name('settings.test-ai');
 
     // Profile (Breeze)
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

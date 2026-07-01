@@ -2,9 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\AiService;
 use App\Services\EvolutionApiService;
+use App\Support\MailConfig;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\View\View;
 
 class SettingsController extends Controller
@@ -112,5 +116,48 @@ class SettingsController extends Controller
         ]);
 
         return redirect()->route('settings.edit')->with('success', 'Settings saved.');
+    }
+
+    /**
+     * Send a test email using the workspace's saved SMTP settings.
+     */
+    public function testEmail(): JsonResponse
+    {
+        $tenant = auth()->user()->tenant;
+
+        if (empty(data_get($tenant->settings, 'smtp_host')) || empty(data_get($tenant->settings, 'smtp_user'))) {
+            return response()->json(['ok' => false, 'message' => 'Save your SMTP host, username and password first, then test.'], 422);
+        }
+
+        MailConfig::applyTenant($tenant);
+        $to = auth()->user()->email;
+
+        try {
+            Mail::raw("This is a test email from Eagle.\n\nIf you received this, your SMTP settings are working correctly.", function ($m) use ($to) {
+                $m->to($to)->subject('Eagle — SMTP test email');
+            });
+
+            return response()->json(['ok' => true, 'message' => "Test email sent to {$to}. Check your inbox (and spam folder)."]);
+        } catch (\Throwable $e) {
+            return response()->json(['ok' => false, 'message' => 'Send failed: '.$e->getMessage()], 422);
+        }
+    }
+
+    /**
+     * Verify the AI key for the selected provider by making a tiny call.
+     */
+    public function testAi(): JsonResponse
+    {
+        $ai = AiService::forTenant(auth()->user()->tenant);
+
+        if (! $ai->configured()) {
+            return response()->json(['ok' => false, 'message' => 'Add a key for the selected provider and save, then test.'], 422);
+        }
+
+        $reply = $ai->generate('You are a connection test. Reply with only the word OK.', 'ping');
+
+        return $reply !== null
+            ? response()->json(['ok' => true, 'message' => $ai->providerLabel().' connected successfully.'])
+            : response()->json(['ok' => false, 'message' => 'Could not reach '.$ai->providerLabel().'. Check the key is correct and has credit.'], 422);
     }
 }

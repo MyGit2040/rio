@@ -961,6 +961,61 @@ class AppSmokeTest extends TestCase
         }
     }
 
+    public function test_contact_import_skips_duplicates_and_accepts_number_column(): void
+    {
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        Contact::create(['tenant_id' => $owner->tenant_id, 'phone' => '971500000001', 'name' => 'Existing']);
+
+        $csv = UploadedFile::fake()->createWithContent('c.csv',
+            "name,number\nExisting Again,971500000001\nNewOne,971500000002\nNewOne Dup,971500000002\n");
+
+        $this->post('/contacts/import', ['file' => $csv])->assertRedirect('/contacts');
+
+        // Existing (dupe) + in-file dupe skipped; only the one new number added.
+        $this->assertSame(2, Contact::count());
+        $this->assertDatabaseHas('contacts', ['phone' => '971500000002', 'name' => 'NewOne']);
+    }
+
+    public function test_contact_sample_and_export_download(): void
+    {
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        Contact::create(['tenant_id' => $owner->tenant_id, 'phone' => '971500000001', 'name' => 'Bob']);
+
+        $sample = $this->get('/contacts/import/sample')->assertOk();
+        $this->assertStringContainsString('number', $sample->streamedContent());
+
+        $export = $this->get('/contacts/export')->assertOk();
+        $this->assertStringContainsString('971500000001', $export->streamedContent());
+    }
+
+    public function test_settings_test_buttons_guard_missing_config(): void
+    {
+        $this->actingAs($this->makeUser());
+        $this->postJson('/settings/test-email')->assertStatus(422)->assertJson(['ok' => false]);
+        $this->postJson('/settings/test-ai')->assertStatus(422)->assertJson(['ok' => false]);
+    }
+
+    public function test_unsubscribe_within_sentence_opts_out(): void
+    {
+        config(['evolution.base_url' => 'http://localhost:8080', 'evolution.api_key' => 'k', 'evolution.webhook_secret' => null]);
+        Http::fake(['*' => Http::response(['key' => ['id' => 'X']], 201)]);
+        $owner = $this->makeUser();
+        WhatsappInstance::create(['tenant_id' => $owner->tenant_id, 'name' => 'L', 'instance_name' => 'un-dev', 'status' => 'open']);
+
+        $this->postJson('/webhooks/evolution', [
+            'event' => 'messages.upsert', 'instance' => 'un-dev',
+            'data' => [
+                'key' => ['remoteJid' => '971500000055@s.whatsapp.net', 'fromMe' => false, 'id' => 'm1'],
+                'message' => ['conversation' => 'please unsubscribe me from this'],
+            ],
+        ])->assertOk();
+
+        $this->assertDatabaseHas('contacts', ['phone' => '971500000055', 'opted_out' => 1]);
+        $this->assertDatabaseHas('suppressions', ['phone' => '971500000055', 'source' => 'opt_out']);
+    }
+
     public function test_spam_score_rates_clean_vs_spammy(): void
     {
         $service = new SpamScoreService;

@@ -36,6 +36,7 @@
                             <textarea id="body" name="body" rows="5" x-model="body"
                                       class="block w-full rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500"
                                       placeholder="Hi @{{name}}, ..."></textarea>
+                            @include('templates._spam-live', ['target' => 'body'])
                         </div>
 
                         {{-- Message variants (A/B copy rotation) --}}

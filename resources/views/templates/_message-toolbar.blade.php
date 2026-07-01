@@ -2,6 +2,7 @@
     $target = $target ?? 'body';
     // Ready-made greeting / phrase spintax — one is picked at random per message.
     $spins = [
+        'Hi / Dear / Greetings'  => '{Hi|Dear|Greetings|Warm Greetings|Good Day}',
         'Hi / Hello / Hey'       => '{Hi|Hello|Hey}',
         'Good morning / day'     => '{Good morning|Good day|Good afternoon}',
         'Dear / Greetings'       => '{Dear|Good day|Greetings|Warm greetings}',

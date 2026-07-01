@@ -7,15 +7,22 @@
                 @csrf
 
                 <div class="rounded-lg bg-gray-50 border border-gray-200 p-4 text-sm text-gray-600">
-                    <p class="font-medium text-gray-800 mb-1">CSV format</p>
-                    <p>First row is the header. Recognised columns: <code class="text-green-700">name, phone, email, country</code>.</p>
-                    <p class="mt-1"><code class="text-green-700">phone</code> is required (digits with country code).</p>
+                    <div class="flex items-center gap-3 flex-wrap mb-2">
+                        <p class="font-medium text-gray-800">File format</p>
+                        <a href="{{ route('contacts.import.sample') }}" class="ml-auto inline-flex items-center gap-1.5 text-brand font-medium hover:underline">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/></svg>
+                            Download sample file
+                        </a>
+                    </div>
+                    <p>Two columns: <code class="text-brand">name</code> and <code class="text-brand">number</code> (first row is the header).</p>
+                    <p class="mt-1"><strong>Include the country code</strong> in the number — digits only, no <code>+</code> or spaces. Example: a UAE number is <code class="text-brand">971501234567</code> (971 = UAE), a UK number <code class="text-brand">447911123456</code> (44 = UK).</p>
+                    <p class="mt-1 text-gray-400">Duplicate numbers (already in your contacts) are skipped automatically.</p>
                 </div>
 
                 <div>
-                    <x-input-label for="file" value="CSV file" />
+                    <x-input-label for="file" value="CSV / Excel-saved-as-CSV file" />
                     <input id="file" name="file" type="file" accept=".csv,.txt" required
-                           class="mt-1 block w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-green-600 file:text-white hover:file:bg-green-700">
+                           class="mt-1 block w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-brand file:text-white">
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">

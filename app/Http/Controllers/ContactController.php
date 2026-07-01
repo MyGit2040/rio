@@ -12,6 +12,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ContactController extends Controller
 {
@@ -90,6 +91,39 @@ class ContactController extends Controller
         $contact->delete();
 
         return redirect()->route('contacts.index')->with('success', 'Contact deleted.');
+    }
+
+    /**
+     * Export the current (filtered) contact list as a CSV.
+     */
+    public function export(Request $request): StreamedResponse
+    {
+        $query = Contact::query()
+            ->with('groups')
+            ->search($request->input('q'))
+            ->when($request->filled('group'), fn ($q) => $q->whereHas('groups', fn ($g) => $g->where('contact_groups.id', $request->input('group'))))
+            ->when($request->filled('tag'), fn ($q) => $q->tagged($request->input('tag')))
+            ->when($request->input('status') === 'opted_out', fn ($q) => $q->where('opted_out', true))
+            ->when($request->input('status') === 'active', fn ($q) => $q->where('opted_out', false))
+            ->latest();
+
+        return response()->streamDownload(function () use ($query) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, ['name', 'number', 'email', 'country', 'tags', 'status', 'whatsapp']);
+
+            $query->chunk(500, function ($contacts) use ($out) {
+                foreach ($contacts as $c) {
+                    fputcsv($out, [
+                        $c->name, $c->phone, $c->email, $c->country,
+                        collect($c->tags ?? [])->join(', '),
+                        $c->opted_out ? 'opted_out' : 'active',
+                        $c->wa_status ?? 'unverified',
+                    ]);
+                }
+            });
+
+            fclose($out);
+        }, 'contacts-'.now()->format('Y-m-d').'.csv', ['Content-Type' => 'text/csv']);
     }
 
     /**

@@ -199,6 +199,12 @@
                     </select>
                 </div>
             </div>
+            <div class="mt-4 pt-4 border-t border-gray-100 flex items-center gap-3 flex-wrap">
+                <button type="button" onclick="eagleTest('{{ route('settings.test-email') }}', this, 'smtp-test-result')"
+                        class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">Send test email</button>
+                <span id="smtp-test-result" class="text-sm"></span>
+                <span class="text-xs text-gray-400 w-full sm:w-auto">Save your settings first — the test uses the saved SMTP details and emails {{ auth()->user()->email }}.</span>
+            </div>
         </x-card>
 
         {{-- AI content generation --}}
@@ -227,11 +233,40 @@
                     </div>
                 </div>
                 <p class="text-xs text-gray-500">Only the selected provider's key is used. Leave a field blank to keep its saved key.</p>
+                <div class="pt-3 border-t border-gray-100 flex items-center gap-3 flex-wrap">
+                    <button type="button" onclick="eagleTest('{{ route('settings.test-ai') }}', this, 'ai-test-result')"
+                            class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">Test connection</button>
+                    <span id="ai-test-result" class="text-sm"></span>
+                    <span class="text-xs text-gray-400 w-full sm:w-auto">Save your key first, then test.</span>
+                </div>
             </div>
         </x-card>
 
         <x-btn type="submit" variant="primary">Save settings</x-btn>
     </form>
+
+    @push('scripts')
+    <script>
+        function eagleTest(url, btn, resultId) {
+            const result = document.getElementById(resultId);
+            const original = btn.textContent;
+            btn.disabled = true; btn.textContent = 'Testing…';
+            result.textContent = ''; result.className = 'text-sm';
+
+            fetch(url, { method: 'POST', headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                'Accept': 'application/json',
+            }})
+                .then(r => r.json())
+                .then(d => {
+                    result.textContent = d.message || (d.ok ? 'OK' : 'Failed.');
+                    result.className = 'text-sm ' + (d.ok ? 'text-green-600' : 'text-red-600');
+                })
+                .catch(() => { result.textContent = 'Could not reach the server.'; result.className = 'text-sm text-red-600'; })
+                .finally(() => { btn.disabled = false; btn.textContent = original; });
+        }
+    </script>
+    @endpush
 
     <div class="max-w-2xl mt-6">
         <x-card title="Workspace">

@@ -160,7 +160,12 @@ class WebhookController extends Controller
 
         $normalized = strtoupper(trim(preg_replace('/[^\p{L}\p{N}\s]/u', '', $text)));
 
-        if (! in_array($normalized, $keywords, true)) {
+        // Opt out on an exact keyword ("STOP") OR the keyword appearing as a whole
+        // word anywhere in the reply ("please unsubscribe me") — never miss an opt-out.
+        $matched = in_array($normalized, $keywords, true)
+            || collect($keywords)->contains(fn ($k) => preg_match('/\b'.preg_quote($k, '/').'\b/', $normalized) === 1);
+
+        if (! $matched) {
             return false;
         }
 

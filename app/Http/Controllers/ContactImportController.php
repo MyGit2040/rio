@@ -7,6 +7,7 @@ use App\Models\ContactGroup;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ContactImportController extends Controller
 {
@@ -15,6 +16,20 @@ class ContactImportController extends Controller
         return view('contacts.import', [
             'groups' => ContactGroup::orderBy('name')->get(),
         ]);
+    }
+
+    /**
+     * Download a ready-to-fill sample file (Name + Number only).
+     */
+    public function sample(): StreamedResponse
+    {
+        return response()->streamDownload(function () {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, ['name', 'number']);
+            fputcsv($out, ['Ahmed Ali', '971501234567']);   // UAE — full country code, no + or spaces
+            fputcsv($out, ['Sara Khan', '447911123456']);    // UK
+            fclose($out);
+        }, 'eagle-contacts-sample.csv', ['Content-Type' => 'text/csv']);
     }
 
     public function store(Request $request): RedirectResponse
@@ -34,24 +49,37 @@ class ContactImportController extends Controller
         $rows = $this->readCsv($request->file('file')->getRealPath());
 
         $imported = 0;
+        $duplicates = 0;
         $skipped = 0;
+        $seen = [];
 
         foreach ($rows as $row) {
-            $phone = preg_replace('/\D+/', '', (string) ($row['phone'] ?? ''));
+            // Accept "number", "phone" or "mobile" as the number column.
+            $phone = preg_replace('/\D+/', '', (string) ($row['number'] ?? $row['phone'] ?? $row['mobile'] ?? ''));
 
             if (strlen($phone) < 6) {
                 $skipped++;
                 continue;
             }
 
-            $contact = Contact::updateOrCreate(
-                ['phone' => $phone],
-                [
-                    'name'    => $row['name'] ?? null,
-                    'email'   => $row['email'] ?? null,
-                    'country' => $row['country'] ?? null,
-                ]
-            );
+            // Skip duplicates — within the file and against existing contacts.
+            $existing = isset($seen[$phone]) ? null : Contact::where('phone', $phone)->first();
+            if (isset($seen[$phone]) || $existing) {
+                $duplicates++;
+                if ($groupId && $existing) {
+                    $existing->groups()->syncWithoutDetaching([$groupId]); // still file them under the chosen group
+                }
+                continue;
+            }
+
+            $seen[$phone] = true;
+
+            $contact = Contact::create([
+                'phone'   => $phone,
+                'name'    => $row['name'] ?? null,
+                'email'   => $row['email'] ?? null,
+                'country' => $row['country'] ?? null,
+            ]);
 
             if ($groupId) {
                 $contact->groups()->syncWithoutDetaching([$groupId]);
@@ -61,7 +89,7 @@ class ContactImportController extends Controller
         }
 
         return redirect()->route('contacts.index')
-            ->with('success', "Import complete: {$imported} contacts added/updated, {$skipped} rows skipped.");
+            ->with('success', "Import complete: {$imported} new contacts, {$duplicates} duplicates skipped, {$skipped} invalid rows skipped.");
     }
 
     /**
