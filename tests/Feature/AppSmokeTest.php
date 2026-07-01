@@ -16,9 +16,11 @@ use App\Models\WhatsappInstance;
 use App\Services\SpamScoreService;
 use App\Support\Totp;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class AppSmokeTest extends TestCase
@@ -601,6 +603,70 @@ class AppSmokeTest extends TestCase
             && str_contains((string) ($r['caption'] ?? ''), 'Dear Bob'));
         // ... then the poll
         Http::assertSent(fn ($r) => str_contains($r->url(), '/message/sendPoll/inst-poll'));
+    }
+
+    public function test_upload_returns_public_url(): void
+    {
+        Storage::fake('public');
+        $this->actingAs($this->makeUser());
+
+        $this->post('/uploads', ['file' => UploadedFile::fake()->image('promo.jpg')])
+            ->assertOk()->assertJsonStructure(['url', 'name']);
+    }
+
+    public function test_group_import_and_verify(): void
+    {
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $group = ContactGroup::create(['name' => 'VIP']);
+
+        $csv = UploadedFile::fake()->createWithContent('contacts.csv', "name,phone\nBob,971500000001\nSue,971500000002\n");
+        $this->post("/groups/{$group->id}/import", ['file' => $csv])->assertRedirect();
+        $this->assertSame(2, $group->contacts()->count());
+
+        WhatsappInstance::create(['name' => 'L', 'instance_name' => 'g-dev', 'status' => 'open']);
+        Queue::fake();
+        $this->post("/groups/{$group->id}/verify")->assertRedirect();
+        Queue::assertPushed(\App\Jobs\VerifyContactsBatch::class);
+    }
+
+    public function test_clone_template(): void
+    {
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $t = Template::create(['tenant_id' => $owner->tenant_id, 'name' => 'Welcome', 'type' => 'text', 'body' => 'Hi']);
+
+        $this->post("/templates/{$t->id}/clone")->assertRedirect();
+        $this->assertDatabaseHas('templates', ['name' => 'Welcome (copy)', 'tenant_id' => $owner->tenant_id]);
+    }
+
+    public function test_campaign_retry_failed_and_export(): void
+    {
+        Queue::fake();
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $device = WhatsappInstance::create(['name' => 'L', 'instance_name' => 'r-dev', 'status' => 'open']);
+        $campaign = Campaign::create(['whatsapp_instance_id' => $device->id, 'name' => 'C', 'type' => 'text', 'body' => 'hi', 'status' => 'completed', 'total' => 1, 'failed' => 1]);
+        $rec = $campaign->recipients()->create(['phone' => '971500000001', 'status' => 'failed', 'error' => 'x']);
+
+        $this->post("/campaigns/{$campaign->id}/retry")->assertRedirect();
+        $this->assertSame('pending', $rec->fresh()->status);
+        Queue::assertPushed(SendCampaignMessage::class);
+
+        $this->get("/campaigns/{$campaign->id}/export")->assertOk();
+    }
+
+    public function test_campaign_test_send(): void
+    {
+        config(['evolution.base_url' => 'http://localhost:8080', 'evolution.api_key' => 'k']);
+        Http::fake(['*' => Http::response(['key' => ['id' => 'X']], 201)]);
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $device = WhatsappInstance::create(['name' => 'L', 'instance_name' => 't-dev', 'status' => 'open']);
+        $campaign = Campaign::create(['whatsapp_instance_id' => $device->id, 'name' => 'C', 'type' => 'text', 'body' => 'Hi', 'status' => 'draft', 'total' => 0]);
+
+        $this->post("/campaigns/{$campaign->id}/test", ['phone' => '971500000009'])->assertRedirect();
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/message/sendText/t-dev'));
     }
 
     public function test_spam_score_rates_clean_vs_spammy(): void

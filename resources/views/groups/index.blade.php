@@ -22,7 +22,7 @@
                             <td class="px-5 py-3">
                                 <span class="inline-flex items-center gap-2">
                                     <span class="w-3 h-3 rounded-full" style="background: {{ $group->color }}"></span>
-                                    <span class="font-medium text-gray-800">{{ $group->name }}</span>
+                                    <a href="{{ route('groups.show', $group) }}" class="font-medium text-gray-800 hover:text-brand">{{ $group->name }}</a>
                                 </span>
                             </td>
                             <td class="px-5 py-3 text-gray-600">{{ $group->contacts_count }}</td>

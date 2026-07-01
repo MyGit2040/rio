@@ -76,8 +76,14 @@
                                 </select>
                             </div>
                             <div class="col-span-2">
-                                <x-input-label for="media_url" value="Media URL" />
-                                <x-text-input id="media_url" name="media_url" class="block mt-1 w-full" x-model="mediaUrl" placeholder="https://…" />
+                                <x-input-label for="media_url" value="Upload a file or paste a URL" />
+                                <div class="flex gap-2 mt-1">
+                                    <x-text-input id="media_url" name="media_url" class="block w-full" x-model="mediaUrl" placeholder="https://…" />
+                                    <label class="shrink-0 inline-flex items-center px-3 rounded-lg border border-gray-300 text-sm cursor-pointer hover:bg-gray-50" :class="uploading && 'opacity-50'">
+                                        <input type="file" class="hidden" x-on:change="upload($event, u => mediaUrl = u)">
+                                        <span x-text="uploading ? '…' : 'Upload'"></span>
+                                    </label>
+                                </div>
                             </div>
                         </div>
 
@@ -111,8 +117,14 @@
                                         <option value="document">Document</option>
                                         <option value="audio">Audio</option>
                                     </select>
-                                    <input type="text" name="poll_media_url" x-model="pollMediaUrl" placeholder="https://…"
-                                           class="col-span-2 rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500">
+                                    <div class="col-span-2 flex gap-2">
+                                        <input type="text" name="poll_media_url" x-model="pollMediaUrl" placeholder="https://…"
+                                               class="flex-1 min-w-0 rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500">
+                                        <label class="shrink-0 inline-flex items-center px-3 rounded-lg border border-gray-300 text-sm cursor-pointer hover:bg-gray-50">
+                                            <input type="file" class="hidden" x-on:change="upload($event, u => pollMediaUrl = u)">
+                                            <span x-text="uploading ? '…' : 'Upload'"></span>
+                                        </label>
+                                    </div>
                                 </div>
                                 <p class="text-xs text-gray-500 mt-1">Your <strong>Message</strong> above is sent with this image as its caption, then the poll appears below it.</p>
                             </div>
@@ -165,7 +177,13 @@
                                         <span class="text-xs font-semibold text-gray-500" x-text="'Card ' + (ci + 1)"></span>
                                         <button type="button" @click="cards.splice(ci, 1)" x-show="cards.length > 1" class="text-red-500 text-xs">Remove</button>
                                     </div>
-                                    <input type="text" x-model="card.image" :name="'cards[' + ci + '][image]'" placeholder="Image URL (https://…)" class="block w-full rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500">
+                                    <div class="flex gap-2">
+                                        <input type="text" x-model="card.image" :name="'cards[' + ci + '][image]'" placeholder="Image URL or upload →" class="flex-1 min-w-0 rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500">
+                                        <label class="shrink-0 inline-flex items-center px-3 rounded-lg border border-gray-300 text-sm cursor-pointer hover:bg-gray-50">
+                                            <input type="file" class="hidden" x-on:change="upload($event, u => card.image = u)">
+                                            <span x-text="uploading ? '…' : 'Upload'"></span>
+                                        </label>
+                                    </div>
                                     <input type="text" x-model="card.title" :name="'cards[' + ci + '][title]'" placeholder="Card title" class="block w-full rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500">
                                     <textarea x-model="card.body" :name="'cards[' + ci + '][body]'" rows="2" placeholder="Card text" class="block w-full rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500"></textarea>
                                     <div class="space-y-2">
@@ -308,6 +326,23 @@
                 },
                 addCard() { if (this.cards.length < 10) this.cards.push({ image: '', title: '', body: '', buttons: [] }); },
                 addCardButton(ci) { if (this.cards[ci].buttons.length < 2) this.cards[ci].buttons.push({ type: 'url', text: '', value: '' }); },
+                uploading: false,
+                upload(e, setter) {
+                    const file = e.target.files[0];
+                    if (! file) return;
+                    this.uploading = true;
+                    const fd = new FormData();
+                    fd.append('file', file);
+                    fetch('{{ route('uploads.store') }}', {
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content, 'Accept': 'application/json' },
+                        body: fd,
+                    })
+                    .then(r => r.json())
+                    .then(d => { this.uploading = false; d.url ? setter(d.url) : alert(d.message || 'Upload failed'); })
+                    .catch(() => { this.uploading = false; alert('Upload failed'); });
+                    e.target.value = '';
+                },
                 removeOption(i) { if (this.options.length > 2) this.options.splice(i, 1); },
                 // Resolve spintax (pick first choice) + merge tags for a readable preview.
                 rendered() {

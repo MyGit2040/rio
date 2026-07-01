@@ -24,8 +24,24 @@
                     <x-btn type="submit" variant="secondary">Pause</x-btn>
                 </form>
             @endif
+            @if ($campaign->failed > 0)
+                <form method="POST" action="{{ route('campaigns.retry', $campaign) }}">
+                    @csrf
+                    <x-btn type="submit" variant="secondary">Retry {{ $campaign->failed }} failed</x-btn>
+                </form>
+            @endif
+            <x-btn :href="route('campaigns.export', $campaign)" variant="ghost">Export CSV</x-btn>
         </div>
     </div>
+
+    <form method="POST" action="{{ route('campaigns.test', $campaign) }}" class="mb-6 flex items-end gap-2 flex-wrap">
+        @csrf
+        <div>
+            <x-input-label for="phone" value="Send a test to your own number" />
+            <x-text-input id="phone" name="phone" class="block mt-1 w-56" placeholder="971501234567" required />
+        </div>
+        <x-btn type="submit" variant="secondary">Send test</x-btn>
+    </form>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         <div class="lg:col-span-2">

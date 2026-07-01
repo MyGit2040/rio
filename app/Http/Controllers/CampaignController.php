@@ -8,9 +8,12 @@ use App\Models\ContactGroup;
 use App\Models\Template;
 use App\Models\WhatsappInstance;
 use App\Services\CampaignService;
+use App\Services\EvolutionApiService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CampaignController extends Controller
 {
@@ -117,5 +120,70 @@ class CampaignController extends Controller
         $campaign->delete();
 
         return redirect()->route('campaigns.index')->with('success', 'Campaign deleted.');
+    }
+
+    /**
+     * Re-queue only the recipients that failed.
+     */
+    public function retryFailed(Campaign $campaign): RedirectResponse
+    {
+        $count = $campaign->recipients()->where('status', 'failed')->update(['status' => 'pending', 'attempts' => 0, 'error' => null]);
+
+        if ($count === 0) {
+            return back()->with('error', 'No failed messages to retry.');
+        }
+
+        $campaign->update(['failed' => $campaign->recipients()->where('status', 'failed')->count()]);
+        $this->campaigns->launch($campaign);
+
+        return back()->with('success', "Re-queued {$count} failed message(s).");
+    }
+
+    /**
+     * Send the campaign's message to a single test number (does not touch recipients).
+     */
+    public function test(Request $request, Campaign $campaign): RedirectResponse
+    {
+        $number = preg_replace('/\D+/', '', (string) $request->validate(['phone' => ['required', 'string', 'max:32']])['phone']);
+        $device = $campaign->instance;
+
+        if (! $device || ! $device->isConnected()) {
+            return back()->with('error', 'The campaign\'s device is not connected.');
+        }
+
+        $engine = EvolutionApiService::forInstance($device);
+        $body = str_replace(['{{name}}', '{{phone}}'], ['there', $number], (string) $campaign->body);
+
+        $result = match ($campaign->type) {
+            'media' => $engine->sendMedia($device->instance_name, $number, $campaign->media_type ?: 'image', $campaign->media_url, $body),
+            'poll'  => $engine->sendPoll($device->instance_name, $number, $campaign->poll['question'] ?? 'Poll', $campaign->poll['options'] ?? []),
+            default => $engine->sendText($device->instance_name, $number, $body ?: 'Test message'),
+        };
+
+        return $result['ok']
+            ? back()->with('success', 'Test sent to +'.$number.'.')
+            : back()->with('error', 'Test failed: '.($result['error'] ?? 'unknown error'));
+    }
+
+    /**
+     * Download the recipient results as a CSV.
+     */
+    public function export(Campaign $campaign): StreamedResponse
+    {
+        return response()->streamDownload(function () use ($campaign) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, ['Contact', 'Phone', 'Device', 'Status', 'Sent at', 'Note']);
+
+            $campaign->recipients()->with('contact', 'instance')->chunk(500, function ($rows) use ($out) {
+                foreach ($rows as $r) {
+                    fputcsv($out, [
+                        $r->contact->name ?? '', $r->phone, $r->instance->name ?? '',
+                        $r->status, $r->sent_at?->format('Y-m-d H:i'), $r->error,
+                    ]);
+                }
+            });
+
+            fclose($out);
+        }, 'campaign-'.$campaign->id.'-results.csv', ['Content-Type' => 'text/csv']);
     }
 }

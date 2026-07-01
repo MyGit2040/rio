@@ -50,6 +50,15 @@ class TemplateController extends Controller
         return redirect()->route('templates.index')->with('success', 'Template deleted.');
     }
 
+    public function clone(Template $template): RedirectResponse
+    {
+        $copy = $template->replicate();
+        $copy->name = $template->name.' (copy)';
+        $copy->save();
+
+        return redirect()->route('templates.edit', $copy)->with('success', 'Template duplicated — edit your copy.');
+    }
+
     /**
      * One-click: rewrite a base message into N distinct variations using AI.
      */

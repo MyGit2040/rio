@@ -17,6 +17,7 @@ use App\Http\Controllers\SecurityController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SpamCheckerController;
 use App\Http\Controllers\TemplateController;
+use App\Http\Controllers\UploadController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\WebhookController;
 use Illuminate\Support\Facades\Route;
@@ -60,15 +61,25 @@ Route::middleware('auth')->group(function () {
 
     // Contact groups
     Route::resource('groups', GroupController::class)->except('show');
+    Route::get('/groups/{group}', [GroupController::class, 'show'])->name('groups.show');
+    Route::post('/groups/{group}/import', [GroupController::class, 'import'])->name('groups.import');
+    Route::post('/groups/{group}/verify', [GroupController::class, 'verify'])->name('groups.verify');
+
+    // Shared attachment upload (returns a public URL)
+    Route::post('/uploads', [UploadController::class, 'store'])->name('uploads.store');
 
     // Message templates (text / media / poll)
     Route::post('/templates/variants', [TemplateController::class, 'variants'])->name('templates.variants');
     Route::resource('templates', TemplateController::class)->except('show');
+    Route::post('/templates/{template}/clone', [TemplateController::class, 'clone'])->name('templates.clone');
 
     // Campaigns (bulk send)
     Route::resource('campaigns', CampaignController::class)->except('edit', 'update');
     Route::post('/campaigns/{campaign}/launch', [CampaignController::class, 'launch'])->name('campaigns.launch');
     Route::post('/campaigns/{campaign}/pause', [CampaignController::class, 'pause'])->name('campaigns.pause');
+    Route::post('/campaigns/{campaign}/retry', [CampaignController::class, 'retryFailed'])->name('campaigns.retry');
+    Route::post('/campaigns/{campaign}/test', [CampaignController::class, 'test'])->name('campaigns.test');
+    Route::get('/campaigns/{campaign}/export', [CampaignController::class, 'export'])->name('campaigns.export');
     Route::get('/campaigns/{campaign}/progress', [CampaignController::class, 'progress'])->name('campaigns.progress');
 
     // Chatbot rules

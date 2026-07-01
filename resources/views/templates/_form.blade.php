@@ -18,7 +18,25 @@
         addCard() { if (this.cards.length < 10) this.cards.push({ image: '', title: '', body: '', buttons: [] }); },
         addCardButton(ci) { if (this.cards[ci].buttons.length < 2) this.cards[ci].buttons.push({ type: 'url', text: '', value: '' }); },
         addOption() { this.options.push(''); },
-        removeOption(i) { if (this.options.length > 2) this.options.splice(i, 1); }
+        removeOption(i) { if (this.options.length > 2) this.options.splice(i, 1); },
+        uploading: false,
+        async upload(e, setter) {
+            const file = e.target.files[0];
+            if (! file) return;
+            this.uploading = true;
+            const fd = new FormData();
+            fd.append('file', file);
+            try {
+                const res = await fetch('{{ route('uploads.store') }}', {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+                    body: fd,
+                });
+                const data = await res.json();
+                if (data.url) setter(data.url);
+                else alert(data.message || 'Upload failed.');
+            } catch (err) { alert('Upload failed.'); } finally { this.uploading = false; e.target.value = ''; }
+        }
      }"
      class="space-y-5">
 
@@ -78,7 +96,13 @@
         </div>
         <div class="sm:col-span-2">
             <x-input-label for="media_url" value="Media URL" />
-            <x-text-input id="media_url" name="media_url" class="block mt-1 w-full" placeholder="https://…" :value="old('media_url', $template->media_url ?? '')" />
+            <div class="flex items-center gap-2 mt-1">
+                <x-text-input id="media_url" name="media_url" x-ref="mediaUrl" class="block w-full" placeholder="https://…" :value="old('media_url', $template->media_url ?? '')" />
+                <label class="shrink-0 cursor-pointer inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50">
+                    <span x-text="uploading ? 'Uploading…' : 'Upload'"></span>
+                    <input type="file" class="hidden" @change="upload($event, url => $refs.mediaUrl.value = url)">
+                </label>
+            </div>
         </div>
     </div>
 
@@ -118,8 +142,14 @@
                     <option value="document">Document</option>
                     <option value="audio">Audio</option>
                 </select>
-                <input type="text" name="poll_media_url" x-model="pollMediaUrl" placeholder="https://…"
-                       class="col-span-2 rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500">
+                <div class="col-span-2 flex items-center gap-2">
+                    <input type="text" name="poll_media_url" x-model="pollMediaUrl" placeholder="https://…"
+                           class="flex-1 min-w-0 rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500">
+                    <label class="shrink-0 cursor-pointer inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50">
+                        <span x-text="uploading ? '…' : 'Upload'"></span>
+                        <input type="file" class="hidden" @change="upload($event, url => pollMediaUrl = url)">
+                    </label>
+                </div>
             </div>
             <p class="text-xs text-gray-500 mt-1">Sent as a separate message right before the poll.</p>
         </div>
@@ -172,7 +202,13 @@
                     <span class="text-xs font-semibold text-gray-500" x-text="'Card ' + (ci + 1)"></span>
                     <button type="button" @click="cards.splice(ci, 1)" x-show="cards.length > 1" class="text-red-500 text-xs">Remove</button>
                 </div>
-                <input type="text" x-model="card.image" :name="'cards[' + ci + '][image]'" placeholder="Image URL (https://…)" class="block w-full rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500">
+                <div class="flex items-center gap-2">
+                    <input type="text" x-model="card.image" :name="'cards[' + ci + '][image]'" placeholder="Image URL (https://…)" class="flex-1 min-w-0 rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500">
+                    <label class="shrink-0 cursor-pointer inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50">
+                        <span x-text="uploading ? '…' : 'Upload'"></span>
+                        <input type="file" class="hidden" @change="upload($event, url => card.image = url)">
+                    </label>
+                </div>
                 <input type="text" x-model="card.title" :name="'cards[' + ci + '][title]'" placeholder="Card title" class="block w-full rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500">
                 <textarea x-model="card.body" :name="'cards[' + ci + '][body]'" rows="2" placeholder="Card text" class="block w-full rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500"></textarea>
                 <div class="space-y-2">

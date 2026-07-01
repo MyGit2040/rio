@@ -39,6 +39,10 @@
                             <td class="px-5 py-3">
                                 <div class="flex items-center gap-3 justify-end">
                                     <a href="{{ route('templates.edit', $template) }}" class="text-green-600 hover:text-green-700">Edit</a>
+                                    <form method="POST" action="{{ route('templates.clone', $template) }}">
+                                        @csrf
+                                        <button class="text-gray-500 hover:text-gray-700">Clone</button>
+                                    </form>
                                     <form method="POST" action="{{ route('templates.destroy', $template) }}" onsubmit="return confirm('Delete this template?')">
                                         @csrf @method('DELETE')
                                         <button class="text-red-600 hover:text-red-700">Delete</button>
