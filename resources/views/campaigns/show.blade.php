@@ -92,6 +92,49 @@
         </div>
     </div>
 
+    {{-- Responses / engagement --}}
+    <x-card title="Responses" class="mb-6">
+        <div class="grid grid-cols-3 gap-4 mb-4">
+            <div class="text-center"><p class="text-2xl font-bold text-brand">{{ $engagement['replies'] }}</p><p class="text-xs text-gray-500">Replies received</p></div>
+            <div class="text-center"><p class="text-2xl font-bold text-green-600">{{ $engagement['poll_answers'] }}</p><p class="text-xs text-gray-500">Poll answers</p></div>
+            <div class="text-center"><p class="text-2xl font-bold text-blue-600">{{ $engagement['button_clicks'] }}</p><p class="text-xs text-gray-500">Button clicks</p></div>
+        </div>
+
+        @if ($pollBreakdown->isNotEmpty())
+            @php($pollTotal = $pollBreakdown->sum())
+            <div class="mb-4">
+                <p class="text-xs font-semibold text-gray-600 mb-2">Poll answer breakdown</p>
+                <div class="space-y-2">
+                    @foreach ($pollBreakdown as $option => $c)
+                        <div>
+                            <div class="flex justify-between text-sm mb-0.5"><span class="text-gray-700 truncate">{{ $option }}</span><span class="text-gray-500 shrink-0 ml-2">{{ $c }}</span></div>
+                            <div class="h-2 rounded-full bg-gray-100 overflow-hidden"><div class="h-full bg-green-500" style="width: {{ $pollTotal ? round($c / $pollTotal * 100) : 0 }}%"></div></div>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        @endif
+
+        @if ($responses->isNotEmpty())
+            <p class="text-xs font-semibold text-gray-600 mb-2">Latest responses</p>
+            <ul class="divide-y divide-gray-100 max-h-80 overflow-y-auto">
+                @foreach ($responses as $r)
+                    @php($icon = ['poll_response' => '📊', 'button_response' => '🔘'][$r->type] ?? '📩')
+                    <li class="py-2 flex items-start gap-2 text-sm">
+                        <span class="shrink-0">{{ $icon }}</span>
+                        <div class="min-w-0">
+                            <span class="font-medium text-gray-800">{{ $r->contact->name ?? '+'.$r->phone }}</span>
+                            <span class="text-gray-600"> — {{ Str::limit($r->body, 120) }}</span>
+                            <span class="block text-[11px] text-gray-400">{{ $r->created_at?->diffForHumans() }}</span>
+                        </div>
+                    </li>
+                @endforeach
+            </ul>
+        @else
+            <p class="text-sm text-gray-500">No responses yet. Replies, poll answers and button clicks land here — and a detailed copy goes to your hook number.</p>
+        @endif
+    </x-card>
+
     @if (!empty($variantStats))
         <x-card title="A/B variant performance" class="mb-6">
             <div class="overflow-x-auto">

@@ -73,18 +73,20 @@
                         <th class="px-5 py-3 font-medium">Name</th>
                         <th class="px-5 py-3 font-medium">Phone</th>
                         <th class="px-5 py-3 font-medium">WhatsApp</th>
+                        <th class="px-5 py-3 font-medium text-right">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                     @forelse ($contacts as $contact)
                         @php $wa = ['valid' => ['green', 'On WhatsApp'], 'invalid' => ['red', 'Not found'], 'unverified' => ['gray', 'Unverified']][$contact->wa_status] ?? ['gray', 'Unverified']; @endphp
                         <tr class="hover:bg-gray-50">
-                            <td class="px-5 py-3 text-gray-800 whitespace-nowrap">{{ $contact->name ?: '—' }}</td>
+                            <td class="px-5 py-3 text-gray-800 whitespace-nowrap"><a href="{{ route('contacts.show', $contact) }}" class="hover:text-brand">{{ $contact->name ?: '—' }}</a></td>
                             <td class="px-5 py-3 text-gray-600 whitespace-nowrap">+{{ $contact->phone }}</td>
                             <td class="px-5 py-3"><x-badge :color="$wa[0]">{{ $wa[1] }}</x-badge></td>
+                            <td class="px-5 py-3"><div class="flex justify-end"><x-contact-actions :contact="$contact" :group="$group" /></div></td>
                         </tr>
                     @empty
-                        <tr><td colspan="3" class="px-5 py-10 text-center text-gray-500">No contacts in this group yet — import some above.</td></tr>
+                        <tr><td colspan="4" class="px-5 py-10 text-center text-gray-500">No contacts in this group yet — import some above.</td></tr>
                     @endforelse
                 </tbody>
             </table>

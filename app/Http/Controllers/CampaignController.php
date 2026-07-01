@@ -7,6 +7,7 @@ use App\Models\Campaign;
 use App\Models\ContactGroup;
 use App\Models\Template;
 use App\Models\WhatsappInstance;
+use App\Models\Message;
 use App\Services\CampaignService;
 use App\Services\EvolutionApiService;
 use App\Support\Audit;
@@ -35,6 +36,9 @@ class CampaignController extends Controller
             'sent'         => $sent,
             'failed'       => $failed,
             'success_rate' => ($sent + $failed) > 0 ? (int) round($sent / ($sent + $failed) * 100) : 0,
+            'replies'      => Message::where('direction', 'in')->where('type', 'text')->whereNotNull('campaign_id')->count(),
+            'poll_answers' => Message::where('direction', 'in')->where('type', 'poll_response')->count(),
+            'button_clicks' => Message::where('direction', 'in')->where('type', 'button_response')->count(),
         ];
 
         $campaigns = Campaign::with('instance')
@@ -95,11 +99,21 @@ class CampaignController extends Controller
             ->latest('id')
             ->paginate(25);
 
+        $inbound = Message::where('campaign_id', $campaign->id)->where('direction', 'in');
+
         return view('campaigns.show', [
-            'campaign'     => $campaign,
-            'recipients'   => $recipients,
-            'variantStats' => $this->variantStats($campaign),
-            'trackedLinks' => $campaign->track_links ? $campaign->trackedLinks()->orderByDesc('clicks')->get() : collect(),
+            'campaign'      => $campaign,
+            'recipients'    => $recipients,
+            'variantStats'  => $this->variantStats($campaign),
+            'trackedLinks'  => $campaign->track_links ? $campaign->trackedLinks()->orderByDesc('clicks')->get() : collect(),
+            'engagement'    => [
+                'replies'       => (clone $inbound)->where('type', 'text')->count(),
+                'poll_answers'  => (clone $inbound)->where('type', 'poll_response')->count(),
+                'button_clicks' => (clone $inbound)->where('type', 'button_response')->count(),
+            ],
+            'pollBreakdown' => (clone $inbound)->where('type', 'poll_response')
+                ->selectRaw('body, COUNT(*) as c')->groupBy('body')->orderByDesc('c')->pluck('c', 'body'),
+            'responses'     => (clone $inbound)->with('contact')->latest('id')->limit(30)->get(),
         ]);
     }
 

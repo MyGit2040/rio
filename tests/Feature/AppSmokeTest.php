@@ -11,6 +11,7 @@ use App\Models\Campaign;
 use App\Models\Contact;
 use App\Models\ContactGroup;
 use App\Models\MediaAsset;
+use App\Models\Message;
 use App\Models\Sequence;
 use App\Models\Suppression;
 use App\Models\Template;
@@ -78,7 +79,7 @@ class AppSmokeTest extends TestCase
             // New modules
             '/inbox', '/health', '/sequences', '/sequences/create', '/media',
             '/reports', '/suppressions', '/billing', '/webhook-endpoints', '/audit',
-            '/help', '/help/getting-started',
+            '/help', '/help/getting-started', '/single-message',
         ];
 
         foreach ($pages as $page) {
@@ -1190,6 +1191,62 @@ class AppSmokeTest extends TestCase
 
         $devices = Campaign::first()->recipients()->orderBy('id')->pluck('whatsapp_instance_id')->all();
         $this->assertSame([$d1->id, $d1->id, $d2->id, $d2->id], $devices); // 2 from A, then 2 from B
+    }
+
+    public function test_single_message_send(): void
+    {
+        config(['evolution.base_url' => 'http://localhost:8080', 'evolution.api_key' => 'k']);
+        Http::fake(['*' => Http::response(['key' => ['id' => 'X']], 201)]);
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $device = WhatsappInstance::create(['name' => 'L', 'instance_name' => 'sm-dev', 'status' => 'open']);
+
+        $this->post('/single-message', ['whatsapp_instance_id' => $device->id, 'phone' => '971500000088', 'body' => 'Hello one'])
+            ->assertRedirect();
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/message/sendText/sm-dev'));
+        $this->assertDatabaseHas('messages', ['phone' => '971500000088', 'direction' => 'out', 'body' => 'Hello one']);
+    }
+
+    public function test_remove_contact_from_group_keeps_contact(): void
+    {
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $group = ContactGroup::create(['name' => 'G']);
+        $c = Contact::create(['phone' => '971500000001', 'name' => 'A']);
+        $group->contacts()->attach($c->id);
+
+        $this->delete("/groups/{$group->id}/contacts/{$c->id}")->assertRedirect();
+
+        $this->assertSame(0, $group->contacts()->count());
+        $this->assertDatabaseHas('contacts', ['id' => $c->id]); // detached, not deleted
+    }
+
+    public function test_inbound_button_and_poll_attributed_to_campaign(): void
+    {
+        config(['evolution.base_url' => 'http://localhost:8080', 'evolution.api_key' => 'k', 'evolution.webhook_secret' => null]);
+        Http::fake(['*' => Http::response(['key' => ['id' => 'X']], 201)]);
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $device = WhatsappInstance::create(['name' => 'L', 'instance_name' => 'ic-dev', 'status' => 'open']);
+        $campaign = Campaign::create(['whatsapp_instance_id' => $device->id, 'name' => 'BtnCamp', 'type' => 'buttons', 'body' => 'hi', 'status' => 'completed', 'total' => 1]);
+        $contact = Contact::create(['phone' => '971500000077', 'name' => 'Zed']);
+        Message::create(['whatsapp_instance_id' => $device->id, 'contact_id' => $contact->id, 'campaign_id' => $campaign->id, 'direction' => 'out', 'phone' => '971500000077', 'type' => 'buttons', 'body' => 'hi', 'status' => 'sent']);
+
+        // Button click
+        $this->postJson('/webhooks/evolution', [
+            'event' => 'messages.upsert', 'instance' => 'ic-dev',
+            'data' => ['key' => ['remoteJid' => '971500000077@s.whatsapp.net', 'fromMe' => false, 'id' => 'b1'], 'message' => ['buttonsResponseMessage' => ['selectedDisplayText' => 'Wish to save']]],
+        ])->assertOk();
+
+        // Poll answer
+        $this->postJson('/webhooks/evolution', [
+            'event' => 'messages.upsert', 'instance' => 'ic-dev',
+            'data' => ['key' => ['remoteJid' => '971500000077@s.whatsapp.net', 'fromMe' => false, 'id' => 'p1'], 'message' => ['pollUpdateMessage' => ['vote' => ['selectedOptions' => [['name' => 'More details']]]]]],
+        ])->assertOk();
+
+        $this->assertDatabaseHas('messages', ['direction' => 'in', 'type' => 'button_response', 'body' => 'Wish to save', 'campaign_id' => $campaign->id]);
+        $this->assertDatabaseHas('messages', ['direction' => 'in', 'type' => 'poll_response', 'body' => 'More details', 'campaign_id' => $campaign->id]);
     }
 
     public function test_spam_score_rates_clean_vs_spammy(): void

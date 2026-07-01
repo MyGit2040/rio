@@ -75,13 +75,8 @@
                                 @endif
                             </td>
                             <td class="px-5 py-3">
-                                <div class="flex items-center gap-3 justify-end">
-                                    <a href="{{ route('contacts.show', $contact) }}" class="text-gray-500 hover:text-gray-700">View</a>
-                                    <a href="{{ route('contacts.edit', $contact) }}" class="text-green-600 hover:text-green-700">Edit</a>
-                                    <form method="POST" action="{{ route('contacts.destroy', $contact) }}" onsubmit="return confirm('Delete this contact?')">
-                                        @csrf @method('DELETE')
-                                        <button class="text-red-600 hover:text-red-700">Delete</button>
-                                    </form>
+                                <div class="flex justify-end">
+                                    <x-contact-actions :contact="$contact" />
                                 </div>
                             </td>
                         </tr>

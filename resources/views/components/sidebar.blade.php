@@ -31,6 +31,7 @@
         @if ($can('media'))<x-nav-item :active="request()->routeIs('media.*')" href="{{ route('media.index') }}" icon="image">Media library</x-nav-item>@endif
         @if ($can('contacts'))<x-nav-item :active="(request()->routeIs('contacts.*') && ! request()->routeIs('contacts.index')) || (request()->routeIs('contacts.index') && request('status') !== 'opted_out')" href="{{ route('contacts.index') }}" icon="users">Contacts</x-nav-item>@endif
         @if ($can('groups'))<x-nav-item :active="request()->routeIs('groups.*')" href="{{ route('groups.index') }}" icon="tag">Groups</x-nav-item>@endif
+        @if ($can('campaigns'))<x-nav-item :active="request()->routeIs('single-message.*')" href="{{ route('single-message.create') }}" icon="send">Single message</x-nav-item>@endif
         @if ($can('campaigns'))<x-nav-item :active="request()->routeIs('campaigns.*')" href="{{ route('campaigns.index') }}" icon="send">Bulk messages</x-nav-item>@endif
         @if ($can('sequences'))<x-nav-item :active="request()->routeIs('sequences.*')" href="{{ route('sequences.index') }}" icon="drip">Drip sequences</x-nav-item>@endif
         @if ($can('chatbot'))<x-nav-item :active="request()->routeIs('chatbot.*')" href="{{ route('chatbot.index') }}" icon="bot">Auto reply</x-nav-item>@endif

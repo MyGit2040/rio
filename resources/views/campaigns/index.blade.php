@@ -2,22 +2,37 @@
     <x-slot name="header">Bulk messages</x-slot>
 
     {{-- Campaign dashboard --}}
-    <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-7 gap-3 mb-6">
+    <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 mb-3">
         @php
             $cards = [
-                ['Total', $stats['total'], 'bg-blue-50 text-blue-600'],
-                ['Running', $stats['running'], 'bg-emerald-50 text-emerald-600'],
-                ['Scheduled', $stats['scheduled'], 'bg-indigo-50 text-indigo-600'],
-                ['Completed', $stats['completed'], 'bg-violet-50 text-violet-600'],
-                ['Messages sent', number_format($stats['sent']), 'bg-sky-50 text-sky-600'],
-                ['Success rate', $stats['success_rate'].'%', 'bg-green-50 text-green-600'],
-                ['Failed', number_format($stats['failed']), 'bg-red-50 text-red-600'],
+                ['Total', $stats['total'], 'text-blue-600'],
+                ['Running', $stats['running'], 'text-emerald-600'],
+                ['Scheduled', $stats['scheduled'], 'text-indigo-600'],
+                ['Completed', $stats['completed'], 'text-violet-600'],
+                ['Messages sent', number_format($stats['sent']), 'text-sky-600'],
             ];
         @endphp
         @foreach ($cards as [$label, $value, $tone])
             <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
                 <p class="text-xs text-gray-500 truncate">{{ $label }}</p>
-                <p class="text-2xl font-bold {{ explode(' ', $tone)[1] }} mt-1">{{ $value }}</p>
+                <p class="text-2xl font-bold {{ $tone }} mt-1">{{ $value }}</p>
+            </div>
+        @endforeach
+    </div>
+    <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 mb-6">
+        @php
+            $engagementCards = [
+                ['Success rate', $stats['success_rate'].'%', 'text-green-600'],
+                ['Failed', number_format($stats['failed']), 'text-red-600'],
+                ['Replies received', number_format($stats['replies']), 'text-brand'],
+                ['Poll answers', number_format($stats['poll_answers']), 'text-green-600'],
+                ['Button clicks', number_format($stats['button_clicks']), 'text-blue-600'],
+            ];
+        @endphp
+        @foreach ($engagementCards as [$label, $value, $tone])
+            <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                <p class="text-xs text-gray-500 truncate">{{ $label }}</p>
+                <p class="text-2xl font-bold {{ $tone }} mt-1">{{ $value }}</p>
             </div>
         @endforeach
     </div>

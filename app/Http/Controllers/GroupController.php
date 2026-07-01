@@ -162,6 +162,16 @@ class GroupController extends Controller
         return $request->wantsJson() ? response()->json(['ok' => true, 'deleted' => $count]) : back()->with('success', $msg);
     }
 
+    /**
+     * Detach a single contact from this group (does not delete the contact).
+     */
+    public function removeContact(ContactGroup $group, Contact $contact): RedirectResponse
+    {
+        $group->contacts()->detach($contact->id);
+
+        return back()->with('success', 'Contact removed from this group.');
+    }
+
     public function edit(ContactGroup $group): View
     {
         return view('groups.edit', compact('group'));

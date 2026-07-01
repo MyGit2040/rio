@@ -26,6 +26,7 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SecurityController;
 use App\Http\Controllers\SequenceController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\SingleMessageController;
 use App\Http\Controllers\SpamCheckerController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\SuppressionController;
@@ -98,6 +99,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/groups/{group}/progress', [GroupController::class, 'progress'])->name('groups.progress');
     Route::post('/groups/{group}/reverify', [GroupController::class, 'reverify'])->name('groups.reverify');
     Route::delete('/groups/{group}/invalid', [GroupController::class, 'deleteInvalid'])->name('groups.delete-invalid');
+    Route::delete('/groups/{group}/contacts/{contact}', [GroupController::class, 'removeContact'])->name('groups.remove-contact');
 
     // Contact profile / timeline
     Route::get('/contacts/{contact}', [ContactController::class, 'show'])->name('contacts.show');
@@ -153,6 +155,10 @@ Route::middleware('auth')->group(function () {
     Route::resource('templates', TemplateController::class)->except('show');
     Route::get('/templates/{template}/preview', [TemplateController::class, 'preview'])->name('templates.preview');
     Route::post('/templates/{template}/clone', [TemplateController::class, 'clone'])->name('templates.clone');
+
+    // Single message (one-off send)
+    Route::get('/single-message', [SingleMessageController::class, 'create'])->name('single-message.create');
+    Route::post('/single-message', [SingleMessageController::class, 'send'])->name('single-message.send');
 
     // Campaigns (bulk send)
     Route::resource('campaigns', CampaignController::class)->except('edit', 'update');

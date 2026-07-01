@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\DispatchWebhook;
+use App\Models\Campaign;
 use App\Models\CampaignRecipient;
 use App\Models\Contact;
 use App\Models\Message;
@@ -99,12 +100,15 @@ class WebhookController extends Controller
 
             $fromMe = (bool) ($key['fromMe'] ?? false);
             $phone = preg_replace('/\D+/', '', explode('@', $remoteJid)[0] ?? '');
-            $text = $item['message']['conversation']
-                ?? data_get($item, 'message.extendedTextMessage.text')
-                ?? '';
 
             if ($phone === '') {
                 continue;
+            }
+
+            // What did they send — a text reply, a button/list click, or a poll answer?
+            [$kind, $detail] = $this->parseInbound($item['message'] ?? []);
+            if ($kind === '') {
+                continue; // media / reaction / status update — nothing actionable
             }
 
             $contact = Contact::firstOrCreate(
@@ -112,38 +116,103 @@ class WebhookController extends Controller
                 ['name' => $item['pushName'] ?? null]
             );
 
+            // Attribute the response to the campaign we last messaged this contact from.
+            $campaignId = $fromMe ? null : $this->recentCampaignId($contact);
+
             Message::create([
                 'whatsapp_instance_id' => $instance->id,
                 'contact_id'           => $contact->id,
+                'campaign_id'          => $campaignId,
                 'direction'            => $fromMe ? 'out' : 'in',
                 'remote_jid'           => $remoteJid,
                 'phone'                => $phone,
-                'type'                 => 'text',
-                'body'                 => $text,
+                'type'                 => $kind === 'text' ? 'text' : $kind,
+                'body'                 => $detail,
                 'status'               => 'received',
                 'message_id'           => $key['id'] ?? null,
             ]);
 
-            if (! $fromMe && $text !== '') {
-                // Opt-out keywords take priority — unsubscribe + confirm, skip the auto-reply.
-                if ($this->handleOptOut($instance, $contact, $text)) {
-                    DispatchWebhook::fire($instance->tenant_id, 'contact.opted_out', [
-                        'contact_id' => $contact->id, 'phone' => $phone, 'keyword' => trim($text),
-                    ]);
-                } else {
-                    $this->chatbot->handleInbound($instance, $contact, $text);
+            if (! $fromMe) {
+                // A text reply can be an opt-out or trigger the auto-reply bot.
+                if ($kind === 'text') {
+                    if ($this->handleOptOut($instance, $contact, $detail)) {
+                        DispatchWebhook::fire($instance->tenant_id, 'contact.opted_out', [
+                            'contact_id' => $contact->id, 'phone' => $phone, 'keyword' => trim($detail),
+                        ]);
+                    } else {
+                        $this->chatbot->handleInbound($instance, $contact, $detail);
+                    }
                 }
 
-                $this->forwardToHook($instance, $contact, $phone, $text);
+                // Forward the full detail (who, what kind, which answer, which campaign) to the hook number.
+                $this->forwardToHook($instance, $contact, $phone, $kind, $detail, $campaignId);
 
                 DispatchWebhook::fire($instance->tenant_id, 'message.received', [
-                    'contact_id' => $contact->id,
-                    'name'       => $contact->name,
-                    'phone'      => $phone,
-                    'text'       => $text,
+                    'contact_id'  => $contact->id,
+                    'name'        => $contact->name,
+                    'phone'       => $phone,
+                    'kind'        => $kind,      // text | button_response | poll_response
+                    'text'        => $detail,
+                    'campaign_id' => $campaignId,
                 ]);
             }
         }
+    }
+
+    /**
+     * Classify an inbound WhatsApp message → [kind, detail].
+     * kind = text | button_response | poll_response | '' (ignore).
+     *
+     * @param  array<string, mixed>  $m
+     * @return array{0: string, 1: string}
+     */
+    private function parseInbound(array $m): array
+    {
+        $text = $m['conversation'] ?? data_get($m, 'extendedTextMessage.text');
+        if (is_string($text) && $text !== '') {
+            return ['text', $text];
+        }
+
+        // Buttons / template buttons / list selections.
+        $btn = data_get($m, 'buttonsResponseMessage.selectedDisplayText')
+            ?? data_get($m, 'buttonsResponseMessage.selectedButtonId')
+            ?? data_get($m, 'templateButtonReplyMessage.selectedDisplayText')
+            ?? data_get($m, 'listResponseMessage.title')
+            ?? data_get($m, 'listResponseMessage.singleSelectReply.selectedRowId');
+        if (is_string($btn) && $btn !== '') {
+            return ['button_response', $btn];
+        }
+
+        // Poll vote (Evolution decodes the chosen option(s) when available).
+        if (isset($m['pollUpdateMessage'])) {
+            $opts = data_get($m, 'pollUpdateMessage.vote.selectedOptions')
+                ?? data_get($m, 'pollUpdateMessage.selectedOptions')
+                ?? data_get($m, 'pollUpdateMessage.pollVotes');
+
+            $detail = '';
+            if (is_array($opts)) {
+                $detail = collect($opts)->map(fn ($o) => is_array($o) ? ($o['name'] ?? $o['optionName'] ?? '') : $o)->filter()->implode(', ');
+            } elseif (is_string($opts)) {
+                $detail = $opts;
+            }
+
+            return ['poll_response', $detail !== '' ? $detail : 'voted'];
+        }
+
+        return ['', ''];
+    }
+
+    /**
+     * The campaign this contact was most recently messaged from (last 14 days).
+     */
+    private function recentCampaignId(Contact $contact): ?int
+    {
+        return Message::where('contact_id', $contact->id)
+            ->where('direction', 'out')
+            ->whereNotNull('campaign_id')
+            ->where('created_at', '>=', now()->subDays(14))
+            ->latest('id')
+            ->value('campaign_id');
     }
 
     /**
@@ -185,9 +254,11 @@ class WebhookController extends Controller
     }
 
     /**
-     * Forward an inbound reply to the tenant's configured "hook" number, if set.
+     * Forward a detailed inbound event to the tenant's configured "hook" number.
+     * Says WHO, WHAT they did (reply / poll answer / button click), the exact answer,
+     * and WHICH campaign it belongs to.
      */
-    private function forwardToHook(WhatsappInstance $instance, Contact $contact, string $phone, string $text): void
+    private function forwardToHook(WhatsappInstance $instance, Contact $contact, string $phone, string $kind, string $detail, ?int $campaignId): void
     {
         $hook = preg_replace('/\D+/', '', (string) data_get($instance->tenant?->settings, 'bulk_hook_number', ''));
 
@@ -195,11 +266,17 @@ class WebhookController extends Controller
             return;
         }
 
-        EvolutionApiService::forInstance($instance)->sendText(
-            $instance->instance_name,
-            $hook,
-            "📩 Reply from ".($contact->name ?: $phone)." (+{$phone}):\n".$text
-        );
+        $who = $contact->name ?: $phone;
+        $campaignName = $campaignId ? Campaign::where('id', $campaignId)->value('name') : null;
+        $ctx = $campaignName ? "\n📣 Campaign: {$campaignName}" : '';
+
+        $body = match ($kind) {
+            'poll_response'   => "📊 Poll answer from {$who} (+{$phone}):\n👉 {$detail}{$ctx}",
+            'button_response' => "🔘 Button click from {$who} (+{$phone}):\n👉 {$detail}{$ctx}",
+            default           => "📩 Reply from {$who} (+{$phone}):\n{$detail}{$ctx}",
+        };
+
+        EvolutionApiService::forInstance($instance)->sendText($instance->instance_name, $hook, $body);
     }
 
     private function onMessageStatus(array $data): void
