@@ -64,8 +64,9 @@
 
                     <div x-show="source === 'compose'">
                         <x-input-label for="body" value="Message" />
+                        <div class="mt-1">@include('templates._message-toolbar', ['target' => 'body'])</div>
                         <textarea id="body" name="body" rows="5" :disabled="source !== 'compose'"
-                                  class="mt-1 block w-full rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500"
+                                  class="block w-full rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500"
                                   placeholder="Hi @{{name}}, ...">{{ old('body') }}</textarea>
                         <p class="text-xs text-gray-500 mt-1">Use <code>@{{name}}</code> and <code>@{{phone}}</code> to personalise.</p>
                     </div>

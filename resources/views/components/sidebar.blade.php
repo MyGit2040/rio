@@ -5,13 +5,14 @@
     class="fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-gray-200 transform transition-transform duration-200 lg:translate-x-0 lg:static lg:inset-auto"
     :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'">
 
-    <div class="flex items-center gap-2.5 h-16 px-5 border-b border-gray-100">
+    <div class="flex items-center gap-2.5 h-16 px-4 border-b border-gray-100">
         @if ($logo)
-            <img src="{{ \Illuminate\Support\Facades\Storage::url($logo) }}" alt="logo" class="w-9 h-9 rounded-lg object-cover">
+            <img src="{{ \Illuminate\Support\Facades\Storage::url($logo) }}" alt="{{ $brandName }}"
+                 class="h-10 w-auto max-w-[150px] object-contain">
         @else
-            <span class="grid place-items-center w-9 h-9 rounded-lg bg-brand text-white font-bold">{{ strtoupper(substr($brandName, 0, 1)) }}</span>
+            <span class="grid place-items-center w-10 h-10 rounded-lg bg-brand text-white font-bold text-lg">{{ strtoupper(substr($brandName, 0, 1)) }}</span>
+            <span class="font-semibold text-gray-800 text-lg truncate">{{ $brandName }}</span>
         @endif
-        <span class="font-semibold text-gray-800 text-lg truncate">{{ $brandName }}</span>
     </div>
 
     <nav class="px-3 py-4 space-y-1 text-sm overflow-y-auto" style="max-height: calc(100vh - 4rem);">

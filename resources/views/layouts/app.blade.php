@@ -12,6 +12,11 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $brandName }}</title>
 
+    @if ($logo)
+        <link rel="icon" href="{{ \Illuminate\Support\Facades\Storage::url($logo) }}">
+        <link rel="apple-touch-icon" href="{{ \Illuminate\Support\Facades\Storage::url($logo) }}">
+    @endif
+
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700&display=swap" rel="stylesheet" />
 

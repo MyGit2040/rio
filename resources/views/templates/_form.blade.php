@@ -62,8 +62,9 @@
         <x-input-label for="body">
             <span x-text="type === 'media' ? 'Caption (optional)' : 'Message'"></span>
         </x-input-label>
+        <div class="mt-1">@include('templates._message-toolbar', ['target' => 'body'])</div>
         <textarea id="body" name="body" rows="5"
-                  class="mt-1 block w-full rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500"
+                  class="block w-full rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500"
                   placeholder="Hi @{{name}}, ...">{{ old('body', $template->body ?? '') }}</textarea>
         <p class="text-xs text-gray-500 mt-1">Use <code>@{{name}}</code> and <code>@{{phone}}</code> to personalise each message.</p>
     </div>

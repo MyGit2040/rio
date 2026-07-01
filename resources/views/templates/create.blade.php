@@ -32,8 +32,9 @@
                             <x-input-label for="body">
                                 <span x-text="type === 'media' ? 'Caption' : (type === 'buttons' ? 'Description' : 'Message')"></span>
                             </x-input-label>
+                            <div class="mt-1">@include('templates._message-toolbar', ['target' => 'body'])</div>
                             <textarea id="body" name="body" rows="5" x-model="body"
-                                      class="mt-1 block w-full rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500"
+                                      class="block w-full rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500"
                                       placeholder="Hi @{{name}}, ..."></textarea>
                         </div>
 
