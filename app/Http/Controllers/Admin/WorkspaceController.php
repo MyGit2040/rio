@@ -23,6 +23,10 @@ class WorkspaceController extends Controller
         $tenants = Tenant::query()
             ->withCount('users')
             ->when($request->filled('q'), fn ($query) => $query->where('name', 'like', '%'.$request->input('q').'%'))
+            ->when($request->input('status') === 'suspended', fn ($query) => $query->where('status', 'suspended'))
+            ->when($request->input('status') === 'expired', fn ($query) => $query->whereNotNull('expires_at')->where('expires_at', '<', now()))
+            ->when($request->input('status') === 'active', fn ($query) => $query->where('status', '!=', 'suspended')
+                ->where(fn ($w) => $w->whereNull('expires_at')->orWhere('expires_at', '>=', now())))
             ->latest()
             ->paginate(20)
             ->withQueryString();

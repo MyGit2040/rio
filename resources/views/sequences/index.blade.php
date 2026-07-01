@@ -6,6 +6,11 @@
             <h2 class="font-semibold text-gray-800">Follow-up sequences</h2>
             <x-btn :href="route('sequences.create')" variant="primary" class="ml-auto">New sequence</x-btn>
         </div>
+        <div class="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+            <x-filter-bar search="Search sequences…" :filters="[
+                'status' => ['all' => 'All Statuses', 'options' => ['active' => 'Active', 'paused' => 'Paused']],
+            ]" />
+        </div>
 
         <div class="overflow-x-auto">
             <table class="w-full text-sm">

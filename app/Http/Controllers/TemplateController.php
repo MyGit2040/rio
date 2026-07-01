@@ -12,9 +12,16 @@ use Illuminate\View\View;
 
 class TemplateController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
-        $templates = Template::latest()->paginate(20);
+        $templates = Template::query()
+            ->when($request->filled('q'), fn ($query) => $query->where(fn ($w) =>
+                $w->where('name', 'like', '%'.$request->input('q').'%')
+                  ->orWhere('body', 'like', '%'.$request->input('q').'%')))
+            ->when($request->filled('type'), fn ($query) => $query->where('type', $request->input('type')))
+            ->latest()
+            ->paginate(20)
+            ->withQueryString();
 
         return view('templates.index', compact('templates'));
     }

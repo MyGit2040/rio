@@ -2,10 +2,11 @@
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
         <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-100 flex-wrap">
             <h2 class="font-semibold text-gray-800">Client workspaces</h2>
-            <form method="GET" class="ml-auto">
-                <input name="q" value="{{ request('q') }}" placeholder="Search name…"
-                       class="rounded-lg border-gray-300 text-sm focus:ring-brand focus:border-brand">
-            </form>
+            <div class="ml-auto">
+                <x-filter-bar :action="route('admin.workspaces.index')" search="Search name…" :filters="[
+                    'status' => ['all' => 'All Statuses', 'options' => ['active' => 'Active', 'suspended' => 'Suspended', 'expired' => 'Expired']],
+                ]" />
+            </div>
             <a href="{{ route('admin.workspaces.create') }}" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium">+ New workspace</a>
         </div>
 

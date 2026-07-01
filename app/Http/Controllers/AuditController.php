@@ -13,7 +13,10 @@ class AuditController extends Controller
         abort_unless(auth()->user()->isOwner(), 403);
 
         $logs = ActivityLog::with('user')
-            ->when($request->filled('action'), fn ($q) => $q->where('action', 'like', $request->input('action').'%'))
+            ->when($request->filled('action'), fn ($q) => $q->where('action', $request->input('action')))
+            ->when($request->filled('q'), fn ($q) => $q->where('description', 'like', '%'.$request->input('q').'%'))
+            ->when($request->filled('created_from'), fn ($q) => $q->whereDate('created_at', '>=', $request->input('created_from')))
+            ->when($request->filled('created_to'), fn ($q) => $q->whereDate('created_at', '<=', $request->input('created_to')))
             ->orderByDesc('id')
             ->paginate(40)
             ->withQueryString();

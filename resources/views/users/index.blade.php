@@ -11,6 +11,11 @@
             </div>
             <x-btn :href="route('users.create')" variant="primary" class="ml-auto">Add member</x-btn>
         </div>
+        <div class="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+            <x-filter-bar search="Search members…" :filters="[
+                'role' => ['all' => 'All Roles', 'options' => ['owner' => 'Owner', 'member' => 'Member']],
+            ]" />
+        </div>
 
         <div class="overflow-x-auto">
             <table class="w-full text-sm">

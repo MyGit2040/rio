@@ -16,7 +16,14 @@
 
         <div class="lg:col-span-3">
             <x-card flush>
-                <div class="px-5 py-4 border-b border-gray-100"><h2 class="font-semibold text-gray-800">Your files ({{ $assets->total() }})</h2></div>
+                <div class="px-5 py-4 border-b border-gray-100 flex items-center gap-3 flex-wrap">
+                    <h2 class="font-semibold text-gray-800">Your files ({{ $assets->total() }})</h2>
+                    <div class="ml-auto">
+                        <x-filter-bar search="Search files…" :filters="[
+                            'kind' => ['all' => 'All Types', 'options' => ['image' => 'Images', 'file' => 'Files']],
+                        ]" />
+                    </div>
+                </div>
                 <div class="p-5">
                     @if ($assets->count())
                         <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4" x-data>

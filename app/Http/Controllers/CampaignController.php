@@ -22,7 +22,7 @@ class CampaignController extends Controller
     {
     }
 
-    public function index(): View
+    public function index(Request $request): View
     {
         $sent = (int) Campaign::sum('sent');
         $failed = (int) Campaign::sum('failed');
@@ -37,7 +37,15 @@ class CampaignController extends Controller
             'success_rate' => ($sent + $failed) > 0 ? (int) round($sent / ($sent + $failed) * 100) : 0,
         ];
 
-        $campaigns = Campaign::with('instance')->latest()->paginate(15);
+        $campaigns = Campaign::with('instance')
+            ->when($request->filled('q'), fn ($query) => $query->where('name', 'like', '%'.$request->input('q').'%'))
+            ->when($request->filled('status'), fn ($query) => $query->where('status', $request->input('status')))
+            ->when($request->filled('type'), fn ($query) => $query->where('type', $request->input('type')))
+            ->when($request->filled('created_from'), fn ($query) => $query->whereDate('created_at', '>=', $request->input('created_from')))
+            ->when($request->filled('created_to'), fn ($query) => $query->whereDate('created_at', '<=', $request->input('created_to')))
+            ->latest()
+            ->paginate(15)
+            ->withQueryString();
 
         return view('campaigns.index', compact('campaigns', 'stats'));
     }

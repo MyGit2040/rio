@@ -9,9 +9,16 @@ use Illuminate\View\View;
 
 class InvoiceController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
-        $invoices = Invoice::with('contact')->latest()->paginate(20);
+        $invoices = Invoice::with('contact')
+            ->when($request->filled('q'), fn ($query) => $query->where(fn ($w) =>
+                $w->where('number', 'like', '%'.$request->input('q').'%')
+                  ->orWhere('phone', 'like', '%'.$request->input('q').'%')))
+            ->when($request->filled('status'), fn ($query) => $query->where('status', $request->input('status')))
+            ->latest()
+            ->paginate(20)
+            ->withQueryString();
 
         return view('invoices.index', compact('invoices'));
     }

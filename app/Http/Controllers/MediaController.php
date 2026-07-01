@@ -10,9 +10,15 @@ use Illuminate\View\View;
 
 class MediaController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
-        $assets = MediaAsset::latest()->paginate(24);
+        $assets = MediaAsset::query()
+            ->when($request->filled('q'), fn ($query) => $query->where('name', 'like', '%'.$request->input('q').'%'))
+            ->when($request->input('kind') === 'image', fn ($query) => $query->where('mime', 'like', 'image/%'))
+            ->when($request->input('kind') === 'file', fn ($query) => $query->where('mime', 'not like', 'image/%'))
+            ->latest()
+            ->paginate(24)
+            ->withQueryString();
 
         return view('media.index', compact('assets'));
     }

@@ -14,6 +14,9 @@ class SuppressionController extends Controller
     {
         $suppressions = Suppression::query()
             ->when($request->filled('q'), fn ($query) => $query->where('phone', 'like', '%'.preg_replace('/\D+/', '', $request->input('q')).'%'))
+            ->when($request->filled('source'), fn ($query) => $query->where('source', $request->input('source')))
+            ->when($request->filled('created_from'), fn ($query) => $query->whereDate('created_at', '>=', $request->input('created_from')))
+            ->when($request->filled('created_to'), fn ($query) => $query->whereDate('created_at', '<=', $request->input('created_to')))
             ->latest()
             ->paginate(30)
             ->withQueryString();

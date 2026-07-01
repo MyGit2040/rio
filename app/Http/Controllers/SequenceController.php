@@ -18,9 +18,15 @@ class SequenceController extends Controller
     {
     }
 
-    public function index(): View
+    public function index(Request $request): View
     {
-        $sequences = Sequence::withCount(['steps', 'enrollments'])->latest()->paginate(20);
+        $sequences = Sequence::withCount(['steps', 'enrollments'])
+            ->when($request->filled('q'), fn ($query) => $query->where('name', 'like', '%'.$request->input('q').'%'))
+            ->when($request->input('status') === 'active', fn ($query) => $query->where('is_active', true))
+            ->when($request->input('status') === 'paused', fn ($query) => $query->where('is_active', false))
+            ->latest()
+            ->paginate(20)
+            ->withQueryString();
 
         return view('sequences.index', compact('sequences'));
     }

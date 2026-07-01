@@ -28,11 +28,15 @@ class UserController extends Controller
         abort_unless($user->tenant_id === auth()->user()->tenant_id, 404);
     }
 
-    public function index(): View
+    public function index(Request $request): View
     {
         $this->guard();
 
         $users = User::where('tenant_id', auth()->user()->tenant_id)
+            ->when($request->filled('q'), fn ($query) => $query->where(fn ($w) =>
+                $w->where('name', 'like', '%'.$request->input('q').'%')
+                  ->orWhere('email', 'like', '%'.$request->input('q').'%')))
+            ->when($request->filled('role'), fn ($query) => $query->where('role', $request->input('role')))
             ->orderByDesc('role')->orderBy('name')->get();
 
         return view('users.index', compact('users'));

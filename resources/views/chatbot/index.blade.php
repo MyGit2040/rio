@@ -9,6 +9,11 @@
             </div>
             <x-btn :href="route('chatbot.create')" variant="primary" class="ml-auto">New rule</x-btn>
         </div>
+        <div class="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+            <x-filter-bar search="Search rules…" :filters="[
+                'status' => ['all' => 'All', 'options' => ['active' => 'Active', 'inactive' => 'Inactive']],
+            ]" />
+        </div>
 
         <div class="overflow-x-auto">
             <table class="w-full text-sm">

@@ -10,9 +10,16 @@ use Illuminate\View\View;
 
 class ChatbotRuleController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
-        $rules = ChatbotRule::with('instance')->orderBy('priority')->get();
+        $rules = ChatbotRule::with('instance')
+            ->when($request->filled('q'), fn ($query) => $query->where(fn ($w) =>
+                $w->where('name', 'like', '%'.$request->input('q').'%')
+                  ->orWhere('keywords', 'like', '%'.$request->input('q').'%')))
+            ->when($request->input('status') === 'active', fn ($query) => $query->where('is_active', true))
+            ->when($request->input('status') === 'inactive', fn ($query) => $query->where('is_active', false))
+            ->orderBy('priority')
+            ->get();
 
         return view('chatbot.index', [
             'rules'     => $rules,

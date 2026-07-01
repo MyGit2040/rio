@@ -1,17 +1,14 @@
 <x-app-layout>
     <x-slot name="header">Audit log</x-slot>
 
+    @php($actionOptions = $actions->mapWithKeys(fn ($a) => [(string) $a => $a])->all())
     <div class="mb-4 flex items-center gap-3 flex-wrap">
         <a href="{{ route('settings.edit') }}" class="text-sm text-gray-500 hover:text-gray-700">&larr; Settings</a>
-        <form method="GET" class="ml-auto">
-            <select name="action" onchange="this.form.submit()"
-                    class="rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500">
-                <option value="">All actions</option>
-                @foreach ($actions as $action)
-                    <option value="{{ $action }}" @selected(request('action') === $action)>{{ $action }}</option>
-                @endforeach
-            </select>
-        </form>
+        <div class="ml-auto">
+            <x-filter-bar search="Search details…"
+                          :filters="['action' => ['all' => 'All actions', 'options' => $actionOptions]]"
+                          :dates="['created_from' => 'From', 'created_to' => 'To']" />
+        </div>
     </div>
 
     <x-card flush>

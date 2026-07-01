@@ -27,6 +27,12 @@
             <h2 class="font-semibold text-gray-800">Campaigns</h2>
             <x-btn :href="route('campaigns.create')" variant="primary" class="ml-auto">New campaign</x-btn>
         </div>
+        <div class="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+            <x-filter-bar search="Search campaigns…" :filters="[
+                'status' => ['all' => 'All Statuses', 'options' => ['draft' => 'Draft', 'scheduled' => 'Scheduled', 'sending' => 'Sending', 'paused' => 'Paused', 'completed' => 'Completed']],
+                'type'   => ['all' => 'All Types', 'options' => ['text' => 'Text', 'media' => 'Media', 'poll' => 'Poll', 'buttons' => 'Buttons', 'carousel' => 'Carousel']],
+            ]" :dates="['created_from' => 'Created from', 'created_to' => 'Created to']" />
+        </div>
 
         <div class="overflow-x-auto">
             <table class="w-full text-sm">

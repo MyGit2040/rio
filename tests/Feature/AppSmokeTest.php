@@ -941,6 +941,26 @@ class AppSmokeTest extends TestCase
         $this->assertTrue($user->fresh()->isSuperAdmin());
     }
 
+    public function test_table_filters_apply_and_render(): void
+    {
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        Template::create(['tenant_id' => $owner->tenant_id, 'name' => 'WelcomeMsg', 'type' => 'text', 'body' => 'hi']);
+        Template::create(['tenant_id' => $owner->tenant_id, 'name' => 'PollMsg', 'type' => 'poll', 'poll' => ['question' => 'Q', 'options' => ['a', 'b']]]);
+
+        $this->get('/templates?type=text')->assertOk()->assertSee('WelcomeMsg')->assertDontSee('PollMsg');
+        $this->get('/templates?q=Poll')->assertOk()->assertSee('PollMsg')->assertDontSee('WelcomeMsg');
+
+        // Filtered index pages render across modules.
+        foreach ([
+            '/campaigns?status=draft', '/groups?q=x', '/sequences?status=active',
+            '/users?role=owner', '/media?kind=image', '/suppressions?source=manual',
+            '/audit?created_from=2020-01-01', '/invoices?status=paid', '/chatbot?status=active',
+        ] as $url) {
+            $this->get($url)->assertOk();
+        }
+    }
+
     public function test_spam_score_rates_clean_vs_spammy(): void
     {
         $service = new SpamScoreService;

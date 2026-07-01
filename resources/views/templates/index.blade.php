@@ -6,6 +6,11 @@
             <h2 class="font-semibold text-gray-800">Message templates</h2>
             <x-btn :href="route('templates.create')" variant="primary" class="ml-auto">New template</x-btn>
         </div>
+        <div class="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+            <x-filter-bar search="Search templates…" :filters="[
+                'type' => ['all' => 'All Types', 'options' => ['text' => 'Text', 'media' => 'Media', 'poll' => 'Poll', 'buttons' => 'Buttons', 'carousel' => 'Carousel']],
+            ]" />
+        </div>
 
         <div class="overflow-x-auto">
             <table class="w-full text-sm">

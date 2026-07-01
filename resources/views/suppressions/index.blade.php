@@ -7,10 +7,11 @@
                 <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
                     <h2 class="font-semibold text-gray-800">Blocked numbers</h2>
                     <span class="text-sm text-gray-500">{{ $suppressions->total() }} total</span>
-                    <form method="GET" class="ml-auto">
-                        <input name="q" value="{{ request('q') }}" placeholder="Search number…"
-                               class="rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500">
-                    </form>
+                </div>
+                <div class="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+                    <x-filter-bar search="Search number…" :filters="[
+                        'source' => ['all' => 'All Sources', 'options' => ['manual' => 'Manual', 'opt_out' => 'Opt-out', 'import' => 'Import', 'bounce' => 'Bounce']],
+                    ]" :dates="['created_from' => 'Added from', 'created_to' => 'Added to']" />
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm">

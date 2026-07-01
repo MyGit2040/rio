@@ -6,6 +6,9 @@
             <h2 class="font-semibold text-gray-800">Contact groups</h2>
             <x-btn :href="route('groups.create')" variant="primary" class="ml-auto">New group</x-btn>
         </div>
+        <div class="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+            <x-filter-bar search="Search groups…" />
+        </div>
 
         <div class="overflow-x-auto">
             <table class="w-full text-sm">

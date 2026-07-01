@@ -12,9 +12,12 @@ use Illuminate\View\View;
 
 class GroupController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
-        $groups = ContactGroup::withCount('contacts')->orderBy('name')->get();
+        $groups = ContactGroup::withCount('contacts')
+            ->when($request->filled('q'), fn ($query) => $query->where('name', 'like', '%'.$request->input('q').'%'))
+            ->orderBy('name')
+            ->get();
 
         return view('groups.index', compact('groups'));
     }

@@ -6,6 +6,11 @@
             <h2 class="font-semibold text-gray-800">Orders &amp; invoices</h2>
             <p class="text-sm text-gray-500">Created automatically from WhatsApp shop checkouts.</p>
         </div>
+        <div class="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+            <x-filter-bar search="Search by number or phone…" :filters="[
+                'status' => ['all' => 'All Statuses', 'options' => ['pending' => 'Pending', 'paid' => 'Paid', 'cancelled' => 'Cancelled']],
+            ]" />
+        </div>
 
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
