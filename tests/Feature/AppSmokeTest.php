@@ -1468,9 +1468,11 @@ class AppSmokeTest extends TestCase
         // The bulk-select Alpine component must ship in the layout HTML (via git),
         // NOT depend on a rebuilt app.js — else the tick-boxes render but do nothing.
         $this->actingAs($this->makeUser());
+        Template::create(['name' => 'T', 'type' => 'text', 'body' => 'hi']); // a row so the ids array is non-empty
         $res = $this->get('/templates')->assertOk();
-        $res->assertSee("Alpine.data('bulkSelect'", false); // registered inline in the layout
-        $res->assertSee('x-data="bulkSelect(', false);      // the table actually uses it
+        $res->assertSee('window.bulkSelect = function', false);       // defined inline in the layout
+        $res->assertDontSee('bulkSelect(@js', false);                 // guards the "@js not compiled in x-card attr" bug
+        $res->assertSee('x-data="bulkSelect(JSON.parse(', false);     // the ids array COMPILED to real JS (Js::from)
     }
 
     public function test_bulk_delete_groups_and_suppressions(): void

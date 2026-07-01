@@ -3,7 +3,7 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div class="lg:col-span-2">
-            <x-card flush x-data="bulkSelect(@js($suppressions->pluck('id')->values()->all()))">
+            <x-card flush x-data="bulkSelect({{ \Illuminate\Support\Js::from($suppressions->pluck('id')->values()->all()) }})">
                 <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
                     <h2 class="font-semibold text-gray-800">Blocked numbers</h2>
                     <span class="text-sm text-gray-500">{{ $suppressions->total() }} total</span>

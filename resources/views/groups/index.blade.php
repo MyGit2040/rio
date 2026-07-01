@@ -1,7 +1,7 @@
 <x-app-layout>
     <x-slot name="header">Groups</x-slot>
 
-    <x-card flush x-data="bulkSelect(@js($groups->pluck('id')->values()->all()))">
+    <x-card flush x-data="bulkSelect({{ \Illuminate\Support\Js::from($groups->pluck('id')->values()->all()) }})">
         <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
             <h2 class="font-semibold text-gray-800">Contact groups</h2>
             <x-btn :href="route('groups.create')" variant="primary" class="ml-auto">New group</x-btn>

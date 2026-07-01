@@ -1,7 +1,7 @@
 <x-app-layout>
     <x-slot name="header">Drip sequences</x-slot>
 
-    <x-card flush x-data="bulkSelect(@js($sequences->pluck('id')->values()->all()))">
+    <x-card flush x-data="bulkSelect({{ \Illuminate\Support\Js::from($sequences->pluck('id')->values()->all()) }})">
         <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
             <h2 class="font-semibold text-gray-800">Follow-up sequences</h2>
             <x-btn :href="route('sequences.create')" variant="primary" class="ml-auto">New sequence</x-btn>

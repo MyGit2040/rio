@@ -15,7 +15,7 @@
         </div>
 
         <div class="lg:col-span-3">
-            <x-card flush x-data="bulkSelect(@js($assets->pluck('id')->values()->all()))">
+            <x-card flush x-data="bulkSelect({{ \Illuminate\Support\Js::from($assets->pluck('id')->values()->all()) }})">
                 <div class="px-5 py-4 border-b border-gray-100 flex items-center gap-3 flex-wrap">
                     <h2 class="font-semibold text-gray-800">Your files ({{ $assets->total() }})</h2>
                     @if ($assets->count())

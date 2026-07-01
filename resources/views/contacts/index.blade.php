@@ -1,7 +1,7 @@
 <x-app-layout>
     <x-slot name="header">Contacts</x-slot>
 
-    <x-card flush x-data="bulkSelect(@js($contacts->pluck('id')->values()->all()))">
+    <x-card flush x-data="bulkSelect({{ \Illuminate\Support\Js::from($contacts->pluck('id')->values()->all()) }})">
         <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-100 flex-wrap">
             <h2 class="font-semibold text-gray-800">All contacts</h2>
             <div class="ml-auto flex items-center gap-2 flex-wrap">

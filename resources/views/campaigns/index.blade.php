@@ -37,7 +37,7 @@
         @endforeach
     </div>
 
-    <x-card flush x-data="bulkSelect(@js($campaigns->pluck('id')->values()->all()))">
+    <x-card flush x-data="bulkSelect({{ \Illuminate\Support\Js::from($campaigns->pluck('id')->values()->all()) }})">
         <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
             <h2 class="font-semibold text-gray-800">Campaigns</h2>
             <x-btn :href="route('campaigns.create')" variant="primary" class="ml-auto">New campaign</x-btn>

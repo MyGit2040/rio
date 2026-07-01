@@ -1,7 +1,7 @@
 <x-app-layout>
     <x-slot name="header">Templates</x-slot>
 
-    <x-card flush x-data="bulkSelect(@js($templates->pluck('id')->values()->all()))">
+    <x-card flush x-data="bulkSelect({{ \Illuminate\Support\Js::from($templates->pluck('id')->values()->all()) }})">
         <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
             <h2 class="font-semibold text-gray-800">Message templates</h2>
             <x-btn :href="route('templates.create')" variant="primary" class="ml-auto">New template</x-btn>

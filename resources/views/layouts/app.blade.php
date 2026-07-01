@@ -34,25 +34,28 @@
         [x-cloak] { display: none !important; }
     </style>
 
-    {{-- Shared tick-box bulk-select for every list table. Registered inline (NOT in
-         app.js) so it ships with the layout via git — no `npm run build` required. --}}
+    {{-- Shared tick-box bulk-select for every list table. Defined here as a plain
+         global (NOT in app.js) so Alpine's x-data="bulkSelect([...])" resolves it
+         directly — ships with the layout via git, no `npm run build`, no event timing. --}}
     <script>
-        document.addEventListener('alpine:init', () => {
-            window.Alpine.data('bulkSelect', (pageIds = []) => ({
+        window.bulkSelect = function (pageIds) {
+            pageIds = pageIds || [];
+            return {
                 selected: [],
                 groupId: '',
-                pageIds,
+                pageIds: pageIds,
                 allChecked() { return this.pageIds.length > 0 && this.pageIds.every((id) => this.selected.includes(id)); },
-                toggleAll(checked) { this.selected = checked ? [...this.pageIds] : []; },
+                toggleAll(checked) { this.selected = checked ? this.pageIds.slice() : []; },
                 clear() { this.selected = []; },
-                run(action, opts = {}) {
+                run(action, opts) {
+                    opts = opts || {};
                     if (opts.needGroup && ! this.groupId) { alert('Pick a group first.'); return; }
                     if (opts.confirm && ! confirm(opts.confirm.replace('%d', this.selected.length))) return;
                     this.$refs.bulkAction.value = action;
                     this.$refs.bulkForm.submit();
                 },
-            }));
-        });
+            };
+        };
     </script>
 </head>
 <body class="font-sans antialiased bg-slate-50 text-gray-800">
