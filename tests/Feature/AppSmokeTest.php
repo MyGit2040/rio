@@ -1182,6 +1182,66 @@ class AppSmokeTest extends TestCase
         \Illuminate\Support\Facades\Storage::disk('public')->assertExists($path);
     }
 
+    public function test_bulk_send_fails_over_to_a_connected_device(): void
+    {
+        config(['evolution.base_url' => 'http://localhost:8080', 'evolution.api_key' => 'k']);
+        Http::fake(['*' => Http::response(['key' => ['id' => 'X']], 201)]);
+
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+
+        $down = WhatsappInstance::create(['name' => 'A', 'instance_name' => 'inst-down', 'status' => 'close']);
+        $up   = WhatsappInstance::create(['name' => 'B', 'instance_name' => 'inst-up', 'status' => 'open']);
+        $contact = Contact::create(['name' => 'C', 'phone' => '971500000050']);
+
+        $campaign = Campaign::create([
+            'whatsapp_instance_id' => $down->id, 'device_ids' => [$down->id, $up->id],
+            'name' => 'FO', 'type' => 'text', 'body' => 'hi', 'status' => 'sending', 'total' => 1,
+        ]);
+        $recipient = $campaign->recipients()->create([
+            'contact_id' => $contact->id, 'phone' => $contact->phone,
+            'whatsapp_instance_id' => $down->id, 'status' => 'pending',
+        ]);
+
+        (new SendCampaignMessage($recipient->id))->handle();
+
+        // Sent from the CONNECTED number, and the contact re-stuck to it.
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/message/sendText/inst-up'));
+        $this->assertSame('sent', $recipient->fresh()->status);
+        $this->assertSame($up->id, $recipient->fresh()->whatsapp_instance_id);
+    }
+
+    public function test_device_failover_can_be_turned_off(): void
+    {
+        config(['evolution.base_url' => 'http://localhost:8080', 'evolution.api_key' => 'k']);
+        Http::fake(['*' => Http::response(['key' => ['id' => 'X']], 201)]);
+
+        $owner = $this->makeUser();
+        $owner->tenant->update(['settings' => ['bulk_device_failover' => false]]);
+        $this->actingAs($owner);
+
+        $down = WhatsappInstance::create(['name' => 'A', 'instance_name' => 'off-down', 'status' => 'close']);
+        $up   = WhatsappInstance::create(['name' => 'B', 'instance_name' => 'off-up', 'status' => 'open']);
+        $contact = Contact::create(['name' => 'C', 'phone' => '971500000051']);
+
+        // A connected fallback IS in the pool — but failover is off, so it must NOT be used.
+        $campaign = Campaign::create([
+            'whatsapp_instance_id' => $down->id, 'device_ids' => [$down->id, $up->id],
+            'name' => 'FOoff', 'type' => 'text', 'body' => 'hi', 'status' => 'sending', 'total' => 1,
+        ]);
+        $recipient = $campaign->recipients()->create([
+            'contact_id' => $contact->id, 'phone' => $contact->phone,
+            'whatsapp_instance_id' => $down->id, 'status' => 'pending',
+        ]);
+
+        (new SendCampaignMessage($recipient->id))->handle();
+
+        // No failover — nothing sent, recipient stays pending (circuit breaker).
+        Http::assertNothingSent();
+        $this->assertSame('pending', $recipient->fresh()->status);
+        $this->assertSame($down->id, $recipient->fresh()->whatsapp_instance_id);
+    }
+
     public function test_monthly_message_cap_blocks_single_send(): void
     {
         // F1: over the monthly cap, a new single send is blocked before the gateway.

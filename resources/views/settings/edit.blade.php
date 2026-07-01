@@ -180,6 +180,15 @@
                     </span>
                 </label>
 
+                <label class="flex items-start gap-3">
+                    <input type="hidden" name="bulk_device_failover" value="0">
+                    <input type="checkbox" name="bulk_device_failover" value="1" @checked(data_get($s, 'bulk_device_failover', true)) class="mt-1 rounded border-gray-300 text-brand focus:ring-brand">
+                    <span>
+                        <span class="text-sm font-medium text-gray-800">Auto device failover</span>
+                        <span class="block text-xs text-gray-500">Each contact normally stays on the same WhatsApp number (sticky). If that number is disconnected mid-campaign, automatically send from another <strong>connected</strong> number in the campaign instead — so no batch is missed. Off = wait for the original number to reconnect.</span>
+                    </span>
+                </label>
+
                 <div>
                     <x-input-label for="bulk_hook_number" value="Hook number — forward replies to" />
                     <x-text-input id="bulk_hook_number" name="bulk_hook_number" class="block mt-1 w-full" placeholder="971501234567" :value="old('bulk_hook_number', data_get($s, 'bulk_hook_number'))" />

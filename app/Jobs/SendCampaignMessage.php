@@ -49,11 +49,14 @@ class SendCampaignMessage implements ShouldQueue
 
     private function send(CampaignRecipient $recipient, Campaign $campaign): void
     {
-        // The device sticky-assigned to this contact (falls back to the campaign's primary).
-        $instance = $recipient->instance ?: $campaign->instance;
+        // The sticky-assigned device — or, if it's disconnected, another connected
+        // device from this campaign's pool (automatic failover; see resolveSendingDevice).
+        $instance = $this->resolveSendingDevice($recipient, $campaign);
 
-        if (! $instance || ! $instance->isConnected()) {
-            $this->tripCircuitBreaker($campaign, $instance?->name);
+        if (! $instance) {
+            // Nothing in this campaign's pool is connected — pause (circuit breaker);
+            // recipients stay pending and resume when a device reconnects.
+            $this->tripCircuitBreaker($campaign, ($recipient->instance ?: $campaign->instance)?->name);
 
             return;
         }
@@ -170,6 +173,42 @@ class SendCampaignMessage implements ShouldQueue
         }
 
         $this->finaliseIfDone($campaign);
+    }
+
+    /**
+     * The device that should send this message: the sticky-assigned one if it's
+     * connected; otherwise (failover on — default) another connected device from the
+     * campaign's pool, and the contact is re-stuck to it so its next message uses it
+     * too. Returns null when no device in the pool is connected.
+     */
+    private function resolveSendingDevice(CampaignRecipient $recipient, Campaign $campaign): ?WhatsappInstance
+    {
+        $sticky = $recipient->instance ?: $campaign->instance;
+
+        if ($sticky && $sticky->isConnected()) {
+            return $sticky;
+        }
+
+        // Automatic failover to another available number (a workspace can turn it off).
+        if (! (bool) data_get($campaign->tenant?->settings, 'bulk_device_failover', true)) {
+            return null;
+        }
+
+        $poolIds = $campaign->device_ids ?: array_filter([$campaign->whatsapp_instance_id]);
+
+        $fallback = WhatsappInstance::whereIn('id', $poolIds)
+            ->where('status', 'open')
+            ->when($sticky, fn ($q) => $q->where('id', '!=', $sticky->id))
+            ->first();
+
+        if ($fallback) {
+            // Re-stick this contact to the working number so its next message uses it too.
+            $recipient->update(['whatsapp_instance_id' => $fallback->id]);
+
+            return $fallback;
+        }
+
+        return null;
     }
 
     private function markFailed(CampaignRecipient $recipient, Campaign $campaign, string $error): void

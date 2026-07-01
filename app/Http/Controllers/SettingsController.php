@@ -44,6 +44,7 @@ class SettingsController extends Controller
             'bulk_hook_number'   => ['nullable', 'string', 'max:32'],
             'bulk_spintax'       => ['sometimes', 'boolean'],
             'allow_non_verified' => ['sometimes', 'boolean'],
+            'bulk_device_failover' => ['sometimes', 'boolean'],
             // Quiet hours (compliant courtesy — delays sends, never alters content).
             'quiet_hours_enabled' => ['sometimes', 'boolean'],
             'quiet_start'         => ['nullable', 'date_format:H:i'],
@@ -78,6 +79,7 @@ class SettingsController extends Controller
         $settings['bulk_hook_number']   = preg_replace('/\D+/', '', (string) ($data['bulk_hook_number'] ?? '')) ?: null;
         $settings['bulk_spintax']       = $request->boolean('bulk_spintax');
         $settings['allow_non_verified'] = $request->boolean('allow_non_verified');
+        $settings['bulk_device_failover'] = $request->boolean('bulk_device_failover');
 
         // Quiet hours.
         $settings['quiet_hours_enabled'] = $request->boolean('quiet_hours_enabled');
