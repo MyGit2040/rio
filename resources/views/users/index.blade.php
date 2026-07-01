@@ -1,6 +1,8 @@
 <x-app-layout>
     <x-slot name="header">Team</x-slot>
 
+    <a href="{{ route('settings.edit') }}" class="text-sm text-gray-500 hover:text-gray-700 inline-block mb-4">&larr; Settings</a>
+
     <x-card flush>
         <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
             <div>

@@ -1,6 +1,8 @@
 <x-app-layout>
     <x-slot name="header">Security</x-slot>
 
+    <a href="{{ route('settings.edit') }}" class="text-sm text-gray-500 hover:text-gray-700 inline-block mb-4">&larr; Settings</a>
+
     <div class="max-w-2xl space-y-6">
         <x-card title="Two-factor authentication" subtitle="Add a second step at login for extra protection.">
             @if ($user->two_factor_enabled)

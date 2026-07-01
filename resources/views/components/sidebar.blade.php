@@ -27,11 +27,6 @@
         <x-nav-item :active="request()->routeIs('contacts.index') && request('status') === 'opted_out'" href="{{ route('contacts.index', ['status' => 'opted_out']) }}" icon="optout">Opt-out management</x-nav-item>
 
         <div class="pt-3 mt-3 border-t border-gray-100"></div>
-        @if (auth()->user()->isOwner())
-            <x-nav-item :active="request()->routeIs('users.*')" href="{{ route('users.index') }}" icon="users">Team</x-nav-item>
-            <x-nav-item :active="request()->routeIs('api-tokens.*')" href="{{ route('api-tokens.index') }}" icon="device">API</x-nav-item>
-            <x-nav-item :active="request()->routeIs('backup.*')" href="{{ route('backup.index') }}" icon="doc">Backup</x-nav-item>
-        @endif
-        <x-nav-item :active="request()->routeIs('settings.*')" href="{{ route('settings.edit') }}" icon="cog">Settings</x-nav-item>
+        <x-nav-item :active="request()->routeIs('settings.*') || request()->routeIs('users.*') || request()->routeIs('api-tokens.*') || request()->routeIs('backup.*') || request()->routeIs('security.*')" href="{{ route('settings.edit') }}" icon="cog">Settings</x-nav-item>
     </nav>
 </aside>

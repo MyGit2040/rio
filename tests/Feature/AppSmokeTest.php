@@ -466,6 +466,20 @@ class AppSmokeTest extends TestCase
             ->assertJson(['variants' => ['Hi there', 'Hello friend', 'Hey you']]);
     }
 
+    public function test_ai_variants_via_claude_provider(): void
+    {
+        Http::fake(['api.anthropic.com/*' => Http::response(['content' => [['text' => '["A","B"]']]], 200)]);
+
+        $owner = $this->makeUser();
+        $owner->tenant->update(['settings' => ['ai_provider' => 'claude', 'ai_claude_key' => 'sk-ant-x']]);
+        $this->actingAs($owner);
+
+        $this->postJson('/templates/variants', ['message' => 'Hi', 'count' => 2])
+            ->assertOk()->assertJson(['variants' => ['A', 'B']]);
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'api.anthropic.com') && $r->hasHeader('x-api-key', 'sk-ant-x'));
+    }
+
     public function test_buttons_template_can_be_created(): void
     {
         $user = $this->makeUser();

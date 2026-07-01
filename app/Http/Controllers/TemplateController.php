@@ -4,11 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\TemplateRequest;
 use App\Models\Template;
+use App\Services\AiService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 
 class TemplateController extends Controller
@@ -61,33 +60,21 @@ class TemplateController extends Controller
             'count'   => ['required', 'integer', 'min:1', 'max:20'],
         ]);
 
-        $key = config('services.openai.key');
-        if (! $key) {
-            return response()->json(['error' => 'AI is not configured. Add OPENAI_API_KEY to enable one-click variants.'], 422);
+        $ai = AiService::forTenant(auth()->user()->tenant);
+        if (! $ai->configured()) {
+            return response()->json(['error' => 'Add an AI key (ChatGPT, Gemini or Claude) in Settings to use one-click variants.'], 422);
         }
 
-        try {
-            $response = Http::withToken($key)->timeout(45)->post('https://api.openai.com/v1/chat/completions', [
-                'model'       => config('services.openai.model', 'gpt-4o-mini'),
-                'temperature' => 0.9,
-                'messages'    => [
-                    ['role' => 'system', 'content' => 'You rewrite a marketing WhatsApp message into distinct variations with the same meaning and tone but different wording. Keep any {{name}}, {{phone}} or {{date}} placeholders intact. Return ONLY a JSON array of strings.'],
-                    ['role' => 'user', 'content' => "Create {$data['count']} variations of this message:\n\n{$data['message']}"],
-                ],
-            ]);
+        $content = $ai->generate(
+            'You rewrite a marketing WhatsApp message into distinct variations with the same meaning and tone but different wording. Keep any {{name}}, {{phone}} or {{date}} placeholders intact. Return ONLY a JSON array of strings.',
+            "Create {$data['count']} variations of this message:\n\n{$data['message']}",
+        );
 
-            if (! $response->successful()) {
-                return response()->json(['error' => 'The AI request failed. Try again.'], 422);
-            }
-
-            $variants = $this->parseVariants((string) data_get($response->json(), 'choices.0.message.content', ''), $data['count']);
-
-            return response()->json(['variants' => $variants]);
-        } catch (\Throwable $e) {
-            Log::error('AI variant generation failed', ['error' => $e->getMessage()]);
-
-            return response()->json(['error' => 'Could not generate variants.'], 422);
+        if (! $content) {
+            return response()->json(['error' => 'The AI request failed. Check your key in Settings and try again.'], 422);
         }
+
+        return response()->json(['variants' => $this->parseVariants($content, $data['count'])]);
     }
 
     /**

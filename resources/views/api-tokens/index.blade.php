@@ -1,6 +1,8 @@
 <x-app-layout>
     <x-slot name="header">REST API</x-slot>
 
+    <a href="{{ route('settings.edit') }}" class="text-sm text-gray-500 hover:text-gray-700 inline-block mb-4">&larr; Settings</a>
+
     <div class="max-w-3xl space-y-6">
         @if (session('plain_token'))
             <div class="rounded-xl bg-green-50 border border-green-200 p-4">

@@ -45,6 +45,10 @@ class SettingsController extends Controller
             'smtp_pass'          => ['nullable', 'string', 'max:255'],
             'smtp_from'          => ['nullable', 'email', 'max:255'],
             'smtp_encryption'    => ['nullable', 'in:tls,ssl,none'],
+            'ai_provider'        => ['nullable', 'in:openai,gemini,claude'],
+            'ai_openai_key'      => ['nullable', 'string', 'max:255'],
+            'ai_gemini_key'      => ['nullable', 'string', 'max:255'],
+            'ai_claude_key'      => ['nullable', 'string', 'max:255'],
         ]);
 
         $tenant = auth()->user()->tenant;
@@ -71,6 +75,14 @@ class SettingsController extends Controller
         $settings['smtp_encryption'] = $data['smtp_encryption'] ?? 'tls';
         if (! empty($data['smtp_pass'])) {
             $settings['smtp_pass'] = $data['smtp_pass'];
+        }
+
+        // AI provider + keys (keep an existing key if its field is left blank).
+        $settings['ai_provider'] = $data['ai_provider'] ?? ($settings['ai_provider'] ?? 'openai');
+        foreach (['ai_openai_key', 'ai_gemini_key', 'ai_claude_key'] as $k) {
+            if (! empty($data[$k])) {
+                $settings[$k] = $data[$k];
+            }
         }
 
         if ($request->hasFile('logo')) {

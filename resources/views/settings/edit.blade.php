@@ -158,6 +158,35 @@
             </div>
         </x-card>
 
+        {{-- AI content generation --}}
+        <x-card title="AI content generation" subtitle="Your own key for ChatGPT, Gemini or Claude — powers the ✨ Generate variants button in templates.">
+            <div class="space-y-4">
+                <div>
+                    <x-input-label for="ai_provider" value="Which AI to use" />
+                    <select id="ai_provider" name="ai_provider" class="mt-1 block w-full rounded-lg border-gray-300 text-sm focus:ring-brand focus:border-brand">
+                        @foreach (['openai' => 'ChatGPT (OpenAI)', 'gemini' => 'Google Gemini', 'claude' => 'Anthropic Claude'] as $v => $l)
+                            <option value="{{ $v }}" @selected(data_get($s, 'ai_provider', 'openai') === $v)>{{ $l }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <x-input-label for="ai_openai_key" value="ChatGPT key" />
+                        <x-text-input id="ai_openai_key" name="ai_openai_key" type="password" class="block mt-1 w-full" autocomplete="off" placeholder="{{ data_get($s, 'ai_openai_key') ? '•••• saved' : 'sk-…' }}" />
+                    </div>
+                    <div>
+                        <x-input-label for="ai_gemini_key" value="Gemini key" />
+                        <x-text-input id="ai_gemini_key" name="ai_gemini_key" type="password" class="block mt-1 w-full" autocomplete="off" placeholder="{{ data_get($s, 'ai_gemini_key') ? '•••• saved' : 'AIza…' }}" />
+                    </div>
+                    <div>
+                        <x-input-label for="ai_claude_key" value="Claude key" />
+                        <x-text-input id="ai_claude_key" name="ai_claude_key" type="password" class="block mt-1 w-full" autocomplete="off" placeholder="{{ data_get($s, 'ai_claude_key') ? '•••• saved' : 'sk-ant-…' }}" />
+                    </div>
+                </div>
+                <p class="text-xs text-gray-500">Only the selected provider's key is used. Leave a field blank to keep its saved key.</p>
+            </div>
+        </x-card>
+
         <x-btn type="submit" variant="primary">Save settings</x-btn>
     </form>
 
@@ -171,4 +200,24 @@
             </dl>
         </x-card>
     </div>
+
+    @if (auth()->user()->isOwner())
+        <div class="max-w-2xl mt-6">
+            <x-card title="Workspace admin" subtitle="Team, API and backups live here — kept out of the main menu.">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    @foreach ([
+                        ['Team members', route('users.index')],
+                        ['REST API tokens', route('api-tokens.index')],
+                        ['Backup & restore', route('backup.index')],
+                        ['Two-factor (2FA)', route('security.edit')],
+                    ] as [$label, $href])
+                        <a href="{{ $href }}" class="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50">
+                            <span class="font-medium text-gray-800">{{ $label }}</span>
+                            <span class="ml-auto text-brand">→</span>
+                        </a>
+                    @endforeach
+                </div>
+            </x-card>
+        </div>
+    @endif
 </x-app-layout>

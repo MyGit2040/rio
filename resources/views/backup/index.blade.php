@@ -1,6 +1,8 @@
 <x-app-layout>
     <x-slot name="header">Backup &amp; Restore</x-slot>
 
+    <a href="{{ route('settings.edit') }}" class="text-sm text-gray-500 hover:text-gray-700 inline-block mb-4">&larr; Settings</a>
+
     <div class="max-w-2xl space-y-6">
         <x-card title="Create backup" subtitle="Download your workspace data as an unencrypted ZIP.">
             <p class="text-sm text-gray-600 mb-4">Includes your contacts, groups, templates and chatbot rules. WhatsApp sessions are not included (they live on the engine).</p>
