@@ -674,6 +674,40 @@ class AppSmokeTest extends TestCase
         $this->assertDatabaseHas('contacts', ['phone' => '971588902749', 'name' => 'Existing']); // not overwritten
     }
 
+    public function test_group_verify_progress_and_delete_invalid(): void
+    {
+        Queue::fake();
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        $group = ContactGroup::create(['name' => 'V']);
+        $valid = Contact::create(['tenant_id' => $owner->tenant_id, 'phone' => '971500000001', 'wa_status' => 'valid']);
+        $bad1  = Contact::create(['tenant_id' => $owner->tenant_id, 'phone' => '971500000002', 'wa_status' => 'invalid']);
+        $bad2  = Contact::create(['tenant_id' => $owner->tenant_id, 'phone' => '971500000003', 'wa_status' => 'invalid']);
+        $group->contacts()->attach([$valid->id, $bad1->id, $bad2->id]);
+
+        $this->getJson("/groups/{$group->id}/progress")
+            ->assertOk()->assertJson(['total' => 3, 'valid' => 1, 'invalid' => 2, 'unverified' => 0, 'verified' => 3, 'percent' => 100, 'done' => true]);
+
+        $this->deleteJson("/groups/{$group->id}/invalid")->assertOk()->assertJson(['deleted' => 2]);
+        $this->assertDatabaseMissing('contacts', ['id' => $bad1->id]);
+        $this->assertSame(1, $group->contacts()->count());
+    }
+
+    public function test_group_reverify_resets_not_found(): void
+    {
+        Queue::fake();
+        $owner = $this->makeUser();
+        $this->actingAs($owner);
+        WhatsappInstance::create(['tenant_id' => $owner->tenant_id, 'name' => 'L', 'instance_name' => 'rv-dev', 'status' => 'open']);
+        $group = ContactGroup::create(['name' => 'R']);
+        $bad = Contact::create(['tenant_id' => $owner->tenant_id, 'phone' => '971500000009', 'wa_status' => 'invalid']);
+        $group->contacts()->attach($bad->id);
+
+        $this->postJson("/groups/{$group->id}/reverify")->assertOk()->assertJson(['ok' => true]);
+        $this->assertSame('unverified', $bad->fresh()->wa_status);
+        Queue::assertPushed(\App\Jobs\VerifyContactsBatch::class);
+    }
+
     public function test_clone_template(): void
     {
         $owner = $this->makeUser();

@@ -5,9 +5,8 @@ namespace App\Services;
 use App\Models\ChatbotRule;
 use App\Models\Contact;
 use App\Models\Message;
+use App\Models\Tenant;
 use App\Models\WhatsappInstance;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 
 class ChatbotService
 {
@@ -31,7 +30,7 @@ class ChatbotService
         }
 
         $reply = $rule->use_ai
-            ? $this->aiReply($text, $rule)
+            ? $this->aiReply($text, $rule, $instance->tenant)
             : $rule->reply;
 
         if (! $reply) {
@@ -54,42 +53,19 @@ class ChatbotService
     }
 
     /**
-     * Generate a reply with OpenAI. Falls back to the rule's static reply if AI is unavailable.
+     * Generate a reply using the WORKSPACE's own AI key (Settings → AI). Falls back
+     * to the platform key, then to the rule's static reply if AI is unavailable.
      */
-    private function aiReply(string $text, ChatbotRule $rule): ?string
+    private function aiReply(string $text, ChatbotRule $rule, ?Tenant $tenant): ?string
     {
-        $key = config('services.openai.key');
+        $ai = AiService::forTenant($tenant);
 
-        if (! $key) {
+        if (! $ai->configured()) {
             return $rule->reply;
         }
 
-        try {
-            $response = Http::withToken($key)
-                ->timeout(30)
-                ->post('https://api.openai.com/v1/chat/completions', [
-                    'model' => config('services.openai.model', 'gpt-4o-mini'),
-                    'messages' => [
-                        [
-                            'role' => 'system',
-                            'content' => $rule->reply
-                                ?: 'You are a helpful WhatsApp assistant. Reply concisely and politely.',
-                        ],
-                        ['role' => 'user', 'content' => $text],
-                    ],
-                    'max_tokens' => 300,
-                ]);
+        $system = $rule->reply ?: 'You are a helpful WhatsApp assistant. Reply concisely and politely.';
 
-            if ($response->successful()) {
-                return trim((string) data_get($response->json(), 'choices.0.message.content'))
-                    ?: $rule->reply;
-            }
-
-            Log::warning('OpenAI reply failed', ['status' => $response->status()]);
-        } catch (\Throwable $e) {
-            Log::error('OpenAI request error', ['error' => $e->getMessage()]);
-        }
-
-        return $rule->reply;
+        return $ai->generate($system, $text) ?: $rule->reply;
     }
 }

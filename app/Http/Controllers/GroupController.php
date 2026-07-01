@@ -7,6 +7,7 @@ use App\Models\Contact;
 use App\Models\ContactGroup;
 use App\Models\WhatsappInstance;
 use App\Support\ContactCsv;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -40,13 +41,36 @@ class GroupController extends Controller
     {
         $contacts = $group->contacts()->orderBy('name')->paginate(30);
 
-        $counts = [
-            'total'      => $group->contacts()->count(),
-            'valid'      => $group->contacts()->where('wa_status', 'valid')->count(),
-            'unverified' => $group->contacts()->where('wa_status', 'unverified')->count(),
-        ];
+        return view('groups.show', ['group' => $group, 'contacts' => $contacts, 'counts' => $this->counts($group)]);
+    }
 
-        return view('groups.show', compact('group', 'contacts', 'counts'));
+    /**
+     * Live verification counts for the progress bar.
+     */
+    public function progress(ContactGroup $group): JsonResponse
+    {
+        return response()->json($this->counts($group));
+    }
+
+    /**
+     * @return array<string, int|bool>
+     */
+    private function counts(ContactGroup $group): array
+    {
+        $total   = $group->contacts()->count();
+        $valid   = $group->contacts()->where('wa_status', 'valid')->count();
+        $invalid = $group->contacts()->where('wa_status', 'invalid')->count();
+        $unverified = max(0, $total - $valid - $invalid);
+
+        return [
+            'total'      => $total,
+            'valid'      => $valid,
+            'invalid'    => $invalid,
+            'unverified' => $unverified,
+            'verified'   => $valid + $invalid,
+            'percent'    => $total > 0 ? (int) round(($valid + $invalid) / $total * 100) : 0,
+            'done'       => $unverified === 0,
+        ];
     }
 
     public function import(Request $request, ContactGroup $group): RedirectResponse
@@ -98,15 +122,44 @@ class GroupController extends Controller
         };
     }
 
-    public function verify(ContactGroup $group): RedirectResponse
+    public function verify(Request $request, ContactGroup $group): RedirectResponse|JsonResponse
     {
         if (! WhatsappInstance::where('status', 'open')->exists()) {
-            return back()->with('error', 'Connect a WhatsApp device first — verification runs through a linked number.');
+            $msg = 'Connect a WhatsApp device first — verification runs through a linked number.';
+
+            return $request->wantsJson() ? response()->json(['ok' => false, 'message' => $msg], 422) : back()->with('error', $msg);
         }
 
         VerifyContactsBatch::dispatch($group->id);
 
-        return back()->with('success', 'Verifying WhatsApp numbers in the background, gently in small batches. Refresh in a moment to watch progress.');
+        return $request->wantsJson()
+            ? response()->json(['ok' => true])
+            : back()->with('success', 'Verifying WhatsApp numbers in the background, gently in small batches.');
+    }
+
+    /**
+     * Reset the "not found" numbers to unverified and check them again.
+     */
+    public function reverify(Request $request, ContactGroup $group): RedirectResponse|JsonResponse
+    {
+        $ids = $group->contacts()->where('wa_status', 'invalid')->pluck('contacts.id');
+        Contact::whereIn('id', $ids)->update(['wa_status' => 'unverified', 'verified_at' => null]);
+
+        return $this->verify($request, $group);
+    }
+
+    /**
+     * One-click delete of every number confirmed NOT on WhatsApp.
+     */
+    public function deleteInvalid(Request $request, ContactGroup $group): RedirectResponse|JsonResponse
+    {
+        $ids = $group->contacts()->where('wa_status', 'invalid')->pluck('contacts.id');
+        $count = $ids->count();
+        Contact::whereIn('id', $ids)->delete();
+
+        $msg = "Deleted {$count} not-on-WhatsApp number(s).";
+
+        return $request->wantsJson() ? response()->json(['ok' => true, 'deleted' => $count]) : back()->with('success', $msg);
     }
 
     public function edit(ContactGroup $group): View

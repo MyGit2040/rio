@@ -86,7 +86,7 @@
                         <input type="checkbox" name="ai_enabled" value="1" @checked($aiEnabled) class="rounded border-gray-300 text-brand focus:ring-brand">
                         <span class="text-sm text-gray-700">Enable AI chatbot replies</span>
                     </label>
-                    <p class="text-xs text-gray-500 mt-1">Requires <code>OPENAI_API_KEY</code> in the server's <code>.env</code>.</p>
+                    <p class="text-xs text-gray-500 mt-1">Uses <strong>your own AI key</strong> — set it in the <button type="button" @click="tab = 'ai'; location.hash = 'ai'" class="text-brand underline">AI content</button> section.</p>
                 </div>
             </div>
         </x-card>

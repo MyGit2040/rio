@@ -95,6 +95,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/groups/{group}', [GroupController::class, 'show'])->name('groups.show');
     Route::post('/groups/{group}/import', [GroupController::class, 'import'])->name('groups.import');
     Route::post('/groups/{group}/verify', [GroupController::class, 'verify'])->name('groups.verify');
+    Route::get('/groups/{group}/progress', [GroupController::class, 'progress'])->name('groups.progress');
+    Route::post('/groups/{group}/reverify', [GroupController::class, 'reverify'])->name('groups.reverify');
+    Route::delete('/groups/{group}/invalid', [GroupController::class, 'deleteInvalid'])->name('groups.delete-invalid');
 
     // Contact profile / timeline
     Route::get('/contacts/{contact}', [ContactController::class, 'show'])->name('contacts.show');
