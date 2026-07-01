@@ -33,6 +33,27 @@
         .banner-brand { background-image: linear-gradient(110deg, var(--brand), #4338ca 85%); }
         [x-cloak] { display: none !important; }
     </style>
+
+    {{-- Shared tick-box bulk-select for every list table. Registered inline (NOT in
+         app.js) so it ships with the layout via git — no `npm run build` required. --}}
+    <script>
+        document.addEventListener('alpine:init', () => {
+            window.Alpine.data('bulkSelect', (pageIds = []) => ({
+                selected: [],
+                groupId: '',
+                pageIds,
+                allChecked() { return this.pageIds.length > 0 && this.pageIds.every((id) => this.selected.includes(id)); },
+                toggleAll(checked) { this.selected = checked ? [...this.pageIds] : []; },
+                clear() { this.selected = []; },
+                run(action, opts = {}) {
+                    if (opts.needGroup && ! this.groupId) { alert('Pick a group first.'); return; }
+                    if (opts.confirm && ! confirm(opts.confirm.replace('%d', this.selected.length))) return;
+                    this.$refs.bulkAction.value = action;
+                    this.$refs.bulkForm.submit();
+                },
+            }));
+        });
+    </script>
 </head>
 <body class="font-sans antialiased bg-slate-50 text-gray-800">
 <div x-data="{ sidebarOpen: false }" class="min-h-screen lg:flex">

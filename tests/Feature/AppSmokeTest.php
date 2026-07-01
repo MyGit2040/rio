@@ -1463,6 +1463,16 @@ class AppSmokeTest extends TestCase
         $this->get('/contacts')->assertOk()->assertSee(route('help.show', 'contacts'), false);
     }
 
+    public function test_bulk_select_script_ships_in_the_layout(): void
+    {
+        // The bulk-select Alpine component must ship in the layout HTML (via git),
+        // NOT depend on a rebuilt app.js — else the tick-boxes render but do nothing.
+        $this->actingAs($this->makeUser());
+        $res = $this->get('/templates')->assertOk();
+        $res->assertSee("Alpine.data('bulkSelect'", false); // registered inline in the layout
+        $res->assertSee('x-data="bulkSelect(', false);      // the table actually uses it
+    }
+
     public function test_bulk_delete_groups_and_suppressions(): void
     {
         $this->actingAs($this->makeUser());
