@@ -255,7 +255,7 @@
                      style="background-image:url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2240%22 height=%2240%22><circle cx=%221%22 cy=%221%22 r=%221%22 fill=%22%23000%22 opacity=%220.03%22/></svg>')">
                     {{-- text / caption bubble (also shows for a poll's accompanying message) --}}
                     <div class="ml-auto max-w-[85%] bg-[#dcf8c6] rounded-lg rounded-tr-none px-3 py-2 shadow-sm"
-                         x-show="type !== 'carousel' && (type !== 'poll' || body.trim() || pollMediaUrl)">
+                         x-show="type !== 'carousel' && (type !== 'poll' || body.trim() || footer.trim() || pollMediaUrl)">
                         {{-- media preview: image / video / audio / document --}}
                         <template x-if="hasMedia() && mediaKind() === 'image'">
                             <img :src="mediaSrc()" class="mb-2 rounded w-full max-h-40 object-cover" x-on:error="$el.style.display='none'">
@@ -460,6 +460,9 @@
             // Resolve spintax (pick first choice) + merge tags for a readable preview.
             rendered() {
                 let t = this.body || '';
+                // Footer is appended to the message (same as when it sends).
+                const footer = (this.footer || '').trim();
+                if (footer) t = (t.replace(/\s+$/, '') ? t.replace(/\s+$/, '') + '\n\n' : '') + footer;
                 t = t.replace(/\{([^{}]*)\}/g, (m, g) => g.split('|')[0]);
                 const today = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
                 t = t.replace(/\{\{\s*name\s*\}\}/gi, 'Aisha')
