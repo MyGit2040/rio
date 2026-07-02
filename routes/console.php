@@ -13,3 +13,15 @@ Schedule::command('campaigns:dispatch-due')->everyMinute()->withoutOverlapping()
 
 // Send due drip-sequence steps every minute.
 Schedule::command('sequences:dispatch')->everyMinute()->withoutOverlapping();
+
+// Drain the queued messages. Campaign sends are pushed to the (database) queue and
+// need a worker to actually deliver them — without this the campaign sits on
+// "sending" forever. Driving the worker from the scheduler means a single cron
+// (`schedule:run`) runs everything on shared hosting. --max-time keeps each run
+// under a minute; --stop-when-empty exits once the queue drains; withoutOverlapping
+// stops two workers stacking; runInBackground lets the other scheduled commands fire
+// without waiting for the worker to finish.
+Schedule::command('queue:work --max-time=55 --sleep=1 --tries=2 --stop-when-empty')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
