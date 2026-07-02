@@ -8,12 +8,14 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Heartbeat: stamp a file every minute so the Settings > Health tab can tell
-// whether the scheduler cron is actually running. If this stops updating, the
-// cron is down and campaigns will silently stop sending.
+// Heartbeat: stamp the DB cache (+ a file) every minute so the Settings > Health
+// tab can tell whether the scheduler cron is actually running. If this stops
+// updating, the cron is down and campaigns will silently stop sending.
+// No withoutOverlapping(): its cache lock could suppress the stamp and cause a
+// false "never run".
 Schedule::call(function () {
-    @file_put_contents(\App\Support\CronHealth::heartbeatFile(), now()->toIso8601String());
-})->everyMinute()->name('scheduler-heartbeat')->withoutOverlapping();
+    \App\Support\CronHealth::stampHeartbeat();
+})->everyMinute()->name('scheduler-heartbeat');
 
 // Launch scheduled campaigns every minute.
 Schedule::command('campaigns:dispatch-due')->everyMinute()->withoutOverlapping();

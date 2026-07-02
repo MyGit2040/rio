@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -16,15 +17,48 @@ use Throwable;
  */
 class CronHealth
 {
-    /** Heartbeat file the scheduler stamps every minute (see routes/console.php). */
+    /** Cache key the scheduler stamps every minute (primary heartbeat). */
+    private const HEARTBEAT_KEY = 'scheduler_last_run';
+
+    /** Heartbeat file — a secondary/fallback stamp (see routes/console.php). */
     public static function heartbeatFile(): string
     {
         return storage_path('framework/scheduler-heartbeat');
     }
 
+    /**
+     * Record that the scheduler just ran. Writes to the DB-backed cache FIRST
+     * (the DB is always writable — the queue worker proves it), then best-effort
+     * to a file. Using the cache avoids the false "never run" you get when
+     * storage/framework isn't writable by the cron user.
+     */
+    public static function stampHeartbeat(): void
+    {
+        $now = now()->toIso8601String();
+
+        try {
+            Cache::put(self::HEARTBEAT_KEY, $now, now()->addDays(2));
+        } catch (Throwable) {
+            // cache unavailable — fall through to the file stamp below
+        }
+
+        @file_put_contents(self::heartbeatFile(), $now);
+    }
+
     /** When the scheduler last ran, or null if it never has. */
     public static function lastRun(): ?Carbon
     {
+        // Primary: DB-backed cache (writable wherever the queue runs).
+        try {
+            $cached = Cache::get(self::HEARTBEAT_KEY);
+            if (is_string($cached) && $cached !== '') {
+                return Carbon::parse($cached);
+            }
+        } catch (Throwable) {
+            // fall back to the file
+        }
+
+        // Fallback: the heartbeat file.
         $file = self::heartbeatFile();
 
         if (! is_file($file)) {
@@ -90,8 +124,8 @@ class CronHealth
                 'key'     => 'scheduler',
                 'label'   => 'Scheduler cron',
                 'status'  => 'critical',
-                'message' => 'Never run — the cron is not installed.',
-                'detail'  => 'Campaigns and sequences will never send until the cron below is added to the server.',
+                'message' => 'Never run — the cron is not firing.',
+                'detail'  => 'No heartbeat yet. If you HAVE added the cron, it is not actually executing — almost always the wrong PHP binary: the cron\'s `php` must be the same 8.3+ build that runs the app (use its full path). Test by running the cron command by hand and watching for an error; the heartbeat appears within a minute of a successful run.',
             ];
         }
 
