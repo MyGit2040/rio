@@ -62,6 +62,9 @@ function buildClient(name) {
         authStrategy: new LocalAuth({ clientId: name, dataPath: SESSION_PATH }),
         puppeteer: {
             headless: true,
+            // Use the system Chromium in Docker (PUPPETEER_EXECUTABLE_PATH); falls
+            // back to Puppeteer's bundled binary locally when the env var is unset.
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
             // Required to run Chromium as root inside a container. NOT stealth flags.
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
         },
