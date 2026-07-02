@@ -59,7 +59,7 @@
                     <tr>
                         <th class="px-5 py-3 w-10"><x-bulk-check /></th>
                         <th class="px-5 py-3 font-medium">Campaign</th>
-                        <th class="px-5 py-3 font-medium">Device</th>
+                        <th class="px-5 py-3 font-medium">Sending numbers</th>
                         <th class="px-5 py-3 font-medium">Progress</th>
                         <th class="px-5 py-3 font-medium">Status</th>
                         <th class="px-5 py-3 font-medium">Created</th>
@@ -73,7 +73,26 @@
                             <td class="px-5 py-3 font-medium text-gray-800 whitespace-nowrap">
                                 <a href="{{ route('campaigns.show', $campaign) }}" class="hover:text-green-600">{{ $campaign->name }}</a>
                             </td>
-                            <td class="px-5 py-3 text-gray-600 whitespace-nowrap">{{ $campaign->instance->name ?? '—' }}</td>
+                            <td class="px-5 py-3 text-gray-600 whitespace-nowrap">
+                                @php
+                                    $ids = $campaign->device_ids ?: array_filter([$campaign->whatsapp_instance_id]);
+                                    $assigned = count($ids);
+                                    $connected = collect($ids)->filter(fn ($id) => $deviceStatus[$id] ?? false)->count();
+                                @endphp
+                                @if ($assigned === 0)
+                                    <span class="text-gray-400">—</span>
+                                @elseif ($assigned === 1)
+                                    <span class="inline-flex items-center gap-1.5">
+                                        <span class="w-1.5 h-1.5 rounded-full {{ $connected ? 'bg-green-500' : 'bg-red-500' }}"></span>
+                                        {{ $campaign->instance->name ?? '1 number' }}
+                                    </span>
+                                @else
+                                    <span class="inline-flex items-center gap-1.5" title="{{ $connected }} of {{ $assigned }} sending numbers connected">
+                                        <span class="w-1.5 h-1.5 rounded-full {{ $connected > 0 ? ($connected === $assigned ? 'bg-green-500' : 'bg-amber-500') : 'bg-red-500' }}"></span>
+                                        {{ $assigned }} numbers · {{ $connected }} on
+                                    </span>
+                                @endif
+                            </td>
                             <td class="px-5 py-3 min-w-[170px]">
                                 <div class="flex items-center justify-between text-xs text-gray-500 mb-1">
                                     <span>{{ $campaign->sent }}/{{ $campaign->total }}</span>

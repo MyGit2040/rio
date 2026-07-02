@@ -40,6 +40,7 @@ class CampaignRecipientReportTest extends TestCase
 
         $this->campaign = Campaign::create([
             'tenant_id' => $this->tenant->id, 'name' => 'T3', 'type' => 'text',
+            'whatsapp_instance_id' => $this->device->id, 'device_ids' => [$this->device->id],
             'body' => 'Hi {{name}}', 'variants' => ['Variant one copy', 'Variant two copy'],
             'status' => 'completed', 'min_delay' => 10, 'max_delay' => 30, 'total' => 4,
         ]);
@@ -109,6 +110,26 @@ class CampaignRecipientReportTest extends TestCase
         $res->assertSee('Alpha');   // variant 0
         $res->assertSee('Delta');   // variant 0
         $res->assertDontSee('Bravo'); // variant 1
+    }
+
+    public function test_sending_numbers_panel_shows_assigned_and_connection_status(): void
+    {
+        // Add a second device that is NOT connected.
+        WhatsappInstance::create([
+            'tenant_id' => $this->tenant->id, 'name' => 'Device 2',
+            'instance_name' => 'inst-2', 'token' => 'tok-2', 'status' => 'close',
+        ]);
+        $this->campaign->update(['device_ids' => [$this->device->id, WhatsappInstance::where('instance_name', 'inst-2')->value('id')]]);
+
+        $res = $this->get(route('campaigns.show', $this->campaign));
+
+        $res->assertOk();
+        $res->assertSee('Sending numbers');
+        $res->assertSee('Connected');
+        $res->assertSee('Disconnected');
+        $res->assertSee('Device 1');
+        $res->assertSee('Device 2');
+        $res->assertSee('assigned'); // "2 assigned"
     }
 
     public function test_per_page_all_shows_everyone_on_one_page(): void

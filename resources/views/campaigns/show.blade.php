@@ -68,7 +68,7 @@
         <div>
             <x-card title="Details">
                 <dl class="text-sm space-y-2">
-                    <div class="flex justify-between gap-3"><dt class="text-gray-500">Device</dt><dd class="text-gray-800 truncate">{{ $campaign->instance->name ?? '—' }}</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-gray-500">Sending numbers</dt><dd class="text-gray-800 truncate">{{ $deviceSummary['assigned'] }} assigned · <span class="text-green-600">{{ $deviceSummary['connected'] }} connected</span>@if ($deviceSummary['disconnected'] > 0)<span class="text-red-500"> · {{ $deviceSummary['disconnected'] }} off</span>@endif</dd></div>
                     <div class="flex justify-between gap-3"><dt class="text-gray-500">Type</dt><dd class="text-gray-800">{{ ucfirst($campaign->type) }}</dd></div>
                     <div class="flex justify-between gap-3"><dt class="text-gray-500">Delay</dt><dd class="text-gray-800">{{ $campaign->min_delay }}–{{ $campaign->max_delay }}s</dd></div>
                     @if ($campaign->scheduled_at)
@@ -93,6 +93,67 @@
             </x-card>
         </div>
     </div>
+
+    {{-- Sending numbers: which WhatsApp accounts are assigned + live status --}}
+    <x-card title="Sending numbers" class="mb-6">
+        <div class="flex flex-wrap items-center gap-2 mb-4">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-gray-100 text-gray-700">
+                <span class="font-semibold">{{ $deviceSummary['assigned'] }}</span> assigned
+            </span>
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-green-50 text-green-700">
+                <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                <span class="font-semibold">{{ $deviceSummary['connected'] }}</span> connected
+            </span>
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs {{ $deviceSummary['disconnected'] > 0 ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-500' }}">
+                <span class="w-1.5 h-1.5 rounded-full {{ $deviceSummary['disconnected'] > 0 ? 'bg-red-500' : 'bg-gray-400' }}"></span>
+                <span class="font-semibold">{{ $deviceSummary['disconnected'] }}</span> disconnected
+            </span>
+        </div>
+
+        @if ($deviceSummary['assigned'] === 0)
+            <p class="text-sm text-gray-500">No sending numbers are assigned to this campaign.</p>
+        @else
+            @if ($deviceSummary['connected'] === 0 && in_array($campaign->status, ['sending', 'scheduled', 'paused', 'draft'], true))
+                <div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    ⚠️ None of the assigned numbers are connected right now — sending is paused until at least one reconnects.
+                    <a href="{{ route('devices.index') }}" class="underline font-medium">Manage numbers →</a>
+                </div>
+            @elseif ($deviceSummary['disconnected'] > 0)
+                <div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    {{ $deviceSummary['disconnected'] }} assigned number{{ $deviceSummary['disconnected'] === 1 ? ' is' : 's are' }} disconnected — the campaign keeps sending from the connected one{{ $deviceSummary['connected'] === 1 ? '' : 's' }}.
+                </div>
+            @endif
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="text-gray-500 text-left">
+                        <tr>
+                            <th class="py-2 font-medium">Number</th>
+                            <th class="py-2 font-medium">Phone</th>
+                            <th class="py-2 font-medium">Status</th>
+                            <th class="py-2 font-medium">Connected</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        @foreach ($campaignDevices as $d)
+                            @php $connected = $d->status === 'open'; @endphp
+                            <tr>
+                                <td class="py-2 text-gray-800 whitespace-nowrap">{{ $d->name }}</td>
+                                <td class="py-2 text-gray-600 whitespace-nowrap">{{ $d->phone_number ? '+'.$d->phone_number : '—' }}</td>
+                                <td class="py-2">
+                                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs {{ $connected ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700' }}">
+                                        <span class="w-1.5 h-1.5 rounded-full {{ $connected ? 'bg-green-500' : 'bg-red-500' }}"></span>
+                                        {{ $connected ? 'Connected' : 'Disconnected' }}
+                                    </span>
+                                </td>
+                                <td class="py-2 text-gray-500 whitespace-nowrap">{{ $connected && $d->connected_at ? $d->connected_at->diffForHumans() : '—' }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </x-card>
 
     {{-- Responses / engagement (auto-refreshes live) --}}
     <x-card title="Responses" class="mb-6"

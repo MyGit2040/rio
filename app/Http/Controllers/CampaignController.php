@@ -54,7 +54,11 @@ class CampaignController extends Controller
             ->paginate(15)
             ->withQueryString();
 
-        return view('campaigns.index', compact('campaigns', 'stats'));
+        // id => connected? map for the whole tenant (one query) so each row can
+        // show assigned-vs-connected sending numbers without an N+1.
+        $deviceStatus = WhatsappInstance::pluck('status', 'id')->map(fn ($s) => $s === 'open');
+
+        return view('campaigns.index', compact('campaigns', 'stats', 'deviceStatus'));
     }
 
     public function create(): View
@@ -138,6 +142,15 @@ class CampaignController extends Controller
         $filteredTotal = (int) $statusCounts->sum();
         $devices = WhatsappInstance::whereIn('id', $deviceCounts->keys())->pluck('name', 'id');
 
+        // Assigned sending numbers + live connection status (open = connected).
+        $assignedIds = $campaign->device_ids ?: array_filter([$campaign->whatsapp_instance_id]);
+        $campaignDevices = WhatsappInstance::whereIn('id', $assignedIds)->orderBy('name')->get();
+        $deviceSummary = [
+            'assigned'     => $campaignDevices->count(),
+            'connected'    => $campaignDevices->where('status', 'open')->count(),
+            'disconnected' => $campaignDevices->where('status', '!=', 'open')->count(),
+        ];
+
         $pool = array_values(array_filter(array_merge([$campaign->body], $campaign->variants ?? []), 'filled'));
         $variantOptions = collect($pool)->map(fn ($b, $i) => ['value' => $i, 'label' => $i === 0 ? 'Main' : 'Variant '.$i])->all();
 
@@ -160,6 +173,8 @@ class CampaignController extends Controller
             'filters'       => $filters,
             'dashboard'     => $dashboard,
             'devices'       => $devices,
+            'campaignDevices' => $campaignDevices,
+            'deviceSummary' => $deviceSummary,
             'variantOptions' => $variantOptions,
             'variantStats'  => $this->variantStats($campaign),
             'trackedLinks'  => $campaign->track_links ? $campaign->trackedLinks()->orderByDesc('clicks')->get() : collect(),
