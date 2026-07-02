@@ -202,6 +202,7 @@
                         <th class="px-5 py-3 font-medium">Contact</th>
                         <th class="px-5 py-3 font-medium">Phone</th>
                         <th class="px-5 py-3 font-medium">Sent from</th>
+                        <th class="px-5 py-3 font-medium">Variant</th>
                         <th class="px-5 py-3 font-medium">Status</th>
                         <th class="px-5 py-3 font-medium">Sent at</th>
                         <th class="px-5 py-3 font-medium">Note</th>
@@ -211,17 +212,20 @@
                     @forelse ($recipients as $r)
                         @php
                             $rc = ['pending' => 'gray', 'sent' => 'blue', 'delivered' => 'blue', 'read' => 'green', 'failed' => 'red'][$r->status] ?? 'gray';
+                            $vi = $r->variant_index;
+                            $variantLabel = is_null($vi) ? '—' : ($vi === 0 ? 'Main' : 'Variant '.$vi);
                         @endphp
                         <tr class="hover:bg-gray-50">
                             <td class="px-5 py-3 text-gray-800 whitespace-nowrap">{{ $r->contact->name ?? '—' }}</td>
                             <td class="px-5 py-3 text-gray-600 whitespace-nowrap">+{{ $r->phone }}</td>
                             <td class="px-5 py-3 text-gray-600 whitespace-nowrap">{{ $r->instance->name ?? ($campaign->instance->name ?? '—') }}</td>
+                            <td class="px-5 py-3 text-gray-600 whitespace-nowrap">{{ $variantLabel }}</td>
                             <td class="px-5 py-3"><x-badge :color="$rc">{{ ucfirst($r->status) }}</x-badge></td>
-                            <td class="px-5 py-3 text-gray-500 whitespace-nowrap">{{ $r->sent_at?->format('M j, g:i A') ?? '—' }}</td>
+                            <td class="px-5 py-3 text-gray-500 whitespace-nowrap">{{ $r->sent_at?->format('M j, g:i:s A') ?? '—' }}</td>
                             <td class="px-5 py-3 text-red-500 text-xs max-w-xs truncate">{{ $r->error }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="px-5 py-10 text-center text-gray-500">No recipients.</td></tr>
+                        <tr><td colspan="7" class="px-5 py-10 text-center text-gray-500">No recipients.</td></tr>
                     @endforelse
                 </tbody>
             </table>

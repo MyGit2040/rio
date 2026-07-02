@@ -16,7 +16,8 @@ class CampaignRecipient extends Model
     ];
 
     protected $casts = [
-        'sent_at' => 'datetime',
+        'sent_at'       => 'datetime',
+        'variant_index' => 'integer',
     ];
 
     public function instance(): BelongsTo
