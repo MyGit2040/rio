@@ -18,10 +18,10 @@ Schedule::command('sequences:dispatch')->everyMinute()->withoutOverlapping();
 // need a worker to actually deliver them — without this the campaign sits on
 // "sending" forever. Driving the worker from the scheduler means a single cron
 // (`schedule:run`) runs everything on shared hosting. --max-time keeps each run
-// under a minute; --stop-when-empty exits once the queue drains; withoutOverlapping
-// stops two workers stacking; runInBackground lets the other scheduled commands fire
-// without waiting for the worker to finish.
+// under a minute (so the next cron tick restarts it cleanly); --stop-when-empty
+// exits early once the queue drains; withoutOverlapping stops two workers stacking.
+// Kept in the FOREGROUND on purpose: background scheduled processes are blocked on
+// some hosts, which would silently leave the queue unworked — the exact bug we fix.
 Schedule::command('queue:work --max-time=55 --sleep=1 --tries=2 --stop-when-empty')
     ->everyMinute()
-    ->withoutOverlapping()
-    ->runInBackground();
+    ->withoutOverlapping();
