@@ -193,8 +193,158 @@
         </x-card>
     @endif
 
+    @php
+        $statusMeta = [
+            'pending'   => ['Pending',   'bg-gray-100 text-gray-700',   'bg-gray-400'],
+            'sent'      => ['Sent',      'bg-blue-50 text-blue-700',    'bg-blue-500'],
+            'delivered' => ['Delivered', 'bg-indigo-50 text-indigo-700','bg-indigo-500'],
+            'read'      => ['Read',      'bg-green-50 text-green-700',   'bg-green-500'],
+            'failed'    => ['Failed',    'bg-red-50 text-red-700',       'bg-red-500'],
+        ];
+        $rate = $dashboard['total'] > 0 ? (int) round($dashboard['delivered'] / $dashboard['total'] * 100) : 0;
+        $hasFilters = collect($filters)->only(['status','variant','device','q','from','to'])->filter(fn ($v) => $v !== '' && $v !== null)->isNotEmpty();
+    @endphp
+
     <x-card flush>
-        <div class="px-5 py-4 border-b border-gray-100"><h2 class="font-semibold text-gray-800">Recipients</h2></div>
+      <div x-data="{ dash: {{ $hasFilters ? 'true' : 'false' }} }">
+        <div class="px-5 py-4 border-b border-gray-100 flex items-center gap-3 flex-wrap">
+            <h2 class="font-semibold text-gray-800">Recipients</h2>
+            <span class="text-xs text-gray-500">{{ number_format($dashboard['total']) }} match{{ $dashboard['total'] === 1 ? '' : 'es' }}</span>
+            <button type="button" @click="dash = !dash"
+                    class="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">
+                <x-nav-icon icon="chart" class="w-4 h-4" />
+                <span x-text="dash ? 'Hide dashboard' : 'Dashboard'"></span>
+            </button>
+        </div>
+
+        {{-- Dashboard --}}
+        <div x-show="dash" x-cloak class="px-5 py-4 border-b border-gray-100 bg-gray-50/60 space-y-4">
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                @foreach ([
+                    ['Total', $dashboard['total'], 'text-gray-800'],
+                    ['Delivered / read', $dashboard['delivered'], 'text-green-600'],
+                    ['Sent', $dashboard['sent'], 'text-blue-600'],
+                    ['Failed', $dashboard['failed'], 'text-red-600'],
+                    ['Pending', $dashboard['pending'], 'text-gray-500'],
+                ] as [$lbl, $val, $cls])
+                    <div class="bg-white rounded-lg border border-gray-200 px-3 py-2.5">
+                        <p class="text-xl font-bold {{ $cls }}">{{ number_format($val) }}</p>
+                        <p class="text-[11px] text-gray-500">{{ $lbl }}</p>
+                    </div>
+                @endforeach
+            </div>
+
+            <div>
+                <div class="flex items-center justify-between text-xs text-gray-500 mb-1">
+                    <span>Delivery rate</span><span class="font-semibold text-gray-700">{{ $rate }}%</span>
+                </div>
+                <div class="w-full h-2 rounded-full bg-gray-200 overflow-hidden"><div class="h-full bg-green-500" style="width: {{ $rate }}%"></div></div>
+            </div>
+
+            {{-- Status chips (click to filter) --}}
+            <div class="flex flex-wrap gap-2">
+                @foreach ($statusMeta as $key => [$lbl, $chip, $dot])
+                    @php $c = (int) ($dashboard['statusCounts'][$key] ?? 0); $active = $filters['status'] === $key; @endphp
+                    <a href="{{ request()->fullUrlWithQuery(['status' => $active ? null : $key, 'page' => 1]) }}"
+                       class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs {{ $chip }} {{ $active ? 'ring-2 ring-offset-1 ring-gray-400' : '' }}">
+                        <span class="w-1.5 h-1.5 rounded-full {{ $dot }}"></span>{{ $lbl }} <span class="font-semibold">{{ $c }}</span>
+                    </a>
+                @endforeach
+            </div>
+
+            {{-- Variant + device breakdowns --}}
+            <div class="grid sm:grid-cols-2 gap-4">
+                @if (count($variantOptions) > 1)
+                    <div class="bg-white rounded-lg border border-gray-200 p-3">
+                        <p class="text-xs font-semibold text-gray-600 mb-2">By variant</p>
+                        <ul class="space-y-1">
+                            @foreach ($variantOptions as $opt)
+                                <li class="flex justify-between text-xs text-gray-600">
+                                    <span>{{ $opt['label'] }}</span>
+                                    <span class="font-semibold text-gray-800">{{ (int) ($dashboard['variantCounts'][$opt['value']] ?? 0) }}</span>
+                                </li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
+                @if ($devices->isNotEmpty())
+                    <div class="bg-white rounded-lg border border-gray-200 p-3">
+                        <p class="text-xs font-semibold text-gray-600 mb-2">By sending number</p>
+                        <ul class="space-y-1">
+                            @foreach ($devices as $id => $name)
+                                <li class="flex justify-between text-xs text-gray-600">
+                                    <span class="truncate">{{ $name }}</span>
+                                    <span class="font-semibold text-gray-800">{{ (int) ($dashboard['deviceCounts'][$id] ?? 0) }}</span>
+                                </li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
+            </div>
+        </div>
+
+        {{-- Filter bar --}}
+        <form method="GET" action="{{ route('campaigns.show', $campaign) }}" class="px-5 py-3 border-b border-gray-100 flex flex-wrap items-end gap-3">
+            <div class="min-w-0">
+                <label class="block text-[11px] font-medium text-gray-500 mb-1">Search</label>
+                <input type="text" name="q" value="{{ $filters['q'] }}" placeholder="Name or phone"
+                       class="rounded-lg border-gray-300 text-sm w-44 focus:ring-brand focus:border-brand">
+            </div>
+            <div>
+                <label class="block text-[11px] font-medium text-gray-500 mb-1">Status</label>
+                <select name="status" class="rounded-lg border-gray-300 text-sm focus:ring-brand focus:border-brand">
+                    <option value="">All</option>
+                    @foreach ($statusMeta as $key => [$lbl])
+                        <option value="{{ $key }}" @selected($filters['status'] === $key)>{{ $lbl }}</option>
+                    @endforeach
+                </select>
+            </div>
+            @if (count($variantOptions) > 1)
+                <div>
+                    <label class="block text-[11px] font-medium text-gray-500 mb-1">Variant</label>
+                    <select name="variant" class="rounded-lg border-gray-300 text-sm focus:ring-brand focus:border-brand">
+                        <option value="">All</option>
+                        @foreach ($variantOptions as $opt)
+                            <option value="{{ $opt['value'] }}" @selected((string) $filters['variant'] === (string) $opt['value'])>{{ $opt['label'] }}</option>
+                        @endforeach
+                    </select>
+                </div>
+            @endif
+            @if ($devices->isNotEmpty())
+                <div>
+                    <label class="block text-[11px] font-medium text-gray-500 mb-1">Sending number</label>
+                    <select name="device" class="rounded-lg border-gray-300 text-sm focus:ring-brand focus:border-brand">
+                        <option value="">All</option>
+                        @foreach ($devices as $id => $name)
+                            <option value="{{ $id }}" @selected((string) $filters['device'] === (string) $id)>{{ $name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+            @endif
+            <div>
+                <label class="block text-[11px] font-medium text-gray-500 mb-1">Sent from</label>
+                <input type="date" name="from" value="{{ $filters['from'] }}" class="rounded-lg border-gray-300 text-sm focus:ring-brand focus:border-brand">
+            </div>
+            <div>
+                <label class="block text-[11px] font-medium text-gray-500 mb-1">Sent to</label>
+                <input type="date" name="to" value="{{ $filters['to'] }}" class="rounded-lg border-gray-300 text-sm focus:ring-brand focus:border-brand">
+            </div>
+            <div>
+                <label class="block text-[11px] font-medium text-gray-500 mb-1">Per page</label>
+                <select name="per_page" onchange="this.form.submit()" class="rounded-lg border-gray-300 text-sm focus:ring-brand focus:border-brand">
+                    @foreach (['10','25','50','100','all'] as $pp)
+                        <option value="{{ $pp }}" @selected($filters['per_page'] === $pp)>{{ $pp === 'all' ? 'All' : $pp }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="flex items-center gap-2">
+                <button type="submit" class="px-3 py-2 rounded-lg bg-brand text-white text-sm hover:opacity-90">Apply</button>
+                @if ($hasFilters || $filters['per_page'] !== '25')
+                    <a href="{{ route('campaigns.show', $campaign) }}" class="px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-600 hover:bg-gray-50">Reset</a>
+                @endif
+            </div>
+        </form>
+
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead class="bg-gray-50 text-gray-500 text-left">
@@ -225,14 +375,24 @@
                             <td class="px-5 py-3 text-red-500 text-xs max-w-xs truncate">{{ $r->error }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="px-5 py-10 text-center text-gray-500">No recipients.</td></tr>
+                        <tr><td colspan="7" class="px-5 py-10 text-center text-gray-500">{{ $hasFilters ? 'No recipients match these filters.' : 'No recipients.' }}</td></tr>
                     @endforelse
                 </tbody>
             </table>
         </div>
-        @if ($recipients->hasPages())
-            <div class="px-5 py-3 border-t border-gray-100">{{ $recipients->links() }}</div>
-        @endif
+        <div class="px-5 py-3 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+            <p class="text-xs text-gray-500">
+                @if ($recipients->total() > 0)
+                    Showing {{ number_format($recipients->firstItem()) }}–{{ number_format($recipients->lastItem()) }} of {{ number_format($recipients->total()) }}
+                @else
+                    No results
+                @endif
+            </p>
+            @if ($recipients->hasPages())
+                <div>{{ $recipients->onEachSide(1)->links() }}</div>
+            @endif
+        </div>
+      </div>
     </x-card>
 
     @push('scripts')

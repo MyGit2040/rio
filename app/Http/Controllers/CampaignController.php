@@ -12,9 +12,11 @@ use App\Services\CampaignService;
 use App\Services\EvolutionApiService;
 use App\Services\PlanLimit;
 use App\Support\Audit;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -91,20 +93,74 @@ class CampaignController extends Controller
             ->with('success', 'Campaign scheduled for '.$campaign->scheduled_at->format('M j, Y g:i A').'.');
     }
 
-    public function show(Campaign $campaign): View
+    public function show(Campaign $campaign, Request $request): View
     {
         $campaign->load('instance', 'template');
 
-        $recipients = $campaign->recipients()
+        // --- Recipients report: dynamic filters + page size + dashboard -------
+        $filters = [
+            'status'   => (string) $request->query('status', ''),
+            'variant'  => $request->query('variant', ''),
+            'device'   => $request->query('device', ''),
+            'q'        => trim((string) $request->query('q', '')),
+            'from'     => (string) $request->query('from', ''),
+            'to'       => (string) $request->query('to', ''),
+            'per_page' => (string) $request->query('per_page', '25'),
+        ];
+
+        // Page size: 10 / 25 / 50 / 100 / all.
+        if ($filters['per_page'] === 'all') {
+            $perPage = max(1, $this->recipientsQuery($campaign, $filters)->count());
+        } else {
+            $perPage = in_array((int) $filters['per_page'], [10, 25, 50, 100], true) ? (int) $filters['per_page'] : 25;
+            $filters['per_page'] = (string) $perPage;
+        }
+
+        $recipients = $this->recipientsQuery($campaign, $filters)
             ->with('contact', 'instance')
             ->latest('id')
-            ->paginate(25);
+            ->paginate($perPage)
+            ->withQueryString();
+
+        // Dashboard: each breakdown ignores its OWN filter so the counts stay a
+        // full picker (e.g. status chips always show every status's count).
+        $statusCounts = $this->recipientsQuery($campaign, $filters, ['status'])
+            ->select('status', DB::raw('COUNT(*) as c'))->groupBy('status')->pluck('c', 'status');
+
+        $variantCounts = $this->recipientsQuery($campaign, $filters, ['variant'])
+            ->whereNotNull('variant_index')
+            ->select('variant_index', DB::raw('COUNT(*) as c'))->groupBy('variant_index')->pluck('c', 'variant_index');
+
+        $deviceCounts = $this->recipientsQuery($campaign, $filters, ['device'])
+            ->whereNotNull('whatsapp_instance_id')
+            ->select('whatsapp_instance_id', DB::raw('COUNT(*) as c'))->groupBy('whatsapp_instance_id')->pluck('c', 'whatsapp_instance_id');
+
+        $filteredTotal = (int) $statusCounts->sum();
+        $devices = WhatsappInstance::whereIn('id', $deviceCounts->keys())->pluck('name', 'id');
+
+        $pool = array_values(array_filter(array_merge([$campaign->body], $campaign->variants ?? []), 'filled'));
+        $variantOptions = collect($pool)->map(fn ($b, $i) => ['value' => $i, 'label' => $i === 0 ? 'Main' : 'Variant '.$i])->all();
+
+        $dashboard = [
+            'total'       => $filteredTotal,
+            'delivered'   => (int) ($statusCounts['delivered'] ?? 0) + (int) ($statusCounts['read'] ?? 0),
+            'sent'        => (int) ($statusCounts['sent'] ?? 0),
+            'failed'      => (int) ($statusCounts['failed'] ?? 0),
+            'pending'     => (int) ($statusCounts['pending'] ?? 0),
+            'statusCounts'  => $statusCounts,
+            'variantCounts' => $variantCounts,
+            'deviceCounts'  => $deviceCounts,
+        ];
 
         $inbound = Message::where('campaign_id', $campaign->id)->where('direction', 'in');
 
         return view('campaigns.show', [
             'campaign'      => $campaign,
             'recipients'    => $recipients,
+            'filters'       => $filters,
+            'dashboard'     => $dashboard,
+            'devices'       => $devices,
+            'variantOptions' => $variantOptions,
             'variantStats'  => $this->variantStats($campaign),
             'trackedLinks'  => $campaign->track_links ? $campaign->trackedLinks()->orderByDesc('clicks')->get() : collect(),
             'engagement'    => [
@@ -116,6 +172,50 @@ class CampaignController extends Controller
                 ->selectRaw('body, COUNT(*) as c')->groupBy('body')->orderByDesc('c')->pluck('c', 'body'),
             'responses'     => (clone $inbound)->with('contact')->latest('id')->limit(30)->get(),
         ]);
+    }
+
+    /**
+     * Build the recipients query for the report, applying the active filters.
+     * $except lets a dashboard breakdown ignore its own dimension so its counts
+     * stay a full picker.
+     *
+     * @param  array<string, mixed>  $filters
+     * @param  array<int, string>    $except
+     */
+    private function recipientsQuery(Campaign $campaign, array $filters, array $except = []): HasMany
+    {
+        $q = $campaign->recipients();
+
+        if (! in_array('status', $except, true) && $filters['status'] !== '') {
+            $q->where('status', $filters['status']);
+        }
+
+        if (! in_array('variant', $except, true) && $filters['variant'] !== '' && $filters['variant'] !== null) {
+            $q->where('variant_index', (int) $filters['variant']);
+        }
+
+        if (! in_array('device', $except, true) && $filters['device'] !== '') {
+            $q->where('whatsapp_instance_id', $filters['device']);
+        }
+
+        if (! in_array('q', $except, true) && $filters['q'] !== '') {
+            $term = $filters['q'];
+            $q->where(function ($w) use ($term) {
+                $w->where('phone', 'like', "%{$term}%")
+                    ->orWhereHas('contact', fn ($c) => $c->where('name', 'like', "%{$term}%"));
+            });
+        }
+
+        if (! in_array('date', $except, true)) {
+            if ($filters['from'] !== '') {
+                $q->whereDate('sent_at', '>=', $filters['from']);
+            }
+            if ($filters['to'] !== '') {
+                $q->whereDate('sent_at', '<=', $filters['to']);
+            }
+        }
+
+        return $q;
     }
 
     /**
