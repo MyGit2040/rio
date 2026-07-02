@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\AiService;
 use App\Services\EvolutionApiService;
+use App\Support\CronHealth;
 use App\Support\MailConfig;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -19,10 +20,15 @@ class SettingsController extends Controller
         $engine = EvolutionApiService::forTenant($tenant);
 
         return view('settings.edit', [
-            'tenant'      => $tenant,
-            'engineReady' => $engine->configured(),
-            'aiEnabled'   => (bool) data_get($tenant->settings, 'ai_enabled', false),
-            'platformUrl' => config('evolution.base_url'),
+            'tenant'        => $tenant,
+            'engineReady'   => $engine->configured(),
+            'aiEnabled'     => (bool) data_get($tenant->settings, 'ai_enabled', false),
+            'platformUrl'   => config('evolution.base_url'),
+            'healthChecks'  => CronHealth::checks(),
+            'healthOverall' => CronHealth::overall(),
+            'healthTasks'   => CronHealth::scheduledTasks(),
+            'cronLine'      => CronHealth::cronLine(),
+            'cronLastRun'   => CronHealth::lastRun(),
         ]);
     }
 

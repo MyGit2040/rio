@@ -11,6 +11,7 @@
             'sending'  => ['Sending & safety', 'send'],
             'email'    => ['Email (SMTP)', 'doc'],
             'ai'       => ['AI content', 'bot'],
+            'health'   => ['Health & crons', 'shield'],
             'account'  => ['Account & admin', 'cog'],
         ];
     @endphp
@@ -25,6 +26,9 @@
                             class="flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm whitespace-nowrap transition">
                         <x-nav-icon :icon="$icon" class="w-4 h-4 shrink-0" />
                         {{ $label }}
+                        @if ($key === 'health' && ($healthOverall ?? 'ok') !== 'ok')
+                            <span class="ml-auto w-2 h-2 rounded-full {{ $healthOverall === 'warning' ? 'bg-amber-500' : 'bg-red-500' }}"></span>
+                        @endif
                     </button>
                 @endforeach
 
@@ -351,6 +355,103 @@
         }
     </script>
     @endpush
+
+        {{-- Health & crons --}}
+        <div x-show="tab === 'health'" x-cloak class="space-y-6">
+            @php
+                $statusMeta = [
+                    'ok'       => ['bg-green-50 border-green-200 text-green-800', 'bg-green-500', 'Healthy'],
+                    'warning'  => ['bg-amber-50 border-amber-200 text-amber-800', 'bg-amber-500', 'Warning'],
+                    'error'    => ['bg-red-50 border-red-200 text-red-800', 'bg-red-500', 'Error'],
+                    'critical' => ['bg-red-50 border-red-300 text-red-900', 'bg-red-600', 'Critical'],
+                ];
+                $overall = $healthOverall ?? 'ok';
+                [$oBox, , $oLabel] = $statusMeta[$overall] ?? $statusMeta['ok'];
+            @endphp
+
+            {{-- Overall banner --}}
+            <div class="rounded-xl border px-4 py-3 flex items-center gap-3 {{ $oBox }}">
+                <span class="w-2.5 h-2.5 rounded-full {{ $statusMeta[$overall][1] ?? 'bg-green-500' }}"></span>
+                <div class="text-sm">
+                    <span class="font-semibold">Background engine: {{ $oLabel }}</span>
+                    <span class="block text-xs opacity-80">
+                        @if ($overall === 'ok')
+                            Crons and the queue worker are running. Campaigns will send on schedule.
+                        @else
+                            Something needs attention below — campaigns may not send until it's resolved.
+                        @endif
+                    </span>
+                </div>
+                <a href="{{ route('settings.edit') }}#health" class="ml-auto text-xs underline opacity-80 hover:opacity-100">Refresh</a>
+            </div>
+
+            {{-- Individual checks --}}
+            <x-card title="System checks" subtitle="Live status of the services that deliver your campaigns.">
+                <ul class="divide-y divide-gray-100">
+                    @foreach ($healthChecks as $c)
+                        @php [$box, $dot, $badge] = $statusMeta[$c['status']] ?? $statusMeta['ok']; @endphp
+                        <li class="py-3 flex items-start gap-3">
+                            <span class="mt-1 w-2.5 h-2.5 rounded-full shrink-0 {{ $dot }}"></span>
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <span class="text-sm font-medium text-gray-800">{{ $c['label'] }}</span>
+                                    <span class="text-[11px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded {{ $box }}">{{ $badge }}</span>
+                                    <span class="text-sm text-gray-600">{{ $c['message'] }}</span>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-0.5">{{ $c['detail'] }}</p>
+                            </div>
+                        </li>
+                    @endforeach
+                </ul>
+            </x-card>
+
+            {{-- Paste-ready cron --}}
+            <x-card title="Server cron (paste this once)" subtitle="This single per-minute cron drives everything: scheduled campaigns, drip sequences and the queue worker.">
+                <div class="space-y-3" x-data="{ copied: false }">
+                    <div class="relative">
+                        <pre id="cron-line" class="bg-gray-900 text-gray-100 text-xs rounded-lg p-3 pr-24 overflow-x-auto whitespace-pre">{{ $cronLine }}</pre>
+                        <button type="button"
+                                @click="navigator.clipboard.writeText(document.getElementById('cron-line').textContent.trim()).then(() => { copied = true; setTimeout(() => copied = false, 1500); })"
+                                class="absolute top-2 right-2 px-2.5 py-1 rounded-md bg-white/10 hover:bg-white/20 text-white text-xs">
+                            <span x-show="!copied">Copy</span><span x-show="copied" x-cloak>Copied ✓</span>
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-500">
+                        Add it with <code class="px-1 bg-gray-100 rounded">crontab -e</code> on the server.
+                        If <code class="px-1 bg-gray-100 rounded">php</code> isn't on the cron PATH, use the full binary path (e.g. <code class="px-1 bg-gray-100 rounded">/usr/local/bin/php</code>).
+                        @if ($cronLastRun)
+                            Scheduler last ran <span class="font-medium text-gray-700">{{ $cronLastRun->diffForHumans() }}</span>.
+                        @else
+                            <span class="text-red-600 font-medium">The scheduler has never run — add this cron now.</span>
+                        @endif
+                    </p>
+                </div>
+            </x-card>
+
+            {{-- What runs every minute --}}
+            <x-card title="Scheduled tasks" subtitle="What the cron runs on every tick.">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="text-gray-500 text-left">
+                            <tr>
+                                <th class="py-2 font-medium">Task</th>
+                                <th class="py-2 font-medium">Purpose</th>
+                                <th class="py-2 font-medium">Frequency</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            @foreach ($healthTasks as $t)
+                                <tr>
+                                    <td class="py-2 font-mono text-xs text-gray-800 whitespace-nowrap">{{ $t['command'] }}</td>
+                                    <td class="py-2 text-gray-600">{{ $t['purpose'] }}</td>
+                                    <td class="py-2 text-gray-500 whitespace-nowrap">Every minute</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </x-card>
+        </div>
 
         {{-- Account & admin --}}
         <div x-show="tab === 'account'" x-cloak class="space-y-6">
