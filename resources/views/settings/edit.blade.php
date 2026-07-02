@@ -110,6 +110,14 @@
 
         {{-- Engine --}}
         <x-card title="WhatsApp engine" subtitle="Where your messages are actually sent from." x-show="tab === 'engine'" x-cloak>
+            {{-- Live background-engine pill: scheduler cron + queue worker (native CronHealth heartbeat). --}}
+            <x-slot:actions>
+                <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium {{ ($queueActive ?? false) ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200' }}"
+                      title="{{ ($queueActive ?? false) ? 'Scheduler cron + queue worker are firing (heartbeat fresh within 2 min).' : 'No scheduler heartbeat in the last 2 minutes — the per-minute cron may not be running, so queued messages will not send.' }}">
+                    <span class="w-1.5 h-1.5 rounded-full {{ ($queueActive ?? false) ? 'bg-green-500' : 'bg-red-500' }}"></span>
+                    Queue: {{ ($queueActive ?? false) ? 'Active' : 'Inactive' }}
+                </span>
+            </x-slot:actions>
             <div class="space-y-4" x-data="{ driver: '{{ old('whatsapp_driver', $tenant->whatsapp_driver ?: 'evolution') }}' }">
                 <div class="rounded-lg px-4 py-3 text-sm {{ $engineReady ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-yellow-50 text-yellow-800 border border-yellow-200' }}">
                     {{ $engineReady ? 'Engine is configured.' : 'Engine not configured yet — pick an engine and add its details below.' }}

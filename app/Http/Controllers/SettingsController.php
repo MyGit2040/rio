@@ -30,6 +30,7 @@ class SettingsController extends Controller
             'platformUrl'   => config('evolution.base_url'),
             'healthChecks'  => CronHealth::checks(),
             'healthOverall' => CronHealth::overall(),
+            'queueActive'   => CronHealth::engineActive(),
             'healthTasks'   => CronHealth::scheduledTasks(),
             'cronLine'      => CronHealth::cronLine(),
             'cronLastRun'   => CronHealth::lastRun(),
@@ -179,13 +180,6 @@ class SettingsController extends Controller
      */
     public function syncEngineUpdates(): JsonResponse
     {
-        $tenant = auth()->user()->tenant;
-        $engine = Whatsapp::forTenant($tenant);
-
-        if (! $engine->configured()) {
-            return response()->json(['ok' => false, 'message' => 'Add the engine URL and API key and save first, then try again.'], 422);
-        }
-
         $instances = WhatsappInstance::all();
 
         if ($instances->isEmpty()) {
@@ -197,12 +191,23 @@ class SettingsController extends Controller
         $failed = [];
 
         foreach ($instances as $instance) {
+            // Each number keeps the engine it was linked on (Evolution or webjs).
+            // Resolve per instance — using the tenant default would push a number's
+            // webhook to the wrong engine, which 404s (e.g. an Evolution number
+            // hitting the webjs bridge → "Failed on: <name>").
+            $engine = Whatsapp::forInstance($instance);
+
+            if (! $engine->configured()) {
+                $failed[] = $instance->name;
+                continue;
+            }
+
             try {
                 $engine->setWebhook($instance->instance_name, $url);
                 $ok++;
             } catch (\Throwable $e) {
                 $failed[] = $instance->name;
-                Log::warning('Evolution setWebhook failed', ['instance' => $instance->instance_name, 'error' => $e->getMessage()]);
+                Log::warning('setWebhook failed', ['instance' => $instance->instance_name, 'driver' => $instance->driver, 'error' => $e->getMessage()]);
             }
         }
 
