@@ -156,17 +156,24 @@
     </x-card>
 
     {{-- Responses / engagement (auto-refreshes live) --}}
+    @php
+        // NOTE: @js(...) is NOT compiled inside a Blade component (<x-card>) attribute —
+        // it reaches the browser literally and breaks the Alpine x-data expression, so
+        // every x-text binding renders blank. Build the payload here and echo it with
+        // {{ Js::from() }} (which IS compiled in component attributes).
+        $responsesInitial = [
+            'engagement' => $engagement,
+            'poll'       => $pollBreakdown->map(fn ($c, $o) => ['option' => $o, 'count' => $c])->values(),
+            'latest'     => $responses->map(fn ($r) => [
+                'icon' => ['poll_response' => '📊', 'button_response' => '🔘'][$r->type] ?? '📩',
+                'who'  => $r->contact->name ?? '+'.$r->phone,
+                'body' => Str::limit($r->body, 120),
+                'ago'  => $r->created_at?->diffForHumans(),
+            ]),
+        ];
+    @endphp
     <x-card title="Responses" class="mb-6"
-            x-data="campaignResponses({{ $campaign->id }}, @js([
-                'engagement' => $engagement,
-                'poll'       => $pollBreakdown->map(fn ($c, $o) => ['option' => $o, 'count' => $c])->values(),
-                'latest'     => $responses->map(fn ($r) => [
-                    'icon' => ['poll_response' => '📊', 'button_response' => '🔘'][$r->type] ?? '📩',
-                    'who'  => $r->contact->name ?? '+'.$r->phone,
-                    'body' => Str::limit($r->body, 120),
-                    'ago'  => $r->created_at?->diffForHumans(),
-                ]),
-            ]))"
+            x-data="campaignResponses({{ $campaign->id }}, {{ \Illuminate\Support\Js::from($responsesInitial) }})"
             x-init="startPolling()">
         <div class="grid grid-cols-3 gap-4 mb-4">
             <div class="text-center"><p class="text-2xl font-bold text-brand" x-text="engagement.replies"></p><p class="text-xs text-gray-500">Replies received</p></div>

@@ -82,6 +82,20 @@ class CampaignRecipientReportTest extends TestCase
         $res->assertSee('of 4');
     }
 
+    public function test_responses_alpine_payload_is_compiled_not_literal(): void
+    {
+        $res = $this->get(route('campaigns.show', $this->campaign));
+
+        $res->assertOk();
+        // The @js directive must be compiled to a real JSON payload — a literal
+        // "@js(" in the HTML means the Alpine x-data is broken and every response
+        // number renders blank.
+        $res->assertDontSee('@js(', false);
+        // The compiled Alpine payload (Js::from → JSON.parse('...')) must be present.
+        $res->assertSee('campaignResponses(1, JSON.parse(', false);
+        $res->assertSee('engagement', false);
+    }
+
     public function test_status_filter_narrows_the_list(): void
     {
         $res = $this->get(route('campaigns.show', [$this->campaign, 'status' => 'sent']));
