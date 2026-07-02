@@ -210,6 +210,7 @@ Route::middleware('auth')->group(function () {
     Route::put('/settings', [SettingsController::class, 'update'])->name('settings.update');
     Route::post('/settings/test-email', [SettingsController::class, 'testEmail'])->name('settings.test-email');
     Route::post('/settings/test-ai', [SettingsController::class, 'testAi'])->name('settings.test-ai');
+    Route::post('/settings/sync-engine-updates', [SettingsController::class, 'syncEngineUpdates'])->name('settings.sync-engine-updates');
 
     // Profile (Breeze)
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

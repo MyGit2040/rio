@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\WhatsappInstance;
 use App\Services\AiService;
 use App\Services\EvolutionApiService;
 use App\Support\CronHealth;
@@ -9,6 +10,7 @@ use App\Support\MailConfig;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\View\View;
 
@@ -158,6 +160,58 @@ class SettingsController extends Controller
         } catch (\Throwable $e) {
             return response()->json(['ok' => false, 'message' => 'Send failed: '.$e->getMessage()], 422);
         }
+    }
+
+    /**
+     * Turn on automatic updates: (re)register this app's webhook on every linked
+     * WhatsApp number so Evolution pushes delivery/read receipts and inbound
+     * replies back automatically. Fixes numbers linked before a webhook was set
+     * (their statuses would otherwise stay stuck on "sent").
+     */
+    public function syncEngineUpdates(): JsonResponse
+    {
+        $tenant = auth()->user()->tenant;
+        $engine = EvolutionApiService::forTenant($tenant);
+
+        if (! $engine->configured()) {
+            return response()->json(['ok' => false, 'message' => 'Add the engine URL and API key and save first, then try again.'], 422);
+        }
+
+        $instances = WhatsappInstance::all();
+
+        if ($instances->isEmpty()) {
+            return response()->json(['ok' => false, 'message' => 'No linked WhatsApp numbers yet — add a device first.'], 422);
+        }
+
+        $url = EvolutionApiService::webhookUrl();
+        $ok = 0;
+        $failed = [];
+
+        foreach ($instances as $instance) {
+            try {
+                $engine->setWebhook($instance->instance_name, $url);
+                $ok++;
+            } catch (\Throwable $e) {
+                $failed[] = $instance->name;
+                Log::warning('Evolution setWebhook failed', ['instance' => $instance->instance_name, 'error' => $e->getMessage()]);
+            }
+        }
+
+        if ($ok === 0) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Could not enable automatic updates. Check the engine URL and key are correct. Failed on: '.implode(', ', $failed).'.',
+            ], 422);
+        }
+
+        $message = "Automatic updates enabled on {$ok} number".($ok === 1 ? '' : 's').
+            '. Delivery receipts and replies will now sync automatically.';
+
+        if ($failed !== []) {
+            $message .= ' Could not update: '.implode(', ', $failed).'.';
+        }
+
+        return response()->json(['ok' => true, 'message' => $message]);
     }
 
     /**

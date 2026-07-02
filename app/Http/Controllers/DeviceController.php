@@ -211,13 +211,9 @@ class DeviceController extends Controller
         return redirect()->route('devices.index')->with('success', 'Device removed.');
     }
 
-    private function webhookUrl(): ?string
+    private function webhookUrl(): string
     {
-        $secret = config('evolution.webhook_secret');
-
-        return $secret
-            ? route('webhooks.evolution', ['secret' => $secret])
-            : route('webhooks.evolution');
+        return EvolutionApiService::webhookUrl();
     }
 
     private function extractPairing(array $response): ?string

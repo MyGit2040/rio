@@ -120,8 +120,22 @@
                     @if ($platformUrl)<p class="text-xs text-gray-500 mt-1">Leave blank to use the platform default ({{ $platformUrl }}).</p>@endif
                 </div>
                 <div>
-                    <x-input-label for="evolution_api_key" value="API key" />
-                    <x-text-input id="evolution_api_key" name="evolution_api_key" class="block mt-1 w-full" placeholder="Your Evolution AUTHENTICATION_API_KEY" :value="old('evolution_api_key', $tenant->evolution_api_key)" />
+                    <div class="flex items-end gap-2 flex-wrap">
+                        <div class="flex-1 min-w-0">
+                            <x-input-label for="evolution_api_key" value="API key" />
+                            <x-text-input id="evolution_api_key" name="evolution_api_key" class="block mt-1 w-full" placeholder="Your Evolution AUTHENTICATION_API_KEY" :value="old('evolution_api_key', $tenant->evolution_api_key)" />
+                        </div>
+                        <button type="button" onclick="eagleTest('{{ route('settings.sync-engine-updates') }}', this, 'engine-sync-result')"
+                                title="Register the update webhook on every linked number so delivery receipts and replies sync automatically"
+                                class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-gray-300 text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap">
+                            <x-nav-icon icon="send" class="w-4 h-4" />
+                            Receive updates
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">
+                        Save your key first, then click <strong>Receive updates</strong> to turn on automatic delivery receipts &amp; replies for numbers linked earlier.
+                    </p>
+                    <span id="engine-sync-result" class="text-sm"></span>
                 </div>
                 <div class="pt-2 border-t border-gray-100">
                     <label class="inline-flex items-center gap-2">

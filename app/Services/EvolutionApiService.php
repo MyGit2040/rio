@@ -89,6 +89,39 @@ class EvolutionApiService
     }
 
     /**
+     * (Re)register the webhook on an EXISTING instance so status updates
+     * (delivered/read receipts) and inbound replies are pushed back to us
+     * automatically. Instances created before a webhook was set never receive
+     * updates until this runs — statuses stay stuck on "sent".
+     */
+    public function setWebhook(string $instanceName, string $webhookUrl): array
+    {
+        return $this->http()->post("/webhook/set/{$instanceName}", [
+            'webhook' => [
+                'enabled'  => true,
+                'url'      => $webhookUrl,
+                'byEvents' => false,
+                'base64'   => true,
+                'events'   => config('evolution.webhook_events'),
+            ],
+        ])->throw()->json() ?? [];
+    }
+
+    /**
+     * The public URL Evolution posts updates to for this app (with the shared
+     * secret when configured). Single source of truth for both instance
+     * creation and the "receive updates" re-sync.
+     */
+    public static function webhookUrl(): string
+    {
+        $secret = config('evolution.webhook_secret');
+
+        return $secret
+            ? route('webhooks.evolution', ['secret' => $secret])
+            : route('webhooks.evolution');
+    }
+
+    /**
      * Ask the engine for a fresh QR code to link a phone.
      */
     public function connect(string $instanceName, ?string $number = null): array
