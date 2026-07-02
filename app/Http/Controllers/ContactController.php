@@ -6,8 +6,8 @@ use App\Http\Requests\ContactRequest;
 use App\Models\Contact;
 use App\Models\ContactGroup;
 use App\Models\WhatsappInstance;
-use App\Services\EvolutionApiService;
 use App\Services\PlanLimit;
+use App\Support\Whatsapp;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -181,7 +181,7 @@ class ContactController extends Controller
             return back()->with('error', 'Connect a WhatsApp device first — verification runs through a linked number.');
         }
 
-        $engine = EvolutionApiService::forInstance($device);
+        $engine = Whatsapp::forInstance($device);
 
         if (! $engine->configured()) {
             return back()->with('error', 'Configure the Evolution engine in Settings first.');

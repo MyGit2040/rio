@@ -6,6 +6,7 @@ use App\Models\WhatsappInstance;
 use App\Services\EvolutionApiService;
 use App\Services\PlanLimit;
 use App\Support\Audit;
+use App\Support\Whatsapp;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -18,7 +19,7 @@ class DeviceController extends Controller
     public function index(): View
     {
         $devices = WhatsappInstance::latest()->get();
-        $engine = EvolutionApiService::forTenant(auth()->user()->tenant);
+        $engine = Whatsapp::forTenant(auth()->user()->tenant);
 
         return view('devices.index', [
             'devices'        => $devices,
@@ -40,20 +41,26 @@ class DeviceController extends Controller
             return back()->with('error', 'You have reached your plan\'s device limit. Upgrade in Billing to add more numbers.');
         }
 
-        $engine = EvolutionApiService::forTenant($tenant);
+        $driver = Whatsapp::driverForTenant($tenant);
+        $engine = Whatsapp::forTenant($tenant);
 
         if (! $engine->configured()) {
-            return back()->with('error', 'Connect your Evolution engine in Settings before adding a device.');
+            return back()->with('error', 'Connect your WhatsApp engine ('.$driver.') in Settings before adding a device.');
         }
 
         $instanceName = Str::lower($tenant->slug.'-'.Str::random(8));
 
+        // Snapshot the engine this device is created on — it keeps using it even
+        // if the tenant later flips the default driver.
         $device = WhatsappInstance::create([
             'name'          => $data['name'],
             'instance_name' => $instanceName,
+            'driver'        => $driver,
             'status'        => 'connecting',
             'daily_limit'   => (int) ($data['daily_limit'] ?? 0),
         ]);
+
+        $engine = Whatsapp::forInstance($device);
 
         $pairingNumber = preg_replace('/\D+/', '', (string) ($data['phone_for_pairing'] ?? '')) ?: null;
 
@@ -70,7 +77,7 @@ class DeviceController extends Controller
             Log::error('Evolution createInstance failed', ['error' => $e->getMessage()]);
             $device->delete();
 
-            return back()->with('error', 'Could not reach the Evolution engine: '.$e->getMessage());
+            return back()->with('error', 'Could not reach the WhatsApp engine: '.$e->getMessage());
         }
 
         Audit::log('device.created', $device, $device->name);
@@ -84,7 +91,7 @@ class DeviceController extends Controller
      */
     public function connect(Request $request, WhatsappInstance $device): JsonResponse
     {
-        $engine = EvolutionApiService::forInstance($device);
+        $engine = Whatsapp::forInstance($device);
 
         // A phone number requests an 8-digit pairing code; without it we just refresh the QR.
         $number = preg_replace('/\D+/', '', (string) $request->input('number')) ?: null;
@@ -114,7 +121,7 @@ class DeviceController extends Controller
      */
     public function state(WhatsappInstance $device): JsonResponse
     {
-        $engine = EvolutionApiService::forInstance($device);
+        $engine = Whatsapp::forInstance($device);
         $response = $engine->connectionState($device->instance_name);
         $state = data_get($response, 'instance.state', $device->status);
 
@@ -132,7 +139,7 @@ class DeviceController extends Controller
 
     public function show(WhatsappInstance $device): View
     {
-        $engine = EvolutionApiService::forInstance($device);
+        $engine = Whatsapp::forInstance($device);
         $privacy = [];
 
         if ($engine->configured() && $device->isConnected()) {
@@ -181,7 +188,7 @@ class DeviceController extends Controller
             'online'       => ['required', 'in:all,match_last_seen'],
         ]);
 
-        $engine = EvolutionApiService::forInstance($device);
+        $engine = Whatsapp::forInstance($device);
 
         if (! $engine->configured() || ! $device->isConnected()) {
             return back()->with('error', 'The device must be connected to change privacy.');
@@ -196,7 +203,7 @@ class DeviceController extends Controller
 
     public function destroy(WhatsappInstance $device): RedirectResponse
     {
-        $engine = EvolutionApiService::forInstance($device);
+        $engine = Whatsapp::forInstance($device);
 
         try {
             $engine->logout($device->instance_name);

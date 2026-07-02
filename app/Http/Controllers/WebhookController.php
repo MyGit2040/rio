@@ -10,8 +10,8 @@ use App\Models\Message;
 use App\Models\Suppression;
 use App\Models\WhatsappInstance;
 use App\Services\ChatbotService;
-use App\Services\EvolutionApiService;
 use App\Support\Tenancy;
+use App\Support\Whatsapp;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -248,7 +248,7 @@ class WebhookController extends Controller
         $reply = data_get($instance->tenant?->settings, 'optout_reply')
             ?: "You've been unsubscribed and won't receive further messages. Reply START to opt back in.";
 
-        EvolutionApiService::forInstance($instance)->sendText($instance->instance_name, $contact->phone, $reply);
+        Whatsapp::forInstance($instance)->sendText($instance->instance_name, $contact->phone, $reply);
 
         return true;
     }
@@ -276,7 +276,7 @@ class WebhookController extends Controller
             default           => "📩 Reply from {$who} (+{$phone}):\n{$detail}{$ctx}",
         };
 
-        EvolutionApiService::forInstance($instance)->sendText($instance->instance_name, $hook, $body);
+        Whatsapp::forInstance($instance)->sendText($instance->instance_name, $hook, $body);
     }
 
     private function onMessageStatus(array $data): void

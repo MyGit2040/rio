@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\WhatsappInstance;
-use App\Services\EvolutionApiService;
+use App\Support\Whatsapp;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -30,7 +30,7 @@ class MessageController extends Controller
             return response()->json(['message' => 'Device is not connected.'], 422);
         }
 
-        $result = EvolutionApiService::forInstance($device)->sendText(
+        $result = Whatsapp::forInstance($device)->sendText(
             $device->instance_name,
             preg_replace('/\D+/', '', $data['phone']),
             $data['message'],

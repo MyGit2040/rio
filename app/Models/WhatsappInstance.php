@@ -11,7 +11,7 @@ class WhatsappInstance extends Model
     use BelongsToTenant;
 
     protected $fillable = [
-        'tenant_id', 'name', 'instance_name', 'token', 'status', 'daily_limit',
+        'tenant_id', 'name', 'instance_name', 'driver', 'token', 'status', 'daily_limit',
         'warmup_enabled', 'warmup_start', 'warmup_per_day', 'warmup_started_at',
         'phone_number', 'profile_name', 'qr_code', 'pairing_code', 'connected_at',
     ];

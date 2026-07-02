@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Template;
 use App\Models\WhatsappInstance;
-use App\Services\EvolutionApiService;
+use App\Support\Whatsapp;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -67,7 +67,7 @@ class TemplateController extends Controller
         $number  = preg_replace('/\D+/', '', $data['phone']);
         $message = $this->render((string) $template->body, (array) ($data['variables'] ?? []), $number);
 
-        $evolution = EvolutionApiService::forInstance($device);
+        $evolution = Whatsapp::forInstance($device);
 
         // Media templates: send the media with the rendered body as caption.
         if ($template->type === 'media' && $template->media_url) {

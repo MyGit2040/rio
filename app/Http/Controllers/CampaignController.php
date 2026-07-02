@@ -9,8 +9,8 @@ use App\Models\Template;
 use App\Models\WhatsappInstance;
 use App\Models\Message;
 use App\Services\CampaignService;
-use App\Services\EvolutionApiService;
 use App\Services\PlanLimit;
+use App\Support\Whatsapp;
 use App\Support\Audit;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\JsonResponse;
@@ -400,7 +400,7 @@ class CampaignController extends Controller
             return back()->with('error', 'The campaign\'s device is not connected.');
         }
 
-        $engine = EvolutionApiService::forInstance($device);
+        $engine = Whatsapp::forInstance($device);
         $body = str_replace(['{{name}}', '{{phone}}'], ['there', $number], (string) $campaign->body);
 
         // A poll can't carry text/media, so (like a real send) send the message FIRST —

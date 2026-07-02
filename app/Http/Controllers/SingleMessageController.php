@@ -6,8 +6,8 @@ use App\Models\Contact;
 use App\Models\Message;
 use App\Models\Template;
 use App\Models\WhatsappInstance;
-use App\Services\EvolutionApiService;
 use App\Services\PlanLimit;
+use App\Support\Whatsapp;
 use App\Support\Tenancy;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -50,7 +50,7 @@ class SingleMessageController extends Controller
         $type = $template->type ?? 'text';
         $body = str_replace(['{{name}}', '{{phone}}'], ['there', $phone], (string) ($template->body ?? $data['body'] ?? ''));
 
-        $engine = EvolutionApiService::forInstance($device);
+        $engine = Whatsapp::forInstance($device);
         $name = $device->instance_name;
 
         // A poll can't carry text/media — send the message/image first, then the poll.

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Contracts\WhatsappGateway;
 use App\Models\Tenant;
 use App\Models\WhatsappInstance;
 use Illuminate\Http\Client\PendingRequest;
@@ -15,7 +16,7 @@ use Illuminate\Support\Facades\Log;
  * This is the ONLY place in the app that talks to Evolution. Everything goes
  * through the global API key + the per-instance name on the Evolution server.
  */
-class EvolutionApiService
+class EvolutionApiService implements WhatsappGateway
 {
     public function __construct(
         protected string $baseUrl,

@@ -10,6 +10,7 @@ use App\Models\Suppression;
 use App\Models\WhatsappInstance;
 use App\Support\SendingWindow;
 use App\Support\Tenancy;
+use App\Support\Whatsapp;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -169,7 +170,7 @@ class SequenceService
 
     private function send(WhatsappInstance $device, Contact $contact, $step): void
     {
-        $engine = EvolutionApiService::forInstance($device);
+        $engine = Whatsapp::forInstance($device);
         $template = $step->template;
 
         $body = $this->personalize($template->body ?? $step->body ?? '', $contact);

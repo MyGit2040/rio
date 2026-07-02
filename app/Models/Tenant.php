@@ -10,6 +10,7 @@ class Tenant extends Model
     protected $fillable = [
         'name', 'slug', 'plan', 'status', 'expires_at', 'max_devices', 'enabled_modules',
         'evolution_base_url', 'evolution_api_key', 'settings',
+        'whatsapp_driver', 'webjs_base_url', 'webjs_api_key',
     ];
 
     protected $casts = [

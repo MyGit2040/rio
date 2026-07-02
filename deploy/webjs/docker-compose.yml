@@ -1,0 +1,37 @@
+# whatsapp-web.js bridge — the second, selectable WhatsApp engine for Eagle.
+# Runs ALONGSIDE the Evolution stack; the app picks the engine per device.
+#
+# Usage on your Webuzo VPS:
+#   1. Copy the ../../whatsapp-web-js source next to this file (or bind-mount it).
+#   2. Create a .env here with WEBJS_API_KEY=<the same value as the app's .env>.
+#   3. docker compose up -d --build
+#   4. In the app set WEBJS_BASE_URL=http://<vps-ip>:3000 (or the compose network name).
+#
+# Linked sessions persist in the wa_web_sessions volume — a restart re-links
+# without a new QR scan.
+
+services:
+  whatsapp-web-engine:
+    container_name: whatsapp_web_engine
+    build:
+      context: ../../whatsapp-web-js
+    restart: always
+    ports:
+      - "3000:3000"
+    shm_size: '1gb'          # headless Chromium rendering stability
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      WEBJS_API_KEY: ${WEBJS_API_KEY}
+      SESSION_PATH: /app/.wwebjs_auth
+    volumes:
+      - wa_web_sessions:/app/.wwebjs_auth   # linked WhatsApp sessions persist here
+    networks:
+      - webjs-net
+
+volumes:
+  wa_web_sessions:
+
+networks:
+  webjs-net:
+    driver: bridge

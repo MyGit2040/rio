@@ -8,10 +8,10 @@ use App\Models\CampaignRecipient;
 use App\Models\Message;
 use App\Models\Suppression;
 use App\Models\WhatsappInstance;
-use App\Services\EvolutionApiService;
 use App\Services\PlanLimit;
 use App\Support\SendingWindow;
 use App\Support\Tenancy;
+use App\Support\Whatsapp;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -84,7 +84,7 @@ class SendCampaignMessage implements ShouldQueue
             return;
         }
 
-        $engine = EvolutionApiService::forInstance($instance);
+        $engine = Whatsapp::forInstance($instance);
         $contact = $recipient->contact;
         $number = $recipient->phone;
 

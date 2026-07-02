@@ -5,8 +5,8 @@ namespace App\Jobs;
 use App\Models\Contact;
 use App\Models\ContactGroup;
 use App\Models\WhatsappInstance;
-use App\Services\EvolutionApiService;
 use App\Support\Tenancy;
+use App\Support\Whatsapp;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -33,7 +33,7 @@ class VerifyContactsBatch implements ShouldQueue
 
         Tenancy::run($group->tenant_id, function () use ($group) {
             $device = WhatsappInstance::where('status', 'open')->first();
-            $engine = $device ? EvolutionApiService::forInstance($device) : null;
+            $engine = $device ? Whatsapp::forInstance($device) : null;
 
             if (! $device || ! $engine->configured()) {
                 return; // no connected device — can't verify right now

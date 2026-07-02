@@ -7,6 +7,7 @@ use App\Models\Contact;
 use App\Models\Message;
 use App\Models\Tenant;
 use App\Models\WhatsappInstance;
+use App\Support\Whatsapp;
 
 class ChatbotService
 {
@@ -37,7 +38,7 @@ class ChatbotService
             return;
         }
 
-        $engine = EvolutionApiService::forInstance($instance);
+        $engine = Whatsapp::forInstance($instance);
         $result = $engine->sendText($instance->instance_name, $contact->phone, $reply);
 
         Message::create([

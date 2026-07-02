@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Contact;
 use App\Models\Message;
 use App\Models\WhatsappInstance;
-use App\Services\EvolutionApiService;
+use App\Support\Whatsapp;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -57,7 +57,7 @@ class InboxController extends Controller
             return back()->with('error', 'Connect a WhatsApp device first to reply.');
         }
 
-        $result = EvolutionApiService::forInstance($device)
+        $result = Whatsapp::forInstance($device)
             ->sendText($device->instance_name, $contact->phone, $data['body']);
 
         if (! $result['ok']) {

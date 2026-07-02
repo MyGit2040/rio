@@ -7,6 +7,7 @@ use App\Services\AiService;
 use App\Services\EvolutionApiService;
 use App\Support\CronHealth;
 use App\Support\MailConfig;
+use App\Support\Whatsapp;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,7 +20,7 @@ class SettingsController extends Controller
     public function edit(): View
     {
         $tenant = auth()->user()->tenant;
-        $engine = EvolutionApiService::forTenant($tenant);
+        $engine = Whatsapp::forTenant($tenant);
 
         return view('settings.edit', [
             'tenant'        => $tenant,
@@ -39,6 +40,10 @@ class SettingsController extends Controller
         $data = $request->validate([
             'evolution_base_url' => ['nullable', 'url', 'max:255'],
             'evolution_api_key'  => ['nullable', 'string', 'max:255'],
+            // WhatsApp engine selection (Evolution / whatsapp-web.js bridge).
+            'whatsapp_driver'    => ['nullable', 'in:evolution,webjs'],
+            'webjs_base_url'     => ['nullable', 'url', 'max:255'],
+            'webjs_api_key'      => ['nullable', 'string', 'max:255'],
             'ai_enabled'         => ['sometimes', 'boolean'],
             'brand_name'         => ['nullable', 'string', 'max:60'],
             'accent_color'       => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
@@ -131,6 +136,9 @@ class SettingsController extends Controller
         $tenant->update([
             'evolution_base_url' => ($data['evolution_base_url'] ?? null) ?: null,
             'evolution_api_key'  => ($data['evolution_api_key'] ?? null) ?: null,
+            'whatsapp_driver'    => ($data['whatsapp_driver'] ?? null) ?: 'evolution',
+            'webjs_base_url'     => ($data['webjs_base_url'] ?? null) ?: null,
+            'webjs_api_key'      => ($data['webjs_api_key'] ?? null) ?: null,
             'settings'           => $settings,
         ]);
 
@@ -171,7 +179,7 @@ class SettingsController extends Controller
     public function syncEngineUpdates(): JsonResponse
     {
         $tenant = auth()->user()->tenant;
-        $engine = EvolutionApiService::forTenant($tenant);
+        $engine = Whatsapp::forTenant($tenant);
 
         if (! $engine->configured()) {
             return response()->json(['ok' => false, 'message' => 'Add the engine URL and API key and save first, then try again.'], 422);

@@ -109,31 +109,61 @@
         </x-card>
 
         {{-- Engine --}}
-        <x-card title="WhatsApp engine (Evolution API)" subtitle="Where your messages are actually sent from." x-show="tab === 'engine'" x-cloak>
-            <div class="space-y-4">
+        <x-card title="WhatsApp engine" subtitle="Where your messages are actually sent from." x-show="tab === 'engine'" x-cloak>
+            <div class="space-y-4" x-data="{ driver: '{{ old('whatsapp_driver', $tenant->whatsapp_driver ?: 'evolution') }}' }">
                 <div class="rounded-lg px-4 py-3 text-sm {{ $engineReady ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-yellow-50 text-yellow-800 border border-yellow-200' }}">
-                    {{ $engineReady ? 'Engine is configured.' : 'Engine not configured yet — add the URL and key below.' }}
+                    {{ $engineReady ? 'Engine is configured.' : 'Engine not configured yet — pick an engine and add its details below.' }}
                 </div>
+
+                {{-- Engine selector --}}
                 <div>
-                    <x-input-label for="evolution_base_url" value="Engine URL" />
-                    <x-text-input id="evolution_base_url" name="evolution_base_url" class="block mt-1 w-full" placeholder="http://your-vps-ip:8080" :value="old('evolution_base_url', $tenant->evolution_base_url)" />
-                    @if ($platformUrl)<p class="text-xs text-gray-500 mt-1">Leave blank to use the platform default ({{ $platformUrl }}).</p>@endif
-                </div>
-                <div>
-                    <div class="flex items-end gap-2 flex-wrap">
-                        <div class="flex-1 min-w-0">
-                            <x-input-label for="evolution_api_key" value="API key" />
-                            <x-text-input id="evolution_api_key" name="evolution_api_key" class="block mt-1 w-full" placeholder="Your Evolution AUTHENTICATION_API_KEY" :value="old('evolution_api_key', $tenant->evolution_api_key)" />
-                        </div>
-                        <button type="button" onclick="eagleTest('{{ route('settings.sync-engine-updates') }}', this, 'engine-sync-result')"
-                                title="Register the update webhook on every linked number so delivery receipts and replies sync automatically"
-                                class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-gray-300 text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap">
-                            <x-nav-icon icon="send" class="w-4 h-4" />
-                            Receive updates
-                        </button>
-                    </div>
+                    <x-input-label for="whatsapp_driver" value="Sending engine" />
+                    <select id="whatsapp_driver" name="whatsapp_driver" x-model="driver"
+                            class="block mt-1 w-full rounded-lg border-gray-300 focus:border-brand focus:ring-brand text-sm">
+                        <option value="evolution">Evolution API (Baileys)</option>
+                        <option value="webjs">whatsapp-web.js bridge (WhatsApp Web)</option>
+                    </select>
                     <p class="text-xs text-gray-500 mt-1">
-                        Save your key first, then click <strong>Receive updates</strong> to turn on automatic delivery receipts &amp; replies for numbers linked earlier.
+                        The default engine for new numbers. Numbers already linked keep the engine they were created on.
+                    </p>
+                </div>
+
+                {{-- Evolution fields --}}
+                <div class="space-y-4" x-show="driver === 'evolution'" x-cloak>
+                    <div>
+                        <x-input-label for="evolution_base_url" value="Engine URL" />
+                        <x-text-input id="evolution_base_url" name="evolution_base_url" class="block mt-1 w-full" placeholder="http://your-vps-ip:8080" :value="old('evolution_base_url', $tenant->evolution_base_url)" />
+                        @if ($platformUrl)<p class="text-xs text-gray-500 mt-1">Leave blank to use the platform default ({{ $platformUrl }}).</p>@endif
+                    </div>
+                    <div>
+                        <x-input-label for="evolution_api_key" value="API key" />
+                        <x-text-input id="evolution_api_key" name="evolution_api_key" class="block mt-1 w-full" placeholder="Your Evolution AUTHENTICATION_API_KEY" :value="old('evolution_api_key', $tenant->evolution_api_key)" />
+                    </div>
+                </div>
+
+                {{-- whatsapp-web.js bridge fields --}}
+                <div class="space-y-4" x-show="driver === 'webjs'" x-cloak>
+                    <div>
+                        <x-input-label for="webjs_base_url" value="Bridge URL" />
+                        <x-text-input id="webjs_base_url" name="webjs_base_url" class="block mt-1 w-full" placeholder="http://your-vps-ip:3000" :value="old('webjs_base_url', $tenant->webjs_base_url)" />
+                        <p class="text-xs text-gray-500 mt-1">The whatsapp-web.js bridge container (see <code>deploy/webjs</code>).</p>
+                    </div>
+                    <div>
+                        <x-input-label for="webjs_api_key" value="Bridge key" />
+                        <x-text-input id="webjs_api_key" name="webjs_api_key" class="block mt-1 w-full" placeholder="Matches WEBJS_API_KEY in the bridge" :value="old('webjs_api_key', $tenant->webjs_api_key)" />
+                    </div>
+                </div>
+
+                {{-- Webhook re-sync — works for either engine --}}
+                <div class="pt-2">
+                    <button type="button" onclick="eagleTest('{{ route('settings.sync-engine-updates') }}', this, 'engine-sync-result')"
+                            title="Register the update webhook on every linked number so delivery receipts and replies sync automatically"
+                            class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-gray-300 text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap">
+                        <x-nav-icon icon="send" class="w-4 h-4" />
+                        Receive updates
+                    </button>
+                    <p class="text-xs text-gray-500 mt-1">
+                        Save first, then click <strong>Receive updates</strong> to turn on automatic delivery receipts &amp; replies for numbers linked earlier.
                     </p>
                     <span id="engine-sync-result" class="text-sm"></span>
                 </div>
