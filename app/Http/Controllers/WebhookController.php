@@ -111,6 +111,17 @@ class WebhookController extends Controller
                 continue; // media / reaction / status update — nothing actionable
             }
 
+            // Idempotency: the engine re-delivers the same messages.upsert event
+            // (Evolution retries, the webjs bridge re-posts). Without this guard we
+            // recorded a duplicate AND re-forwarded the reply to the hook number on
+            // every delivery — the "same reply every minute" bug. If we've already
+            // seen this exact WhatsApp message id on this number, skip it entirely.
+            $messageId = $key['id'] ?? null;
+            if ($messageId && Message::where('whatsapp_instance_id', $instance->id)
+                ->where('message_id', $messageId)->exists()) {
+                continue;
+            }
+
             $contact = Contact::firstOrCreate(
                 ['phone' => $phone],
                 ['name' => $item['pushName'] ?? null]
@@ -129,7 +140,7 @@ class WebhookController extends Controller
                 'type'                 => $kind === 'text' ? 'text' : $kind,
                 'body'                 => $detail,
                 'status'               => 'received',
-                'message_id'           => $key['id'] ?? null,
+                'message_id'           => $messageId,
             ]);
 
             if (! $fromMe) {
