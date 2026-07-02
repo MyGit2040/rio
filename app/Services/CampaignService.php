@@ -262,7 +262,12 @@ class CampaignService
                 $index++;
             }
 
-            $campaign->recipients()->insert($rows);
+            // SQLite caps bound variables at 999 per statement; each row uses 9
+            // columns, so insert in batches of 100 (900 vars) — large audiences
+            // (thousands of recipients) would otherwise blow the limit.
+            foreach (array_chunk($rows, 100) as $batch) {
+                $campaign->recipients()->insert($batch);
+            }
             $count += count($rows);
         });
 
