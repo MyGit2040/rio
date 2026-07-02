@@ -49,6 +49,7 @@ class SettingsController extends Controller
             'quiet_hours_enabled' => ['sometimes', 'boolean'],
             'quiet_start'         => ['nullable', 'date_format:H:i'],
             'quiet_end'           => ['nullable', 'date_format:H:i'],
+            'quiet_timezone'      => ['nullable', 'timezone'],
             // Opt-out keywords + auto-reply.
             'optout_keywords'     => ['nullable', 'string', 'max:255'],
             'optout_reply'        => ['nullable', 'string', 'max:1000'],
@@ -85,6 +86,9 @@ class SettingsController extends Controller
         $settings['quiet_hours_enabled'] = $request->boolean('quiet_hours_enabled');
         $settings['quiet_start']         = $data['quiet_start'] ?? '21:00';
         $settings['quiet_end']           = $data['quiet_end'] ?? '08:00';
+        // Local timezone the quiet window is measured in — without this the guard
+        // runs in UTC and defers sends at the wrong wall-clock time (Dubai bug).
+        $settings['quiet_timezone']      = ($data['quiet_timezone'] ?? null) ?: config('app.timezone', 'UTC');
 
         // Opt-out handling.
         $settings['optout_keywords'] = ($data['optout_keywords'] ?? null) ?: 'STOP,UNSUBSCRIBE,CANCEL,END,QUIT';

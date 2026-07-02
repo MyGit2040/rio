@@ -205,9 +205,10 @@
                     <input type="checkbox" name="quiet_hours_enabled" value="1" @checked(data_get($s, 'quiet_hours_enabled', false)) class="mt-1 rounded border-gray-300 text-brand focus:ring-brand">
                     <span>
                         <span class="text-sm font-medium text-gray-800">Don't send during quiet hours</span>
-                        <span class="block text-xs text-gray-500">Messages due in this window are delayed until it ends. Times are in {{ config('app.timezone', 'UTC') }}.</span>
+                        <span class="block text-xs text-gray-500">Messages due in this window are delayed until it ends. Times are measured in the timezone selected below.</span>
                     </span>
                 </label>
+                @php $quietTz = old('quiet_timezone', data_get($s, 'quiet_timezone', config('app.timezone', 'UTC'))); @endphp
                 <div class="grid grid-cols-2 gap-4 max-w-sm">
                     <div>
                         <x-input-label for="quiet_start" value="From" />
@@ -219,6 +220,16 @@
                         <input id="quiet_end" name="quiet_end" type="time" value="{{ old('quiet_end', data_get($s, 'quiet_end', '08:00')) }}"
                                class="mt-1 block w-full rounded-lg border-gray-300 text-sm focus:ring-brand focus:border-brand">
                     </div>
+                </div>
+                <div class="max-w-sm">
+                    <x-input-label for="quiet_timezone" value="Timezone" />
+                    <select id="quiet_timezone" name="quiet_timezone"
+                            class="mt-1 block w-full rounded-lg border-gray-300 text-sm focus:ring-brand focus:border-brand">
+                        @foreach (DateTimeZone::listIdentifiers() as $tz)
+                            <option value="{{ $tz }}" @selected($quietTz === $tz)>{{ $tz }}</option>
+                        @endforeach
+                    </select>
+                    <span class="block mt-1 text-xs text-gray-500">Quiet hours are read in this timezone. Set it to your local time (e.g. Asia/Dubai) so sends pause at the right hour.</span>
                 </div>
             </div>
         </x-card>
