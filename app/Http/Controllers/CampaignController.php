@@ -85,16 +85,21 @@ class CampaignController extends Controller
 
         Audit::log('campaign.created', $campaign, $campaign->name);
 
+        // Per-device caps can leave some contacts out (hard limits). Tell the operator.
+        $capWarning = $campaign->skippedForCapacity > 0
+            ? " {$campaign->skippedForCapacity} contact(s) were left out because your per-number limits were reached — raise a limit or add a number to include them."
+            : '';
+
         if ($request->input('schedule') === 'now') {
             $this->campaigns->launch($campaign);
             Audit::log('campaign.launched', $campaign, "{$campaign->total} recipients");
 
             return redirect()->route('campaigns.show', $campaign)
-                ->with('success', "Campaign started — sending to {$campaign->total} contacts.");
+                ->with('success', "Campaign started — sending to {$campaign->total} contacts.".$capWarning);
         }
 
         return redirect()->route('campaigns.show', $campaign)
-            ->with('success', 'Campaign scheduled for '.$campaign->scheduled_at->format('M j, Y g:i A').'.');
+            ->with('success', 'Campaign scheduled for '.$campaign->scheduled_at->format('M j, Y g:i A').'.'.$capWarning);
     }
 
     public function show(Campaign $campaign, Request $request): View
@@ -151,6 +156,11 @@ class CampaignController extends Controller
             'disconnected' => $campaignDevices->where('status', '!=', 'open')->count(),
         ];
 
+        // How many recipients are on each number (unfiltered) — to show usage vs cap.
+        $deviceAssigned = $campaign->recipients()
+            ->select('whatsapp_instance_id', DB::raw('COUNT(*) as c'))
+            ->groupBy('whatsapp_instance_id')->pluck('c', 'whatsapp_instance_id');
+
         $pool = array_values(array_filter(array_merge([$campaign->body], $campaign->variants ?? []), 'filled'));
         $variantOptions = collect($pool)->map(fn ($b, $i) => ['value' => $i, 'label' => $i === 0 ? 'Main' : 'Variant '.$i])->all();
 
@@ -175,6 +185,7 @@ class CampaignController extends Controller
             'devices'       => $devices,
             'campaignDevices' => $campaignDevices,
             'deviceSummary' => $deviceSummary,
+            'deviceAssigned' => $deviceAssigned,
             'variantOptions' => $variantOptions,
             'variantStats'  => $this->variantStats($campaign),
             'trackedLinks'  => $campaign->track_links ? $campaign->trackedLinks()->orderByDesc('clicks')->get() : collect(),

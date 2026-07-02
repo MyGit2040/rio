@@ -28,6 +28,13 @@ class CampaignService
             $message = $this->resolveMessage($data);
             $deviceIds = array_values(array_map('intval', $data['device_ids']));
 
+            // Per-device caps: keep only selected devices with a positive limit.
+            $deviceLimits = collect($data['device_limits'] ?? [])
+                ->only($deviceIds)
+                ->map(fn ($v) => (int) $v)
+                ->filter(fn ($v) => $v > 0)
+                ->all();
+
             $scheduledAt = ($data['schedule'] ?? 'now') === 'later'
                 ? Carbon::parse($data['scheduled_at'])
                 : null;
@@ -35,6 +42,7 @@ class CampaignService
             $campaign = Campaign::create([
                 'whatsapp_instance_id' => $deviceIds[0],
                 'device_ids'           => $deviceIds,
+                'device_limits'        => $deviceLimits ?: null,
                 'rotate_every'         => (int) ($data['rotate_every'] ?? 0),
                 'template_id'          => $data['template_id'] ?? null,
                 'name'                 => $data['name'],
@@ -129,6 +137,11 @@ class CampaignService
      * Reassign every still-pending recipient onto the campaign's currently-connected
      * devices, spreading them by the same rule (rotate-every or sticky). If nothing is
      * connected, assignments are left untouched (the circuit breaker will pause again).
+     *
+     * When per-device caps are set they are HONOURED: recipients already on a
+     * connected number stay put, and only those stranded on a disconnected number
+     * are moved — into connected numbers that still have spare capacity. If none
+     * has capacity, the recipient waits (a hard cap is never exceeded).
      */
     private function reassignPendingToConnected(Campaign $campaign): void
     {
@@ -136,6 +149,12 @@ class CampaignService
         $connected = WhatsappInstance::whereIn('id', $ids)->where('status', 'open')->pluck('id')->all();
 
         if (empty($connected)) {
+            return;
+        }
+
+        if (! empty($campaign->device_limits)) {
+            $this->reassignRespectingCaps($campaign, $connected);
+
             return;
         }
 
@@ -154,6 +173,58 @@ class CampaignService
                         $recipient->update(['whatsapp_instance_id' => $device]);
                     }
                     $i++;
+                }
+            });
+    }
+
+    /**
+     * Move only the recipients stranded on a disconnected number onto connected
+     * numbers with remaining cap capacity. Recipients already on a connected
+     * number keep their slot (they were assigned within cap at build time).
+     *
+     * @param  array<int, int>  $connected
+     */
+    private function reassignRespectingCaps(Campaign $campaign, array $connected): void
+    {
+        $caps = $campaign->device_limits ?? [];
+
+        // Current committed usage per device (sent + still-pending) — this is what
+        // the caps count against.
+        $usage = $campaign->recipients()
+            ->whereIn('status', ['pending', 'sent', 'delivered', 'read'])
+            ->select('whatsapp_instance_id', DB::raw('COUNT(*) as c'))
+            ->groupBy('whatsapp_instance_id')->pluck('c', 'whatsapp_instance_id');
+
+        // Spare capacity on each connected number (unlimited when cap is 0).
+        $remaining = [];
+        foreach ($connected as $id) {
+            $cap = (int) ($caps[$id] ?? 0);
+            $remaining[$id] = $cap === 0 ? PHP_INT_MAX : max(0, $cap - (int) ($usage[$id] ?? 0));
+        }
+
+        // Stranded = pending recipients NOT on a connected number.
+        $campaign->recipients()->where('status', 'pending')
+            ->whereNotIn('whatsapp_instance_id', $connected)
+            ->orderBy('id')
+            ->chunkById(500, function ($recipients) use (&$remaining) {
+                foreach ($recipients as $recipient) {
+                    // First connected number with spare capacity (in selection order).
+                    $target = null;
+                    foreach ($remaining as $id => $left) {
+                        if ($left > 0) {
+                            $target = $id;
+                            break;
+                        }
+                    }
+
+                    if ($target === null) {
+                        continue; // every connected number is full — leave it waiting
+                    }
+
+                    $recipient->update(['whatsapp_instance_id' => $target]);
+                    if ($remaining[$target] !== PHP_INT_MAX) {
+                        $remaining[$target]--;
+                    }
                 }
             });
     }
@@ -228,8 +299,12 @@ class CampaignService
 
         $count = 0;
         $index = 0;
+        $skipped = 0;
+        $used = [];                                   // device id => messages assigned so far
         $deviceCount = max(1, count($deviceIds));
         $rotateEvery = (int) ($campaign->rotate_every ?? 0);
+        $caps = $campaign->device_limits ?? [];       // device id => hard cap (>0)
+        $hasCaps = ! empty($caps);
 
         // Message-variant rotation: [main body, ...variants]. Each recipient gets the
         // next slot in order so variants rotate on every single message.
@@ -238,15 +313,27 @@ class CampaignService
             fn ($v) => filled($v)
         ))));
 
-        $query->select('id', 'phone')->distinct()->chunkById(500, function ($contacts) use ($campaign, $deviceIds, $deviceCount, $rotateEvery, $variantCount, &$count, &$index) {
+        $query->select('id', 'phone')->distinct()->chunkById(500, function ($contacts) use ($campaign, $deviceIds, $deviceCount, $rotateEvery, $variantCount, $caps, $hasCaps, &$count, &$index, &$skipped, &$used) {
             $rows = [];
 
             foreach ($contacts as $contact) {
-                // rotate_every > 0: send N in a row from one number, then switch to the next.
-                // rotate_every = 0: sticky — the same contact always maps to the same device.
-                $device = $rotateEvery > 0
-                    ? $deviceIds[intdiv($index, $rotateEvery) % $deviceCount]
-                    : $deviceIds[crc32($contact->phone) % $deviceCount];
+                if ($hasCaps) {
+                    // Respect per-device caps: round-robin only across numbers that
+                    // still have capacity. If every number is full, this contact is
+                    // left out (the operator chose a hard cap).
+                    $device = $this->nextCappedDevice($deviceIds, $caps, $used, $rotateEvery, $index);
+                    if ($device === null) {
+                        $skipped++;
+                        continue;
+                    }
+                    $used[$device] = ($used[$device] ?? 0) + 1;
+                } else {
+                    // rotate_every > 0: send N in a row from one number, then switch to the next.
+                    // rotate_every = 0: sticky — the same contact always maps to the same device.
+                    $device = $rotateEvery > 0
+                        ? $deviceIds[intdiv($index, $rotateEvery) % $deviceCount]
+                        : $deviceIds[crc32($contact->phone) % $deviceCount];
+                }
 
                 $rows[] = [
                     'tenant_id'            => $campaign->tenant_id,
@@ -271,6 +358,34 @@ class CampaignService
             $count += count($rows);
         });
 
+        $campaign->skippedForCapacity = $skipped;
+
         return $count;
+    }
+
+    /**
+     * Pick the next device that still has room under its cap, round-robin across
+     * the ones with capacity. Returns null when every selected number is full.
+     *
+     * @param  array<int, int>  $deviceIds
+     * @param  array<int, int>  $caps   device id => hard cap (>0 = limited)
+     * @param  array<int, int>  $used   device id => assigned so far
+     */
+    private function nextCappedDevice(array $deviceIds, array $caps, array $used, int $rotateEvery, int $index): ?int
+    {
+        $available = array_values(array_filter($deviceIds, function ($id) use ($caps, $used) {
+            $cap = (int) ($caps[$id] ?? 0);
+
+            return $cap === 0 || ($used[$id] ?? 0) < $cap;   // 0 = unlimited
+        }));
+
+        if ($available === []) {
+            return null;
+        }
+
+        $n = count($available);
+        $pos = $rotateEvery > 0 ? intdiv($index, $rotateEvery) % $n : $index % $n;
+
+        return $available[$pos];
     }
 }

@@ -131,12 +131,18 @@
                             <th class="py-2 font-medium">Number</th>
                             <th class="py-2 font-medium">Phone</th>
                             <th class="py-2 font-medium">Status</th>
+                            <th class="py-2 font-medium">Assigned</th>
+                            <th class="py-2 font-medium">Limit</th>
                             <th class="py-2 font-medium">Connected</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100">
                         @foreach ($campaignDevices as $d)
-                            @php $connected = $d->status === 'open'; @endphp
+                            @php
+                                $connected = $d->status === 'open';
+                                $limit = $campaign->deviceLimit($d->id);
+                                $assigned = (int) ($deviceAssigned[$d->id] ?? 0);
+                            @endphp
                             <tr>
                                 <td class="py-2 text-gray-800 whitespace-nowrap">{{ $d->name }}</td>
                                 <td class="py-2 text-gray-600 whitespace-nowrap">{{ $d->phone_number ? '+'.$d->phone_number : '—' }}</td>
@@ -146,6 +152,8 @@
                                         {{ $connected ? 'Connected' : 'Disconnected' }}
                                     </span>
                                 </td>
+                                <td class="py-2 text-gray-700 whitespace-nowrap">{{ number_format($assigned) }}</td>
+                                <td class="py-2 text-gray-500 whitespace-nowrap">{{ $limit > 0 ? number_format($limit) : 'No limit' }}</td>
                                 <td class="py-2 text-gray-500 whitespace-nowrap">{{ $connected && $d->connected_at ? $d->connected_at->diffForHumans() : '—' }}</td>
                             </tr>
                         @endforeach
