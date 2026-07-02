@@ -15,6 +15,9 @@ services:
     container_name: whatsapp_web_engine
     build:
       context: ../../whatsapp-web-js
+      # Build over the host network — on locked-down VPS hosts (CSF/firewalld) the
+      # default Docker bridge is often blocked from outbound, so apt-get fails.
+      network: host
     restart: always
     ports:
       - "3000:3000"
