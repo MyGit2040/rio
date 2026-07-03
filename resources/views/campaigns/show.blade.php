@@ -4,7 +4,7 @@
     @if ($campaign->status === 'paused')
         <div class="mb-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 px-5 py-4 text-sm flex items-center gap-2 flex-wrap">
             <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            <span><strong>Sending paused</strong> — a WhatsApp number disconnected. Reconnect <strong>any</strong> of this campaign's numbers on the Devices page — or assign different connected numbers in the <strong>Sending numbers</strong> card below — then press <strong>Resume</strong>: it continues from exactly where it stopped and spreads the remaining messages across whatever numbers are online. Nothing is lost.</span>
+            <span><strong>Sending paused</strong> — a WhatsApp number disconnected. Reconnect <strong>any</strong> of this campaign's numbers on the Devices page — or assign different connected numbers in the <strong>Sending numbers</strong> card below — then press <strong>Resume</strong>: it continues from exactly where it stopped and spreads the remaining messages across whatever numbers are online. Nothing is lost. While paused you can also press <strong>Edit</strong> to change the message, speed, per-number limits and more.</span>
         </div>
     @endif
 
@@ -13,6 +13,7 @@
         <x-campaign-status :status="$campaign->status" />
         <div class="ml-auto flex items-center gap-2">
             @if (in_array($campaign->status, ['draft', 'scheduled', 'paused']))
+                <x-btn :href="route('campaigns.edit', $campaign)" variant="secondary">Edit</x-btn>
                 <form method="POST" action="{{ route('campaigns.launch', $campaign) }}">
                     @csrf
                     <x-btn type="submit" variant="primary">{{ $campaign->status === 'paused' ? 'Resume' : 'Launch now' }}</x-btn>

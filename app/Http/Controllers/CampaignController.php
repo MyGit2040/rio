@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\CampaignRequest;
+use App\Http\Requests\UpdateCampaignRequest;
 use App\Models\Campaign;
 use App\Models\ContactGroup;
 use App\Models\Template;
@@ -100,6 +101,47 @@ class CampaignController extends Controller
 
         return redirect()->route('campaigns.show', $campaign)
             ->with('success', 'Campaign scheduled for '.$campaign->scheduled_at->format('M j, Y g:i A').'.'.$capWarning);
+    }
+
+    public function edit(Campaign $campaign): View|RedirectResponse
+    {
+        if ($blocked = $this->guardEditable($campaign)) {
+            return $blocked;
+        }
+
+        return view('campaigns.edit', [
+            'campaign' => $campaign,
+            'devices'  => WhatsappInstance::latest()->get(),
+        ]);
+    }
+
+    public function update(UpdateCampaignRequest $request, Campaign $campaign): RedirectResponse
+    {
+        if ($blocked = $this->guardEditable($campaign)) {
+            return $blocked;
+        }
+
+        $this->campaigns->update($campaign, $request->validated());
+        Audit::log('campaign.updated', $campaign, $campaign->name);
+
+        return redirect()->route('campaigns.show', $campaign)->with('success', $campaign->status === 'paused'
+            ? 'Changes saved — press Resume to continue the remaining messages with the new settings.'
+            : 'Changes saved.');
+    }
+
+    /**
+     * A campaign is editable while draft/scheduled/paused; never mid-send or
+     * after completion.
+     */
+    private function guardEditable(Campaign $campaign): ?RedirectResponse
+    {
+        return match ($campaign->status) {
+            'sending'   => redirect()->route('campaigns.show', $campaign)
+                ->with('error', 'Pause the campaign first — then you can edit its settings and press Resume.'),
+            'completed' => redirect()->route('campaigns.show', $campaign)
+                ->with('error', 'This campaign has finished — its settings can no longer be changed.'),
+            default     => null,
+        };
     }
 
     public function show(Campaign $campaign, Request $request): View

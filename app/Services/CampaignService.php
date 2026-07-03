@@ -124,6 +124,65 @@ class CampaignService
     }
 
     /**
+     * Apply edits to an existing (draft/scheduled/paused) campaign. Safe on a
+     * partially-sent run: the send job re-reads the campaign row for every
+     * message, so the remaining recipients pick up the new message, numbers,
+     * caps and pacing on the next launch/resume — already-sent messages are
+     * untouched. The audience is locked (recipients were built at creation).
+     *
+     * @param  array<string, mixed>  $data  Validated UpdateCampaignRequest data.
+     */
+    public function update(Campaign $campaign, array $data): Campaign
+    {
+        $deviceIds = array_values(array_map('intval', $data['device_ids']));
+
+        $deviceLimits = collect($data['device_limits'] ?? [])
+            ->only($deviceIds)
+            ->map(fn ($v) => (int) $v)
+            ->filter(fn ($v) => $v > 0)
+            ->all();
+
+        $body = $data['body'] ?? null;
+        if ($campaign->track_links && filled($body)) {
+            $body = $this->links->wrap($body, $campaign); // idempotent — existing short links kept
+        }
+
+        $payload = [
+            'name'                 => $data['name'],
+            'device_ids'           => $deviceIds,
+            'whatsapp_instance_id' => $deviceIds[0],
+            'device_limits'        => $deviceLimits ?: null,
+            'rotate_every'         => (int) ($data['rotate_every'] ?? 0),
+            'body'                 => $body,
+            'footer'               => $data['footer'] ?? null,
+            'variants'             => ($data['variants'] ?? []) ?: null,
+            'min_delay'            => (int) $data['min_delay'],
+            'max_delay'            => (int) $data['max_delay'],
+            'max_retries'          => (int) ($data['max_retries'] ?? 3),
+        ];
+
+        if (in_array($campaign->type, ['media', 'poll'], true) && array_key_exists('media_url', $data)) {
+            $payload['media_url'] = $data['media_url'] ?: null;
+        }
+
+        if ($campaign->type === 'poll') {
+            $payload['poll'] = [
+                'question' => $data['poll_question'],
+                'options'  => array_values($data['poll_options'] ?? []),
+                'multiple' => ! empty($data['poll_multiple']),
+            ];
+        }
+
+        if ($campaign->status === 'scheduled' && ! empty($data['scheduled_at'])) {
+            $payload['scheduled_at'] = Carbon::parse($data['scheduled_at']);
+        }
+
+        $campaign->update($payload);
+
+        return $campaign;
+    }
+
+    /**
      * Replace the campaign's sending numbers — e.g. swap in freshly-connected
      * devices after the original ones disconnected. Per-device caps set for
      * numbers that are removed are dropped; the still-pending recipients are

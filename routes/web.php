@@ -172,7 +172,7 @@ Route::middleware('auth')->group(function () {
 
     // Campaigns (bulk send)
     Route::post('/campaigns/bulk', [CampaignController::class, 'bulk'])->name('campaigns.bulk');
-    Route::resource('campaigns', CampaignController::class)->except('edit', 'update');
+    Route::resource('campaigns', CampaignController::class);
     Route::post('/campaigns/{campaign}/launch', [CampaignController::class, 'launch'])->name('campaigns.launch');
     Route::post('/campaigns/{campaign}/pause', [CampaignController::class, 'pause'])->name('campaigns.pause');
     Route::post('/campaigns/{campaign}/devices', [CampaignController::class, 'assignDevices'])->name('campaigns.devices');
