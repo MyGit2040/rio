@@ -11,6 +11,7 @@ use App\Support\Whatsapp;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\View\View;
@@ -220,6 +221,56 @@ class SettingsController extends Controller
         }
 
         return response()->json(['ok' => true, 'message' => $message]);
+    }
+
+    /**
+     * Terminal-free "Restart workers": signal the running queue worker to finish
+     * its current job and exit. On the database queue this writes a cache flag
+     * (no Redis needed); the systemd worker / schedule-driven queue:work then
+     * relaunches with fresh code. Owner/super-admin only.
+     */
+    public function restartWorkers(): JsonResponse
+    {
+        $this->authorizeProcessControl();
+
+        Artisan::call('queue:restart');
+
+        return response()->json([
+            'ok'      => true,
+            'message' => 'Workers signalled to restart — the running worker finishes its current message, then relaunches within a few seconds.',
+        ]);
+    }
+
+    /**
+     * Re-queue every permanently-failed job (terminal-free `queue:retry all`).
+     */
+    public function retryFailedJobs(): JsonResponse
+    {
+        $this->authorizeProcessControl();
+
+        Artisan::call('queue:retry', ['id' => ['all']]);
+
+        return response()->json(['ok' => true, 'message' => 'Failed jobs re-queued — they will send on the next worker pass.']);
+    }
+
+    /**
+     * Clear the failed-jobs log (terminal-free `queue:flush`).
+     */
+    public function flushFailedJobs(): JsonResponse
+    {
+        $this->authorizeProcessControl();
+
+        Artisan::call('queue:flush');
+
+        return response()->json(['ok' => true, 'message' => 'Failed-jobs log cleared.']);
+    }
+
+    /** Process controls are destructive-ish infra actions — owners/super-admins only. */
+    private function authorizeProcessControl(): void
+    {
+        $user = auth()->user();
+
+        abort_unless($user && ($user->isOwner() || $user->isSuperAdmin()), 403);
     }
 
     /**

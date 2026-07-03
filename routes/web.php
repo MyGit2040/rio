@@ -212,6 +212,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/settings/test-email', [SettingsController::class, 'testEmail'])->name('settings.test-email');
     Route::post('/settings/test-ai', [SettingsController::class, 'testAi'])->name('settings.test-ai');
     Route::post('/settings/sync-engine-updates', [SettingsController::class, 'syncEngineUpdates'])->name('settings.sync-engine-updates');
+    // Terminal-free process controls (owner/super-admin gated in the controller).
+    Route::post('/settings/restart-workers', [SettingsController::class, 'restartWorkers'])->name('settings.restart-workers');
+    Route::post('/settings/retry-failed-jobs', [SettingsController::class, 'retryFailedJobs'])->name('settings.retry-failed-jobs');
+    Route::post('/settings/flush-failed-jobs', [SettingsController::class, 'flushFailedJobs'])->name('settings.flush-failed-jobs');
 
     // Profile (Breeze)
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

@@ -449,6 +449,32 @@
                 </ul>
             </x-card>
 
+            {{-- Process controls (owner/super-admin) — terminal-free worker + failed-job controls --}}
+            @if (auth()->user()?->isOwner() || auth()->user()?->isSuperAdmin())
+            <x-card title="Process controls" subtitle="Manage the background workers without touching the server terminal.">
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="button" onclick="eagleTest('{{ route('settings.restart-workers') }}', this, 'proc-result')"
+                            class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">
+                        <x-nav-icon icon="device" class="w-4 h-4" /> Restart workers
+                    </button>
+                    <button type="button" onclick="eagleTest('{{ route('settings.retry-failed-jobs') }}', this, 'proc-result')"
+                            class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">
+                        <x-nav-icon icon="send" class="w-4 h-4" /> Retry failed jobs
+                    </button>
+                    <button type="button"
+                            onclick="if (confirm('Clear the failed-jobs log? This cannot be undone.')) eagleTest('{{ route('settings.flush-failed-jobs') }}', this, 'proc-result')"
+                            class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-red-200 text-sm text-red-600 hover:bg-red-50">
+                        Clear failed jobs
+                    </button>
+                    <span id="proc-result" class="text-sm"></span>
+                </div>
+                <p class="text-xs text-gray-500 mt-2">
+                    <strong>Restart workers</strong> tells the running worker to finish its current message and relaunch (use after a deploy).
+                    You never need to run <code class="px-1 bg-gray-100 rounded">queue:work</code> by hand — the cron below drives it.
+                </p>
+            </x-card>
+            @endif
+
             {{-- Paste-ready cron --}}
             <x-card title="Server cron (paste this once)" subtitle="This single per-minute cron drives everything: scheduled campaigns, drip sequences and the queue worker.">
                 <div class="space-y-3" x-data="{ copied: false }">
