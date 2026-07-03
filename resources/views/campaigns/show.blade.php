@@ -4,7 +4,7 @@
     @if ($campaign->status === 'paused')
         <div class="mb-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 px-5 py-4 text-sm flex items-center gap-2 flex-wrap">
             <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            <span><strong>Sending paused</strong> — a WhatsApp number disconnected. Reconnect <strong>any</strong> of this campaign's numbers on the Devices page, then press <strong>Resume</strong>: it continues from exactly where it stopped and spreads the remaining messages across whatever numbers are back online. Nothing is lost.</span>
+            <span><strong>Sending paused</strong> — a WhatsApp number disconnected. Reconnect <strong>any</strong> of this campaign's numbers on the Devices page — or assign different connected numbers in the <strong>Sending numbers</strong> card below — then press <strong>Resume</strong>: it continues from exactly where it stopped and spreads the remaining messages across whatever numbers are online. Nothing is lost.</span>
         </div>
     @endif
 
@@ -111,7 +111,7 @@
         </div>
 
         @if ($deviceSummary['assigned'] === 0)
-            <p class="text-sm text-gray-500">No sending numbers are assigned to this campaign.</p>
+            <p class="text-sm text-gray-500">No sending numbers are assigned to this campaign — pick the numbers it should send from below.</p>
         @else
             @if ($deviceSummary['connected'] === 0 && in_array($campaign->status, ['sending', 'scheduled', 'paused', 'draft'], true))
                 <div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -159,6 +159,43 @@
                         @endforeach
                     </tbody>
                 </table>
+            </div>
+        @endif
+
+        {{-- Assign / change sending numbers: lets a stalled campaign resume on
+             freshly-connected devices (added after the campaign was created). --}}
+        @if (in_array($campaign->status, ['draft', 'scheduled', 'paused'], true))
+            <div x-data="{ open: {{ $deviceSummary['connected'] === 0 ? 'true' : 'false' }} }" class="mt-4 pt-4 border-t border-gray-100">
+                <button type="button" @click="open = !open" class="inline-flex items-center gap-1.5 text-sm font-medium text-brand hover:underline">
+                    <svg class="w-4 h-4 transition-transform" :class="open ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    Assign / change sending numbers
+                </button>
+
+                <div x-show="open" x-cloak class="mt-3">
+                    @if ($allDevices->isEmpty())
+                        <p class="text-sm text-gray-500">No WhatsApp numbers exist yet — <a href="{{ route('devices.index') }}" class="text-brand underline">connect one on the Devices page</a> first.</p>
+                    @else
+                        <form method="POST" action="{{ route('campaigns.devices', $campaign) }}" class="space-y-3">
+                            @csrf
+                            <div class="flex flex-wrap gap-2">
+                                @foreach ($allDevices as $d)
+                                    <label class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-white cursor-pointer text-sm hover:bg-gray-50">
+                                        <input type="checkbox" name="device_ids[]" value="{{ $d->id }}" @checked(in_array($d->id, $assignedIds, true)) class="rounded border-gray-300 text-brand focus:ring-brand">
+                                        <span class="w-1.5 h-1.5 rounded-full {{ $d->status === 'open' ? 'bg-green-500' : 'bg-red-400' }}"></span>
+                                        <span class="text-gray-800">{{ $d->name }}</span>
+                                        @if ($d->phone_number)<span class="text-gray-400 whitespace-nowrap">+{{ $d->phone_number }}</span>@endif
+                                        <span class="text-xs {{ $d->status === 'open' ? 'text-green-600' : 'text-gray-400' }}">{{ $d->status === 'open' ? 'connected' : 'not connected' }}</span>
+                                    </label>
+                                @endforeach
+                            </div>
+                            @error('device_ids')<p class="text-xs text-red-600">Pick at least one number.</p>@enderror
+                            <div class="flex items-center gap-3 flex-wrap">
+                                <x-btn type="submit" variant="secondary">Save numbers</x-btn>
+                                <p class="text-xs text-gray-500">The remaining messages are spread across the <span class="text-green-600 font-medium">connected</span> numbers when you press {{ $campaign->status === 'paused' ? 'Resume' : 'Launch' }}.</p>
+                            </div>
+                        </form>
+                    @endif
+                </div>
             </div>
         @endif
     </x-card>

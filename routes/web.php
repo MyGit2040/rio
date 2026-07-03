@@ -175,6 +175,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('campaigns', CampaignController::class)->except('edit', 'update');
     Route::post('/campaigns/{campaign}/launch', [CampaignController::class, 'launch'])->name('campaigns.launch');
     Route::post('/campaigns/{campaign}/pause', [CampaignController::class, 'pause'])->name('campaigns.pause');
+    Route::post('/campaigns/{campaign}/devices', [CampaignController::class, 'assignDevices'])->name('campaigns.devices');
     Route::post('/campaigns/{campaign}/retry', [CampaignController::class, 'retryFailed'])->name('campaigns.retry');
     Route::post('/campaigns/{campaign}/test', [CampaignController::class, 'test'])->name('campaigns.test');
     Route::get('/campaigns/{campaign}/export', [CampaignController::class, 'export'])->name('campaigns.export');

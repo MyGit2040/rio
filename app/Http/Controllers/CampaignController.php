@@ -183,6 +183,8 @@ class CampaignController extends Controller
             'filters'       => $filters,
             'dashboard'     => $dashboard,
             'devices'       => $devices,
+            'allDevices'    => WhatsappInstance::orderBy('name')->get(),
+            'assignedIds'   => array_map('intval', $assignedIds),
             'campaignDevices' => $campaignDevices,
             'deviceSummary' => $deviceSummary,
             'deviceAssigned' => $deviceAssigned,
@@ -311,6 +313,42 @@ class CampaignController extends Controller
         $this->campaigns->pause($campaign);
 
         return back()->with('success', 'Campaign paused. Launch again to resume the remaining messages.');
+    }
+
+    /**
+     * Replace the campaign's sending numbers (e.g. after the originals
+     * disconnected) so Resume can continue on freshly-connected devices.
+     */
+    public function assignDevices(Request $request, Campaign $campaign): RedirectResponse
+    {
+        if ($campaign->status === 'sending') {
+            return back()->with('error', 'Pause the campaign first, then change its sending numbers and Resume.');
+        }
+
+        if ($campaign->status === 'completed') {
+            return back()->with('error', 'This campaign has already finished.');
+        }
+
+        $data = $request->validate([
+            'device_ids'   => ['required', 'array', 'min:1'],
+            'device_ids.*' => ['integer'],
+        ]);
+
+        // Tenant global scope makes this the ownership check too — a foreign
+        // or deleted id simply doesn't come back.
+        $ids = WhatsappInstance::whereIn('id', $data['device_ids'])->pluck('id')->all();
+        if (count($ids) !== count(array_unique(array_map('intval', $data['device_ids'])))) {
+            return back()->with('error', 'One of the selected numbers no longer exists — refresh and try again.');
+        }
+
+        $this->campaigns->assignDevices($campaign, $ids);
+        Audit::log('campaign.devices_assigned', $campaign, count($ids).' number(s)');
+
+        $connected = $this->campaigns->connectedDeviceCount($campaign);
+
+        return back()->with('success', $connected > 0
+            ? count($ids)." sending number(s) assigned ({$connected} connected). Press Resume to continue the remaining messages on them."
+            : count($ids).' sending number(s) assigned, but none are connected yet — connect one on the Devices page, then press Resume.');
     }
 
     public function progress(Campaign $campaign): JsonResponse

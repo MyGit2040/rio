@@ -124,6 +124,25 @@ class CampaignService
     }
 
     /**
+     * Replace the campaign's sending numbers — e.g. swap in freshly-connected
+     * devices after the original ones disconnected. Per-device caps set for
+     * numbers that are removed are dropped; the still-pending recipients are
+     * re-spread across the connected assignees on the next launch/resume.
+     *
+     * @param  array<int, int>  $deviceIds
+     */
+    public function assignDevices(Campaign $campaign, array $deviceIds): void
+    {
+        $deviceIds = array_values(array_map('intval', $deviceIds));
+
+        $campaign->update([
+            'device_ids'           => $deviceIds,
+            'whatsapp_instance_id' => $deviceIds[0],
+            'device_limits'        => collect($campaign->device_limits ?? [])->only($deviceIds)->all() ?: null,
+        ]);
+    }
+
+    /**
      * How many of this campaign's devices are connected right now (for the UI).
      */
     public function connectedDeviceCount(Campaign $campaign): int
