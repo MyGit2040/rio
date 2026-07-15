@@ -6,6 +6,7 @@ use App\Contracts\WhatsappGateway;
 use App\Models\Tenant;
 use App\Models\WhatsappInstance;
 use App\Services\EvolutionApiService;
+use App\Services\OpenWaService;
 use App\Services\WebJsService;
 
 /**
@@ -30,16 +31,20 @@ class Whatsapp
     {
         $driver = $instance->driver ?: self::tenantDriver($instance->tenant);
 
-        return $driver === 'webjs'
-            ? WebJsService::forInstance($instance)
-            : EvolutionApiService::forInstance($instance);
+        return match ($driver) {
+            'webjs' => WebJsService::forInstance($instance),
+            'openwa' => OpenWaService::forInstance($instance),
+            default => EvolutionApiService::forInstance($instance),
+        };
     }
 
     public static function forTenant(?Tenant $tenant): WhatsappGateway
     {
-        return self::tenantDriver($tenant) === 'webjs'
-            ? WebJsService::forTenant($tenant)
-            : EvolutionApiService::forTenant($tenant);
+        return match (self::tenantDriver($tenant)) {
+            'webjs' => WebJsService::forTenant($tenant),
+            'openwa' => OpenWaService::forTenant($tenant),
+            default => EvolutionApiService::forTenant($tenant),
+        };
     }
 
     /** The engine a brand-new device for this tenant should be created on. */

@@ -42,10 +42,13 @@ class SettingsController extends Controller
         $data = $request->validate([
             'evolution_base_url' => ['nullable', 'url', 'max:255'],
             'evolution_api_key'  => ['nullable', 'string', 'max:255'],
-            // WhatsApp engine selection (Evolution / whatsapp-web.js bridge).
-            'whatsapp_driver'    => ['nullable', 'in:evolution,webjs'],
+            // WhatsApp engine selection.
+            'whatsapp_driver'    => ['nullable', 'in:evolution,webjs,openwa'],
             'webjs_base_url'     => ['nullable', 'url', 'max:255'],
             'webjs_api_key'      => ['nullable', 'string', 'max:255'],
+            'openwa_base_url'    => ['nullable', 'url', 'max:255'],
+            'openwa_api_key'     => ['nullable', 'string', 'max:255'],
+            'openwa_session_id'  => ['nullable', 'string', 'max:100', 'regex:/^[A-Za-z0-9_-]+$/'],
             'ai_enabled'         => ['sometimes', 'boolean'],
             'brand_name'         => ['nullable', 'string', 'max:60'],
             'accent_color'       => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
@@ -141,6 +144,9 @@ class SettingsController extends Controller
             'whatsapp_driver'    => ($data['whatsapp_driver'] ?? null) ?: 'evolution',
             'webjs_base_url'     => ($data['webjs_base_url'] ?? null) ?: null,
             'webjs_api_key'      => ($data['webjs_api_key'] ?? null) ?: null,
+            'openwa_base_url'    => ($data['openwa_base_url'] ?? null) ?: null,
+            'openwa_api_key'     => ($data['openwa_api_key'] ?? null) ?: null,
+            'openwa_session_id'  => ($data['openwa_session_id'] ?? null) ?: null,
             'settings'           => $settings,
         ]);
 

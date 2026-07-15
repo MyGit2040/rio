@@ -8,10 +8,9 @@ use App\Models\Contact;
 use App\Models\Message;
 use App\Models\WhatsappInstance;
 use App\Support\Tenancy;
+use App\Support\Whatsapp;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -50,32 +49,23 @@ class SendTransactionalNotification implements ShouldQueue
 
     private function dispatchMessage(): void
     {
-        $baseUrl = rtrim((string) ($this->device->tenant->evolution_base_url ?: config('evolution.base_url')), '/');
-        $apiKey  = (string) ($this->device->tenant->evolution_api_key ?: config('evolution.api_key'));
-
-        // Evolution's real route is per-instance and authenticates via the `apikey` header.
-        $endpoint = "{$baseUrl}/message/sendText/{$this->device->instance_name}";
-
         try {
-            $response = Http::withHeaders(['apikey' => $apiKey])
-                ->acceptJson()
-                ->timeout(30)
-                ->post($endpoint, [
-                    'number' => $this->contact->phone,
-                    'text'   => $this->message,
-                ]);
+            $result = Whatsapp::forInstance($this->device)->sendText(
+                $this->device->instance_name,
+                $this->contact->phone,
+                $this->message,
+            );
 
-            // --- Circuit breaker: session disconnected / token expired ---
-            if (in_array($response->status(), [401, 403], true)) {
-                $this->tripCircuitBreaker($response->status());
+            if (! $result['ok']) {
+                if (in_array($result['status'] ?? null, [401, 403], true)) {
+                    $this->tripCircuitBreaker((int) $result['status']);
 
-                return;
-            }
+                    return;
+                }
 
-            if ($response->failed()) {
                 Log::error('Transactional send failed', [
                     'device' => $this->device->instance_name,
-                    'status' => $response->status(),
+                    'error' => $result['error'],
                 ]);
 
                 return;
@@ -91,11 +81,11 @@ class SendTransactionalNotification implements ShouldQueue
                 'type'                 => 'text',
                 'body'                 => $this->message,
                 'status'               => 'sent',
-                'message_id'           => data_get($response->json(), 'key.id'),
+                'message_id'           => $result['message_id'],
             ]);
 
             $this->throttle();
-        } catch (ConnectionException $e) {
+        } catch (\Throwable $e) {
             // Network/transport problem — log, do not falsely mark the device dead.
             Log::error('Evolution gateway unreachable', [
                 'device' => $this->device->instance_name,

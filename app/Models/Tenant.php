@@ -11,6 +11,7 @@ class Tenant extends Model
         'name', 'slug', 'plan', 'status', 'expires_at', 'max_devices', 'enabled_modules',
         'evolution_base_url', 'evolution_api_key', 'settings',
         'whatsapp_driver', 'webjs_base_url', 'webjs_api_key',
+        'openwa_base_url', 'openwa_api_key', 'openwa_session_id',
     ];
 
     protected $casts = [

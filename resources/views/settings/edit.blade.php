@@ -130,10 +130,28 @@
                             class="block mt-1 w-full rounded-lg border-gray-300 focus:border-brand focus:ring-brand text-sm">
                         <option value="evolution">Evolution API (Baileys)</option>
                         <option value="webjs">whatsapp-web.js bridge (WhatsApp Web)</option>
+                        <option value="openwa">OpenWA Easy API</option>
                     </select>
                     <p class="text-xs text-gray-500 mt-1">
                         The default engine for new numbers. Numbers already linked keep the engine they were created on.
                     </p>
+                </div>
+
+                {{-- OpenWA Easy API fields --}}
+                <div class="space-y-4" x-show="driver === 'openwa'" x-cloak>
+                    <div>
+                        <x-input-label for="openwa_base_url" value="Easy API URL" />
+                        <x-text-input id="openwa_base_url" name="openwa_base_url" class="block mt-1 w-full" placeholder="http://your-vps-ip:8080" :value="old('openwa_base_url', $tenant->openwa_base_url)" />
+                    </div>
+                    <div>
+                        <x-input-label for="openwa_api_key" value="API key" />
+                        <x-text-input id="openwa_api_key" name="openwa_api_key" class="block mt-1 w-full" placeholder="Matches OpenWA --api-key" :value="old('openwa_api_key', $tenant->openwa_api_key)" />
+                    </div>
+                    <div>
+                        <x-input-label for="openwa_session_id" value="OpenWA session ID" />
+                        <x-text-input id="openwa_session_id" name="openwa_session_id" class="block mt-1 w-full" placeholder="sales" :value="old('openwa_session_id', $tenant->openwa_session_id)" />
+                        <p class="text-xs text-gray-500 mt-1">Start OpenWA with this exact <code>--session-id</code>. One OpenWA Easy API URL exposes one linked device.</p>
+                    </div>
                 </div>
 
                 {{-- Evolution fields --}}

@@ -283,6 +283,7 @@ class EvolutionApiService implements WhatsappGateway
                 'message_id' => $json['key']['id'] ?? ($json['messageId'] ?? null),
                 'error'      => null,
                 'raw'        => $json,
+                'status'     => $response->status(),
             ];
         }
 
@@ -300,6 +301,7 @@ class EvolutionApiService implements WhatsappGateway
             'message_id' => null,
             'error'      => mb_substr((string) $error, 0, 1000),
             'raw'        => $json,
+            'status'     => $response->status(),
         ];
     }
 }
