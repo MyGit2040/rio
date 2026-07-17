@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\WhatsappInstance;
-use App\Services\EvolutionApiService;
 use App\Services\PlanLimit;
 use App\Support\Audit;
 use App\Support\Whatsapp;
@@ -48,7 +47,13 @@ class DeviceController extends Controller
             return back()->with('error', 'Connect your WhatsApp engine ('.$driver.') in Settings before adding a device.');
         }
 
-        $instanceName = Str::lower($tenant->slug.'-'.Str::random(8));
+        $instanceName = $driver === 'openwa'
+            ? (string) $tenant->openwa_session_id
+            : Str::lower($tenant->slug.'-'.Str::random(8));
+
+        if ($driver === 'openwa' && WhatsappInstance::where('tenant_id', $tenant->id)->where('driver', 'openwa')->where('instance_name', $instanceName)->exists()) {
+            return back()->with('error', 'This OpenWA session is already linked to a device.');
+        }
 
         // Snapshot the engine this device is created on — it keeps using it even
         // if the tenant later flips the default driver.
@@ -220,7 +225,7 @@ class DeviceController extends Controller
 
     private function webhookUrl(): string
     {
-        return EvolutionApiService::webhookUrl();
+        return '';
     }
 
     private function extractPairing(array $response): ?string
@@ -240,6 +245,6 @@ class DeviceController extends Controller
             return null;
         }
 
-        return Str::startsWith($base64, 'data:') ? $base64 : 'data:image/png;base64,'.$base64;
+        return $base64;
     }
 }

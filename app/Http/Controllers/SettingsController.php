@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\WhatsappInstance;
 use App\Services\AiService;
-use App\Services\EvolutionApiService;
 use App\Support\CronHealth;
 use App\Support\MailConfig;
 use App\Support\Whatsapp;
@@ -27,9 +26,9 @@ class SettingsController extends Controller
             'tenant'        => $tenant,
             'engineReady'   => $engine->configured(),
             'aiEnabled'     => (bool) data_get($tenant->settings, 'ai_enabled', false),
-            'platformUrl'   => config('evolution.base_url'),
             'healthChecks'  => CronHealth::checks(),
             'healthOverall' => CronHealth::overall(),
+            'queueActive'   => CronHealth::engineActive(),
             'healthTasks'   => CronHealth::scheduledTasks(),
             'cronLine'      => CronHealth::cronLine(),
             'cronLastRun'   => CronHealth::lastRun(),
@@ -39,12 +38,10 @@ class SettingsController extends Controller
     public function update(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'evolution_base_url' => ['nullable', 'url', 'max:255'],
-            'evolution_api_key'  => ['nullable', 'string', 'max:255'],
-            // WhatsApp engine selection (Evolution / whatsapp-web.js bridge).
-            'whatsapp_driver'    => ['nullable', 'in:evolution,webjs'],
-            'webjs_base_url'     => ['nullable', 'url', 'max:255'],
-            'webjs_api_key'      => ['nullable', 'string', 'max:255'],
+            'whatsapp_driver'    => ['nullable', 'in:openwa'],
+            'openwa_base_url'    => ['nullable', 'url', 'max:255'],
+            'openwa_api_key'     => ['nullable', 'string', 'max:255'],
+            'openwa_session_id'  => ['nullable', 'string', 'max:100', 'regex:/^[A-Za-z0-9_-]+$/'],
             'ai_enabled'         => ['sometimes', 'boolean'],
             'brand_name'         => ['nullable', 'string', 'max:60'],
             'accent_color'       => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
@@ -135,11 +132,10 @@ class SettingsController extends Controller
         }
 
         $tenant->update([
-            'evolution_base_url' => ($data['evolution_base_url'] ?? null) ?: null,
-            'evolution_api_key'  => ($data['evolution_api_key'] ?? null) ?: null,
-            'whatsapp_driver'    => ($data['whatsapp_driver'] ?? null) ?: 'evolution',
-            'webjs_base_url'     => ($data['webjs_base_url'] ?? null) ?: null,
-            'webjs_api_key'      => ($data['webjs_api_key'] ?? null) ?: null,
+            'whatsapp_driver'    => 'openwa',
+            'openwa_base_url'    => ($data['openwa_base_url'] ?? null) ?: null,
+            'openwa_api_key'     => ($data['openwa_api_key'] ?? null) ?: null,
+            'openwa_session_id'  => ($data['openwa_session_id'] ?? null) ?: null,
             'settings'           => $settings,
         ]);
 
@@ -179,12 +175,10 @@ class SettingsController extends Controller
      */
     public function syncEngineUpdates(): JsonResponse
     {
-        $tenant = auth()->user()->tenant;
-        $engine = Whatsapp::forTenant($tenant);
-
-        if (! $engine->configured()) {
-            return response()->json(['ok' => false, 'message' => 'Add the engine URL and API key and save first, then try again.'], 422);
-        }
+        return response()->json([
+            'ok' => false,
+            'message' => 'Configure OpenWA with --webhook using this app’s /webhooks/openwa endpoint. OpenWA webhook registration is set when its runtime starts.',
+        ], 422);
 
         $instances = WhatsappInstance::all();
 
@@ -192,17 +186,28 @@ class SettingsController extends Controller
             return response()->json(['ok' => false, 'message' => 'No linked WhatsApp numbers yet — add a device first.'], 422);
         }
 
-        $url = EvolutionApiService::webhookUrl();
+        $url = '';
         $ok = 0;
         $failed = [];
 
         foreach ($instances as $instance) {
+            // Each number keeps the engine it was linked on (Evolution or webjs).
+            // Resolve per instance — using the tenant default would push a number's
+            // webhook to the wrong engine, which 404s (e.g. an Evolution number
+            // hitting the webjs bridge → "Failed on: <name>").
+            $engine = Whatsapp::forInstance($instance);
+
+            if (! $engine->configured()) {
+                $failed[] = $instance->name;
+                continue;
+            }
+
             try {
                 $engine->setWebhook($instance->instance_name, $url);
                 $ok++;
             } catch (\Throwable $e) {
                 $failed[] = $instance->name;
-                Log::warning('Evolution setWebhook failed', ['instance' => $instance->instance_name, 'error' => $e->getMessage()]);
+                Log::warning('setWebhook failed', ['instance' => $instance->instance_name, 'driver' => $instance->driver, 'error' => $e->getMessage()]);
             }
         }
 

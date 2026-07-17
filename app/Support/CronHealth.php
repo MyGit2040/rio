@@ -114,6 +114,19 @@ class CronHealth
         return $worst;
     }
 
+    /**
+     * Is the background delivery engine alive right now? True when the scheduler
+     * heartbeat stamped within the last 2 minutes. The per-minute cron drives the
+     * queue worker, so a fresh heartbeat means queued messages are being drained.
+     * Powers the compact "Queue: Active/Inactive" pill on the Settings engine card.
+     */
+    public static function engineActive(): bool
+    {
+        $last = self::lastRun();
+
+        return $last !== null && $last->diffInSeconds(now()) <= 120;
+    }
+
     /** Is the scheduler cron alive (heartbeat within the last ~2 minutes)? */
     private static function schedulerCheck(): array
     {

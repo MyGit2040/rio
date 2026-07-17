@@ -23,7 +23,7 @@ class WebhookController extends Controller
 
     public function handle(Request $request, ?string $secret = null): JsonResponse
     {
-        $expected = config('evolution.webhook_secret');
+        $expected = config('openwa.webhook_secret');
         if ($expected && $secret !== $expected) {
             return response()->json(['ok' => false], 403);
         }

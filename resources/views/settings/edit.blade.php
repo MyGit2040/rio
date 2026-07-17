@@ -110,7 +110,15 @@
 
         {{-- Engine --}}
         <x-card title="WhatsApp engine" subtitle="Where your messages are actually sent from." x-show="tab === 'engine'" x-cloak>
-            <div class="space-y-4" x-data="{ driver: '{{ old('whatsapp_driver', $tenant->whatsapp_driver ?: 'evolution') }}' }">
+            {{-- Live background-engine pill: scheduler cron + queue worker (native CronHealth heartbeat). --}}
+            <x-slot:actions>
+                <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium {{ ($queueActive ?? false) ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200' }}"
+                      title="{{ ($queueActive ?? false) ? 'Scheduler cron + queue worker are firing (heartbeat fresh within 2 min).' : 'No scheduler heartbeat in the last 2 minutes — the per-minute cron may not be running, so queued messages will not send.' }}">
+                    <span class="w-1.5 h-1.5 rounded-full {{ ($queueActive ?? false) ? 'bg-green-500' : 'bg-red-500' }}"></span>
+                    Queue: {{ ($queueActive ?? false) ? 'Active' : 'Inactive' }}
+                </span>
+            </x-slot:actions>
+            <div class="space-y-4" x-data="{ driver: 'openwa' }">
                 <div class="rounded-lg px-4 py-3 text-sm {{ $engineReady ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-yellow-50 text-yellow-800 border border-yellow-200' }}">
                     {{ $engineReady ? 'Engine is configured.' : 'Engine not configured yet — pick an engine and add its details below.' }}
                 </div>
@@ -118,14 +126,28 @@
                 {{-- Engine selector --}}
                 <div>
                     <x-input-label for="whatsapp_driver" value="Sending engine" />
-                    <select id="whatsapp_driver" name="whatsapp_driver" x-model="driver"
-                            class="block mt-1 w-full rounded-lg border-gray-300 focus:border-brand focus:ring-brand text-sm">
-                        <option value="evolution">Evolution API (Baileys)</option>
-                        <option value="webjs">whatsapp-web.js bridge (WhatsApp Web)</option>
-                    </select>
+                    <input type="hidden" name="whatsapp_driver" value="openwa">
+                    <div class="block mt-1 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700">OpenWA Easy API</div>
                     <p class="text-xs text-gray-500 mt-1">
                         The default engine for new numbers. Numbers already linked keep the engine they were created on.
                     </p>
+                </div>
+
+                {{-- OpenWA Easy API fields --}}
+                <div class="space-y-4" x-show="driver === 'openwa'" x-cloak>
+                    <div>
+                        <x-input-label for="openwa_base_url" value="Easy API URL" />
+                        <x-text-input id="openwa_base_url" name="openwa_base_url" class="block mt-1 w-full" placeholder="http://your-vps-ip:8080" :value="old('openwa_base_url', $tenant->openwa_base_url)" />
+                    </div>
+                    <div>
+                        <x-input-label for="openwa_api_key" value="API key" />
+                        <x-text-input id="openwa_api_key" name="openwa_api_key" class="block mt-1 w-full" placeholder="Matches OpenWA --api-key" :value="old('openwa_api_key', $tenant->openwa_api_key)" />
+                    </div>
+                    <div>
+                        <x-input-label for="openwa_session_id" value="OpenWA session ID" />
+                        <x-text-input id="openwa_session_id" name="openwa_session_id" class="block mt-1 w-full" placeholder="sales" :value="old('openwa_session_id', $tenant->openwa_session_id)" />
+                        <p class="text-xs text-gray-500 mt-1">Start OpenWA with this exact <code>--session-id</code>. One OpenWA Easy API URL exposes one linked device.</p>
+                    </div>
                 </div>
 
                 {{-- Evolution fields --}}

@@ -12,7 +12,7 @@ return new class extends Migration
         // (mirrors the existing evolution_base_url / evolution_api_key pattern).
         Schema::table('tenants', function (Blueprint $table) {
             if (! Schema::hasColumn('tenants', 'whatsapp_driver')) {
-                $table->string('whatsapp_driver')->default('evolution')->after('evolution_api_key'); // evolution|webjs
+                $table->string('whatsapp_driver')->default('openwa')->after('evolution_api_key');
             }
             if (! Schema::hasColumn('tenants', 'webjs_base_url')) {
                 $table->string('webjs_base_url')->nullable()->after('whatsapp_driver');
@@ -26,7 +26,7 @@ return new class extends Migration
         // using its own engine even if the tenant later flips the default driver.
         Schema::table('whatsapp_instances', function (Blueprint $table) {
             if (! Schema::hasColumn('whatsapp_instances', 'driver')) {
-                $table->string('driver')->default('evolution')->after('instance_name'); // evolution|webjs
+                $table->string('driver')->default('openwa')->after('instance_name');
             }
         });
     }

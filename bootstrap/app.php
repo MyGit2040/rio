@@ -15,8 +15,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         // The Evolution engine posts here from outside — no CSRF token.
         $middleware->validateCsrfTokens(except: [
-            'webhooks/evolution/*',
-            'webhooks/evolution',
+            'webhooks/openwa/*',
+            'webhooks/openwa',
             'webhooks/order/*',
             'webhooks/order',
         ]);

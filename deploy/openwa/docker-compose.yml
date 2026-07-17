@@ -1,0 +1,18 @@
+services:
+  openwa:
+    image: openwa/wa-automate:latest
+    container_name: eagle_openwa
+    init: true
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      WA_PORT: "8080"
+      WA_SESSION_ID: "${OPENWA_SESSION_ID:-eagle}"
+      WA_API_KEY: "${OPENWA_API_KEY}"
+      WA_DISABLE_SPINS: "true"
+    volumes:
+      - openwa_sessions:/sessions
+
+volumes:
+  openwa_sessions:

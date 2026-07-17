@@ -184,7 +184,7 @@ class ContactController extends Controller
         $engine = Whatsapp::forInstance($device);
 
         if (! $engine->configured()) {
-            return back()->with('error', 'Configure the Evolution engine in Settings first.');
+            return back()->with('error', 'Configure OpenWA in Settings first.');
         }
 
         $contacts = Contact::where('wa_status', 'unverified')
