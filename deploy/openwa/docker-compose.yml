@@ -1,6 +1,8 @@
 services:
   openwa:
-    image: openwa/wa-automate:latest
+    build:
+      context: .
+    image: eagle-openwa:latest
     container_name: eagle_openwa
     init: true
     restart: unless-stopped
