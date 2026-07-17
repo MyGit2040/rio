@@ -54,7 +54,10 @@ class OpenWaService implements WhatsappGateway
     {
         $this->assertSession($instanceName);
 
-        $this->http()->post('/sessions', ['name' => $instanceName])->throw();
+        $created = $this->http()->post('/sessions', ['name' => $instanceName]);
+        if (! $created->successful() && $created->status() !== 409) {
+            $created->throw();
+        }
 
         if ($webhookUrl) {
             $this->setWebhook($instanceName, $webhookUrl);
