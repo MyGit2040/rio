@@ -85,8 +85,9 @@ class OpenWaService implements WhatsappGateway
         if (! $started->successful() && ! ($started->status() === 400 && str_contains($started->body(), 'already started'))) {
             $started->throw();
         }
-        $qr = $this->http()->get("/sessions/{$sessionId}/qr")->throw()->json() ?? [];
         $state = $this->connectionState($instanceName);
+        $isConnected = data_get($state, 'instance.state') === 'open';
+        $qr = $isConnected ? [] : ($this->http()->get("/sessions/{$sessionId}/qr")->throw()->json() ?? []);
 
         return [
             'qrcode' => ['base64' => data_get($qr, 'qr') ?? data_get($qr, 'qrCode') ?? data_get($qr, 'data.qr'), 'pairingCode' => null],
@@ -165,7 +166,14 @@ class OpenWaService implements WhatsappGateway
     {
         $this->assertSession($instanceName);
 
-        return $this->result($this->http()->post('/sessions/'.$this->sessionId($instanceName).'/messages/send-media', array_filter([
+        $endpoint = match (strtolower($mediaType)) {
+            'audio', 'voice' => 'send-audio',
+            'video' => 'send-video',
+            'document', 'file' => 'send-document',
+            default => 'send-image',
+        };
+
+        return $this->result($this->http()->post('/sessions/'.$this->sessionId($instanceName).'/messages/'.$endpoint, array_filter([
             'chatId' => $this->jid($number),
             'url' => $media,
             'filename' => $fileName ?: 'attachment',
