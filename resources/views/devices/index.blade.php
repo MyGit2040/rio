@@ -62,7 +62,11 @@
                                 <div class="mt-4 space-y-3" data-connect-block>
                                     @if ($device->qr_code)
                                         <div class="text-center" data-qr-wrap>
-                                            <canvas data-openwa-qr data-qr-payload="{{ $device->qr_code }}" aria-label="WhatsApp QR code" class="mx-auto w-44 h-44 rounded-lg border border-gray-200"></canvas>
+                                            @if (\Illuminate\Support\Str::startsWith($device->qr_code, 'data:image/'))
+                                                <img src="{{ $device->qr_code }}" alt="WhatsApp QR code" class="mx-auto w-44 h-44 rounded-lg border border-gray-200" />
+                                            @else
+                                                <canvas data-openwa-qr data-qr-payload="{{ $device->qr_code }}" aria-label="WhatsApp QR code" class="mx-auto w-44 h-44 rounded-lg border border-gray-200"></canvas>
+                                            @endif
                                             <p class="text-xs text-gray-500 mt-2">Scan with WhatsApp → Linked devices</p>
                                         </div>
                                     @else
