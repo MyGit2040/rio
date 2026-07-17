@@ -47,9 +47,10 @@ class DeviceController extends Controller
             return back()->with('error', 'Connect your WhatsApp engine ('.$driver.') in Settings before adding a device.');
         }
 
-        $instanceName = $driver === 'openwa'
-            ? (string) $tenant->openwa_session_id
-            : Str::lower($tenant->slug.'-'.Str::random(8));
+        // Every WhatsApp number needs its own OpenWA session. The tenant-level
+        // session is only the default connection setting; reusing it here made
+        // every additional device collide with the first one.
+        $instanceName = Str::lower($tenant->slug.'-'.Str::random(8));
 
         if ($driver === 'openwa' && WhatsappInstance::where('tenant_id', $tenant->id)->where('driver', 'openwa')->where('instance_name', $instanceName)->exists()) {
             return back()->with('error', 'This OpenWA session is already linked to a device.');
