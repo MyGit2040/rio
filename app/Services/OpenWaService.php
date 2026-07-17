@@ -33,7 +33,15 @@ class OpenWaService implements WhatsappGateway
 
     public static function forInstance(WhatsappInstance $instance): static
     {
-        return static::forTenant($instance->tenant);
+        $tenantService = static::forTenant($instance->tenant);
+
+        // The gateway can host more than one WhatsApp session. A linked device
+        // must resolve its own session name, not the tenant's default session.
+        return new static(
+            $tenantService->baseUrl,
+            $tenantService->apiKey,
+            $instance->instance_name,
+        );
     }
 
     public function configured(): bool
@@ -59,22 +67,14 @@ class OpenWaService implements WhatsappGateway
             $created->throw();
         }
 
-        if ($webhookUrl) {
-            $this->setWebhook($instanceName, $webhookUrl);
-        }
-
         return $this->connect($instanceName, $number);
     }
 
     public function setWebhook(string $instanceName, string $webhookUrl): array
     {
-        $this->assertSession($instanceName);
-        $sessionId = $this->sessionId($instanceName);
-
-        return $this->http()->post("/sessions/{$sessionId}/webhooks", [
-            'url' => $webhookUrl,
-            'events' => ['message.received', 'message.status', 'session.status'],
-        ])->throw()->json() ?? [];
+        // This OpenWA deployment configures webhooks when its runtime starts.
+        // A guessed per-session request is rejected with HTTP 400.
+        return [];
     }
 
     public function connect(string $instanceName, ?string $number = null): array
@@ -131,9 +131,9 @@ class OpenWaService implements WhatsappGateway
     {
         $this->assertSession($instanceName);
 
-        return collect($numbers)->map(function (string $number) {
+        return collect($numbers)->map(function (string $number) use ($instanceName) {
             $jid = $this->jid($number);
-            $json = $this->http()->get('/sessions/'.$this->sessionId($this->sessionId)."/contacts/{$jid}")->throw()->json() ?? [];
+            $json = $this->http()->get('/sessions/'.$this->sessionId($instanceName)."/contacts/{$jid}")->throw()->json() ?? [];
             $data = $json['data'] ?? $json;
 
             return ['number' => $number, 'jid' => $jid, 'exists' => (bool) ($data['canReceiveMessage'] ?? $data['exists'] ?? false)];
