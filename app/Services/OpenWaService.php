@@ -81,7 +81,10 @@ class OpenWaService implements WhatsappGateway
     {
         $this->assertSession($instanceName);
         $sessionId = $this->sessionId($instanceName);
-        $this->http()->post("/sessions/{$sessionId}/start")->throw();
+        $started = $this->http()->post("/sessions/{$sessionId}/start");
+        if (! $started->successful() && ! ($started->status() === 400 && str_contains($started->body(), 'already started'))) {
+            $started->throw();
+        }
         $qr = $this->http()->get("/sessions/{$sessionId}/qr")->throw()->json() ?? [];
         $state = $this->connectionState($instanceName);
 
