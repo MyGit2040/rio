@@ -69,8 +69,9 @@ class OpenWaService implements WhatsappGateway
     public function setWebhook(string $instanceName, string $webhookUrl): array
     {
         $this->assertSession($instanceName);
+        $sessionId = $this->sessionId($instanceName);
 
-        return $this->http()->post("/sessions/{$instanceName}/webhooks", [
+        return $this->http()->post("/sessions/{$sessionId}/webhooks", [
             'url' => $webhookUrl,
             'events' => ['message.received', 'message.status', 'session.status'],
         ])->throw()->json() ?? [];
@@ -79,8 +80,9 @@ class OpenWaService implements WhatsappGateway
     public function connect(string $instanceName, ?string $number = null): array
     {
         $this->assertSession($instanceName);
-        $this->http()->post("/sessions/{$instanceName}/start")->throw();
-        $qr = $this->http()->get("/sessions/{$instanceName}/qr")->throw()->json() ?? [];
+        $sessionId = $this->sessionId($instanceName);
+        $this->http()->post("/sessions/{$sessionId}/start")->throw();
+        $qr = $this->http()->get("/sessions/{$sessionId}/qr")->throw()->json() ?? [];
         $state = $this->connectionState($instanceName);
 
         return [
@@ -92,7 +94,7 @@ class OpenWaService implements WhatsappGateway
     public function connectionState(string $instanceName): array
     {
         $this->assertSession($instanceName);
-        $session = $this->http()->get("/sessions/{$instanceName}")->json() ?? [];
+        $session = $this->http()->get('/sessions/'.$this->sessionId($instanceName))->json() ?? [];
         $status = strtoupper((string) (data_get($session, 'status') ?? data_get($session, 'data.status') ?? ''));
 
         return ['instance' => ['state' => in_array($status, ['CONNECTED', 'READY', 'OPEN'], true) ? 'open' : 'connecting']];
@@ -102,14 +104,14 @@ class OpenWaService implements WhatsappGateway
     {
         $this->assertSession($instanceName);
 
-        return $this->http()->post("/sessions/{$instanceName}/stop")->throw()->json() ?? [];
+        return $this->http()->post('/sessions/'.$this->sessionId($instanceName).'/stop')->throw()->json() ?? [];
     }
 
     public function deleteInstance(string $instanceName): array
     {
         $this->assertSession($instanceName);
 
-        return $this->http()->delete("/sessions/{$instanceName}")->throw()->json() ?? [];
+        return $this->http()->delete('/sessions/'.$this->sessionId($instanceName))->throw()->json() ?? [];
     }
 
     public function fetchPrivacy(string $instanceName): array
@@ -128,7 +130,7 @@ class OpenWaService implements WhatsappGateway
 
         return collect($numbers)->map(function (string $number) {
             $jid = $this->jid($number);
-            $json = $this->http()->get("/sessions/{$this->sessionId}/contacts/{$jid}")->throw()->json() ?? [];
+            $json = $this->http()->get('/sessions/'.$this->sessionId($this->sessionId)."/contacts/{$jid}")->throw()->json() ?? [];
             $data = $json['data'] ?? $json;
 
             return ['number' => $number, 'jid' => $jid, 'exists' => (bool) ($data['canReceiveMessage'] ?? $data['exists'] ?? false)];
@@ -139,7 +141,7 @@ class OpenWaService implements WhatsappGateway
     {
         $this->assertSession($instanceName);
 
-        return $this->result($this->http()->post("/sessions/{$instanceName}/messages/send-text", [
+        return $this->result($this->http()->post('/sessions/'.$this->sessionId($instanceName).'/messages/send-text', [
             'chatId' => $this->jid($number),
             'text' => $text,
         ]));
@@ -149,7 +151,7 @@ class OpenWaService implements WhatsappGateway
     {
         $this->assertSession($instanceName);
 
-        return $this->result($this->http()->post("/sessions/{$instanceName}/messages/send-media", array_filter([
+        return $this->result($this->http()->post('/sessions/'.$this->sessionId($instanceName).'/messages/send-media', array_filter([
             'chatId' => $this->jid($number),
             'url' => $media,
             'filename' => $fileName ?: 'attachment',
@@ -179,6 +181,18 @@ class OpenWaService implements WhatsappGateway
     private function jid(string $number): string
     {
         return str_contains($number, '@') ? $number : preg_replace('/\D+/', '', $number).'@c.us';
+    }
+
+    private function sessionId(string $sessionName): string
+    {
+        $sessions = $this->http()->get('/sessions')->throw()->json() ?? [];
+        $session = collect($sessions)->first(fn (array $item) => ($item['name'] ?? null) === $sessionName || ($item['id'] ?? null) === $sessionName);
+
+        if (! $session || empty($session['id'])) {
+            throw new \RuntimeException("OpenWA session '{$sessionName}' was not found.");
+        }
+
+        return (string) $session['id'];
     }
 
     private function result(Response $response): array
