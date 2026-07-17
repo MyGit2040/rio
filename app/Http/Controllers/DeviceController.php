@@ -79,7 +79,7 @@ class DeviceController extends Controller
                 'status'       => 'connecting',
             ]);
         } catch (\Throwable $e) {
-            Log::error('Evolution createInstance failed', ['error' => $e->getMessage()]);
+            Log::error('OpenWA createInstance failed', ['error' => $e->getMessage()]);
             $device->delete();
 
             return back()->with('error', 'Could not reach the WhatsApp engine: '.$e->getMessage());
@@ -115,7 +115,7 @@ class DeviceController extends Controller
 
             return response()->json(['ok' => true, 'qr' => $qr, 'pairing' => $pairing]);
         } catch (\Throwable $e) {
-            Log::error('Evolution connect failed', ['error' => $e->getMessage()]);
+            Log::error('OpenWA connect failed', ['error' => $e->getMessage()]);
 
             return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
         }
@@ -214,7 +214,7 @@ class DeviceController extends Controller
             $engine->logout($device->instance_name);
             $engine->deleteInstance($device->instance_name);
         } catch (\Throwable $e) {
-            Log::warning('Evolution delete failed (continuing)', ['error' => $e->getMessage()]);
+            Log::warning('OpenWA delete failed (continuing)', ['error' => $e->getMessage()]);
         }
 
         Audit::log('device.deleted', $device, $device->name);
