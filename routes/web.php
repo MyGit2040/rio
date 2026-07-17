@@ -206,7 +206,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/backup/create', [BackupController::class, 'create'])->name('backup.create');
     Route::post('/backup/restore', [BackupController::class, 'restore'])->name('backup.restore');
 
-    // Settings (Evolution connection + AI)
+    // Settings (OpenWA connection + AI)
     Route::get('/settings', [SettingsController::class, 'edit'])->name('settings.edit');
     Route::put('/settings', [SettingsController::class, 'update'])->name('settings.update');
     Route::post('/settings/test-email', [SettingsController::class, 'testEmail'])->name('settings.test-email');
@@ -223,7 +223,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
-// Inbound webhook from the Evolution engine (no auth — verified by secret).
+// Inbound webhook from the OpenWA engine (no auth — verified by secret).
 Route::post('/webhooks/openwa/{secret?}', [WebhookController::class, 'handle'])->name('webhooks.openwa');
 
 // Inbound WhatsApp shop order webhook (no auth — verified by secret).

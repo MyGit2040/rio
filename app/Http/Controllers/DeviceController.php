@@ -31,7 +31,6 @@ class DeviceController extends Controller
         $data = $request->validate([
             'name'             => ['required', 'string', 'max:255'],
             'daily_limit'      => ['nullable', 'integer', 'min:0', 'max:100000'],
-            'phone_for_pairing' => ['nullable', 'string', 'max:32'],
         ]);
 
         $tenant = auth()->user()->tenant;
@@ -68,15 +67,13 @@ class DeviceController extends Controller
 
         $engine = Whatsapp::forInstance($device);
 
-        $pairingNumber = preg_replace('/\D+/', '', (string) ($data['phone_for_pairing'] ?? '')) ?: null;
-
         try {
-            $response = $engine->createInstance($instanceName, $this->webhookUrl(), $pairingNumber);
+            $response = $engine->createInstance($instanceName, $this->webhookUrl());
 
             $device->update([
                 'token'        => data_get($response, 'hash.apikey') ?? data_get($response, 'hash') ?? null,
                 'qr_code'      => $this->extractQr($response),
-                'pairing_code' => $this->extractPairing($response),
+                'pairing_code' => null,
                 'status'       => 'connecting',
             ]);
         } catch (\Throwable $e) {
@@ -99,22 +96,19 @@ class DeviceController extends Controller
     {
         $engine = Whatsapp::forInstance($device);
 
-        // A phone number requests an 8-digit pairing code; without it we just refresh the QR.
-        $number = preg_replace('/\D+/', '', (string) $request->input('number')) ?: null;
-
         try {
-            $response = $engine->connect($device->instance_name, $number);
+            $response = $engine->connect($device->instance_name);
             $qr = $this->extractQr($response);
-            $pairing = $this->extractPairing($response);
+            $state = data_get($response, 'instance.state', 'connecting');
 
             $device->update([
-                'qr_code'      => $qr ?: $device->qr_code,
-                // Keep an existing code when a plain QR refresh returns none.
-                'pairing_code' => $pairing ?: $device->pairing_code,
-                'status'       => 'connecting',
+                'qr_code'      => $state === 'open' ? null : ($qr ?: $device->qr_code),
+                'pairing_code' => null,
+                'status'       => $state,
+                'connected_at' => $state === 'open' ? ($device->connected_at ?? now()) : $device->connected_at,
             ]);
 
-            return response()->json(['ok' => true, 'qr' => $qr, 'pairing' => $pairing]);
+            return response()->json(['ok' => true, 'qr' => $qr, 'status' => $state]);
         } catch (\Throwable $e) {
             Log::error('OpenWA connect failed', ['error' => $e->getMessage()]);
 
@@ -227,13 +221,6 @@ class DeviceController extends Controller
     private function webhookUrl(): string
     {
         return route('webhooks.openwa');
-    }
-
-    private function extractPairing(array $response): ?string
-    {
-        $code = data_get($response, 'qrcode.pairingCode') ?? data_get($response, 'pairingCode') ?? null;
-
-        return $code ?: null;
     }
 
     private function extractQr(array $response): ?string

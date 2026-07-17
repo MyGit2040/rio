@@ -8,14 +8,7 @@ use App\Models\WhatsappInstance;
 use App\Services\OpenWaService;
 
 /**
- * Resolves the WhatsApp engine to use — Evolution (Baileys) or WebJs
- * (whatsapp-web.js) — and returns the matching WhatsappGateway driver.
- *
- * Selection order:
- *   1. The device's own snapshotted `driver` (a connected number keeps its engine
- *      even if the tenant later flips the default).
- *   2. The tenant's `whatsapp_driver` default.
- *   3. 'evolution' (back-compat for pre-migration rows).
+ * Resolves the OpenWA gateway for tenant and device operations.
  *
  * Call sites resolve the shared gateway through this class.
  */
