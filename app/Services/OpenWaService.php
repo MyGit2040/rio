@@ -11,8 +11,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * OpenWA Easy API driver. OpenWA owns its named session lifecycle; this driver
- * attaches Eagle to that running session rather than attempting to create it.
+ * Driver for the modern OpenWA gateway API.
  */
 class OpenWaService implements WhatsappGateway
 {
@@ -55,6 +54,12 @@ class OpenWaService implements WhatsappGateway
     {
         $this->assertSession($instanceName);
 
+        $this->http()->post('/sessions', ['name' => $instanceName])->throw();
+
+        if ($webhookUrl) {
+            $this->setWebhook($instanceName, $webhookUrl);
+        }
+
         return $this->connect($instanceName, $number);
     }
 
@@ -62,45 +67,46 @@ class OpenWaService implements WhatsappGateway
     {
         $this->assertSession($instanceName);
 
-        // OpenWA v5's CLI webhook registration is not yet restored. Inbound
-        // events can be consumed from its authenticated SSE endpoint instead.
-        return ['ok' => true, 'unsupported' => true];
+        return $this->http()->post("/sessions/{$instanceName}/webhooks", [
+            'url' => $webhookUrl,
+            'events' => ['message.received', 'message.status', 'session.status'],
+        ])->throw()->json() ?? [];
     }
 
     public function connect(string $instanceName, ?string $number = null): array
     {
         $this->assertSession($instanceName);
-        $health = $this->http()->get('/health')->throw()->json() ?? [];
+        $this->http()->post("/sessions/{$instanceName}/start")->throw();
+        $qr = $this->http()->get("/sessions/{$instanceName}/qr")->throw()->json() ?? [];
+        $state = $this->connectionState($instanceName);
+
         return [
-            // OpenWA exposes QR data as a token, not a PNG/base64 image. Its
-            // terminal/dashboard renders that token locally for scanning.
-            'qrcode' => ['base64' => $health['qr'] ?? null, 'pairingCode' => null],
-            'instance' => ['state' => ($health['connected'] ?? false) ? 'open' : 'connecting'],
+            'qrcode' => ['base64' => data_get($qr, 'qr') ?? data_get($qr, 'qrCode') ?? data_get($qr, 'data.qr'), 'pairingCode' => null],
+            'instance' => ['state' => data_get($state, 'instance.state', 'connecting')],
         ];
     }
 
     public function connectionState(string $instanceName): array
     {
         $this->assertSession($instanceName);
-        $health = $this->http()->get('/health')->json() ?? [];
+        $session = $this->http()->get("/sessions/{$instanceName}")->json() ?? [];
+        $status = strtoupper((string) (data_get($session, 'status') ?? data_get($session, 'data.status') ?? ''));
 
-        return ['instance' => ['state' => ($health['connected'] ?? false) ? 'open' : 'close']];
+        return ['instance' => ['state' => in_array($status, ['CONNECTED', 'READY', 'OPEN'], true) ? 'open' : 'connecting']];
     }
 
     public function logout(string $instanceName): array
     {
         $this->assertSession($instanceName);
 
-        // Easy API has no logout endpoint in v5; session removal belongs to the
-        // OpenWA runtime administrator so a UI delete cannot destroy its data.
-        return ['ok' => true, 'unsupported' => true];
+        return $this->http()->post("/sessions/{$instanceName}/stop")->throw()->json() ?? [];
     }
 
     public function deleteInstance(string $instanceName): array
     {
         $this->assertSession($instanceName);
 
-        return ['ok' => true, 'unsupported' => true];
+        return $this->http()->delete("/sessions/{$instanceName}")->throw()->json() ?? [];
     }
 
     public function fetchPrivacy(string $instanceName): array
@@ -119,7 +125,7 @@ class OpenWaService implements WhatsappGateway
 
         return collect($numbers)->map(function (string $number) {
             $jid = $this->jid($number);
-            $json = $this->http()->get('/api/contacts/checkNumberStatus', ['contactId' => $jid])->throw()->json() ?? [];
+            $json = $this->http()->get("/sessions/{$this->sessionId}/contacts/{$jid}")->throw()->json() ?? [];
             $data = $json['data'] ?? $json;
 
             return ['number' => $number, 'jid' => $jid, 'exists' => (bool) ($data['canReceiveMessage'] ?? $data['exists'] ?? false)];
@@ -130,9 +136,9 @@ class OpenWaService implements WhatsappGateway
     {
         $this->assertSession($instanceName);
 
-        return $this->result($this->http()->post('/api/messages/sendText', [
-            'to' => $this->jid($number),
-            'content' => $text,
+        return $this->result($this->http()->post("/sessions/{$instanceName}/messages/send-text", [
+            'chatId' => $this->jid($number),
+            'text' => $text,
         ]));
     }
 
@@ -140,8 +146,8 @@ class OpenWaService implements WhatsappGateway
     {
         $this->assertSession($instanceName);
 
-        return $this->result($this->http()->post('/api/messages/sendFileFromUrl', array_filter([
-            'to' => $this->jid($number),
+        return $this->result($this->http()->post("/sessions/{$instanceName}/messages/send-media", array_filter([
+            'chatId' => $this->jid($number),
             'url' => $media,
             'filename' => $fileName ?: 'attachment',
             'caption' => $caption,

@@ -1,7 +1,7 @@
 <?php
 
 return [
-    // Easy API URL, for example http://127.0.0.1:8080.
+    // Modern OpenWA API URL, for example http://127.0.0.1:2785/api.
     'base_url' => env('OPENWA_BASE_URL', ''),
 
     // Must match OpenWA's --api-key value.
