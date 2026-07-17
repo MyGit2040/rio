@@ -225,7 +225,7 @@ class DeviceController extends Controller
 
     private function webhookUrl(): string
     {
-        return '';
+        return route('webhooks.openwa');
     }
 
     private function extractPairing(array $response): ?string
