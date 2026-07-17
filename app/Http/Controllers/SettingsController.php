@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\WhatsappInstance;
 use App\Services\AiService;
-use App\Services\EvolutionApiService;
 use App\Support\CronHealth;
 use App\Support\MailConfig;
 use App\Support\Whatsapp;
@@ -27,7 +26,6 @@ class SettingsController extends Controller
             'tenant'        => $tenant,
             'engineReady'   => $engine->configured(),
             'aiEnabled'     => (bool) data_get($tenant->settings, 'ai_enabled', false),
-            'platformUrl'   => config('evolution.base_url'),
             'healthChecks'  => CronHealth::checks(),
             'healthOverall' => CronHealth::overall(),
             'queueActive'   => CronHealth::engineActive(),
@@ -40,12 +38,7 @@ class SettingsController extends Controller
     public function update(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'evolution_base_url' => ['nullable', 'url', 'max:255'],
-            'evolution_api_key'  => ['nullable', 'string', 'max:255'],
-            // WhatsApp engine selection.
-            'whatsapp_driver'    => ['nullable', 'in:evolution,webjs,openwa'],
-            'webjs_base_url'     => ['nullable', 'url', 'max:255'],
-            'webjs_api_key'      => ['nullable', 'string', 'max:255'],
+            'whatsapp_driver'    => ['nullable', 'in:openwa'],
             'openwa_base_url'    => ['nullable', 'url', 'max:255'],
             'openwa_api_key'     => ['nullable', 'string', 'max:255'],
             'openwa_session_id'  => ['nullable', 'string', 'max:100', 'regex:/^[A-Za-z0-9_-]+$/'],
@@ -139,11 +132,7 @@ class SettingsController extends Controller
         }
 
         $tenant->update([
-            'evolution_base_url' => ($data['evolution_base_url'] ?? null) ?: null,
-            'evolution_api_key'  => ($data['evolution_api_key'] ?? null) ?: null,
-            'whatsapp_driver'    => ($data['whatsapp_driver'] ?? null) ?: 'evolution',
-            'webjs_base_url'     => ($data['webjs_base_url'] ?? null) ?: null,
-            'webjs_api_key'      => ($data['webjs_api_key'] ?? null) ?: null,
+            'whatsapp_driver'    => 'openwa',
             'openwa_base_url'    => ($data['openwa_base_url'] ?? null) ?: null,
             'openwa_api_key'     => ($data['openwa_api_key'] ?? null) ?: null,
             'openwa_session_id'  => ($data['openwa_session_id'] ?? null) ?: null,
@@ -186,13 +175,18 @@ class SettingsController extends Controller
      */
     public function syncEngineUpdates(): JsonResponse
     {
+        return response()->json([
+            'ok' => false,
+            'message' => 'Configure OpenWA with --webhook using this app’s /webhooks/openwa endpoint. OpenWA webhook registration is set when its runtime starts.',
+        ], 422);
+
         $instances = WhatsappInstance::all();
 
         if ($instances->isEmpty()) {
             return response()->json(['ok' => false, 'message' => 'No linked WhatsApp numbers yet — add a device first.'], 422);
         }
 
-        $url = EvolutionApiService::webhookUrl();
+        $url = '';
         $ok = 0;
         $failed = [];
 

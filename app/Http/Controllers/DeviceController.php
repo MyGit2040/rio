@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\WhatsappInstance;
-use App\Services\EvolutionApiService;
 use App\Services\PlanLimit;
 use App\Support\Audit;
 use App\Support\Whatsapp;
@@ -226,7 +225,7 @@ class DeviceController extends Controller
 
     private function webhookUrl(): string
     {
-        return EvolutionApiService::webhookUrl();
+        return '';
     }
 
     private function extractPairing(array $response): ?string
@@ -246,6 +245,6 @@ class DeviceController extends Controller
             return null;
         }
 
-        return Str::startsWith($base64, 'data:') ? $base64 : 'data:image/png;base64,'.$base64;
+        return $base64;
     }
 }

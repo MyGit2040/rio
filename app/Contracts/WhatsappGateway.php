@@ -5,9 +5,8 @@ namespace App\Contracts;
 /**
  * A pluggable WhatsApp engine.
  *
- * Two drivers implement this: EvolutionApiService (Baileys) and WebJsService
- * (whatsapp-web.js via the Node bridge). Callers resolve one through the
- * App\Support\Whatsapp helper and never care which engine is behind it.
+ * OpenWaService implements this contract. Callers resolve it through the
+ * App\Support\Whatsapp helper.
  *
  * IMPORTANT: every driver MUST return the SAME array shapes so the app's
  * controllers/jobs parse them identically:

@@ -224,7 +224,7 @@ Route::middleware('auth')->group(function () {
 });
 
 // Inbound webhook from the Evolution engine (no auth — verified by secret).
-Route::post('/webhooks/evolution/{secret?}', [WebhookController::class, 'handle'])->name('webhooks.evolution');
+Route::post('/webhooks/openwa/{secret?}', [WebhookController::class, 'handle'])->name('webhooks.openwa');
 
 // Inbound WhatsApp shop order webhook (no auth — verified by secret).
 Route::post('/webhooks/order/{secret?}', [OrderWebhookController::class, 'handle'])->name('webhooks.order');

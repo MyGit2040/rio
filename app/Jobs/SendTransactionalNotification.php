@@ -87,7 +87,7 @@ class SendTransactionalNotification implements ShouldQueue
             $this->throttle();
         } catch (\Throwable $e) {
             // Network/transport problem — log, do not falsely mark the device dead.
-            Log::error('Evolution gateway unreachable', [
+            Log::error('OpenWA gateway unreachable', [
                 'device' => $this->device->instance_name,
                 'error'  => $e->getMessage(),
             ]);
@@ -101,7 +101,7 @@ class SendTransactionalNotification implements ShouldQueue
      */
     private function throttle(): void
     {
-        $seconds = (int) config('evolution.flat_delay_seconds', 60);
+        $seconds = (int) config('openwa.flat_delay_seconds', 60);
 
         if ($seconds > 0 && ! app()->runningUnitTests()) {
             sleep($seconds);

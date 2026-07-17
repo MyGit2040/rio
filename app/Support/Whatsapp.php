@@ -5,9 +5,7 @@ namespace App\Support;
 use App\Contracts\WhatsappGateway;
 use App\Models\Tenant;
 use App\Models\WhatsappInstance;
-use App\Services\EvolutionApiService;
 use App\Services\OpenWaService;
-use App\Services\WebJsService;
 
 /**
  * Resolves the WhatsApp engine to use — Evolution (Baileys) or WebJs
@@ -19,32 +17,23 @@ use App\Services\WebJsService;
  *   2. The tenant's `whatsapp_driver` default.
  *   3. 'evolution' (back-compat for pre-migration rows).
  *
- * Call sites simply swap EvolutionApiService::forInstance(...) →
- * Whatsapp::forInstance(...); the return type is identical.
+ * Call sites resolve the shared gateway through this class.
  */
 class Whatsapp
 {
     /** The tenant default engine when a row/column is empty. */
-    public const DEFAULT_DRIVER = 'evolution';
+    public const DEFAULT_DRIVER = 'openwa';
 
     public static function forInstance(WhatsappInstance $instance): WhatsappGateway
     {
         $driver = $instance->driver ?: self::tenantDriver($instance->tenant);
 
-        return match ($driver) {
-            'webjs' => WebJsService::forInstance($instance),
-            'openwa' => OpenWaService::forInstance($instance),
-            default => EvolutionApiService::forInstance($instance),
-        };
+        return OpenWaService::forInstance($instance);
     }
 
     public static function forTenant(?Tenant $tenant): WhatsappGateway
     {
-        return match (self::tenantDriver($tenant)) {
-            'webjs' => WebJsService::forTenant($tenant),
-            'openwa' => OpenWaService::forTenant($tenant),
-            default => EvolutionApiService::forTenant($tenant),
-        };
+        return OpenWaService::forTenant($tenant);
     }
 
     /** The engine a brand-new device for this tenant should be created on. */

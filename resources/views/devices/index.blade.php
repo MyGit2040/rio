@@ -62,7 +62,7 @@
                                 <div class="mt-4 space-y-3" data-connect-block>
                                     @if ($device->qr_code)
                                         <div class="text-center" data-qr-wrap>
-                                            <img src="{{ $device->qr_code }}" alt="QR code" class="mx-auto w-44 h-44 rounded-lg border border-gray-200">
+                                            <canvas data-openwa-qr data-qr-payload="{{ $device->qr_code }}" aria-label="WhatsApp QR code" class="mx-auto w-44 h-44 rounded-lg border border-gray-200"></canvas>
                                             <p class="text-xs text-gray-500 mt-2">Scan with WhatsApp → Linked devices</p>
                                         </div>
                                     @else
@@ -109,6 +109,8 @@
     @push('scripts')
     <script>
         const csrf = document.querySelector('meta[name=csrf-token]').content;
+
+        document.querySelectorAll('[data-openwa-qr]').forEach(canvas => window.renderOpenWaQr(canvas, canvas.dataset.qrPayload));
 
         function refreshQr(id) {
             fetch(`/devices/${id}/connect`, { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' } })

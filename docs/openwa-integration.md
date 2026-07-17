@@ -1,36 +1,11 @@
-# OpenWA Easy API integration
+# OpenWA setup
 
-Eagle can use OpenWA Easy API as the WhatsApp engine for a workspace. OpenWA owns
-the browser session; Eagle uses its authenticated HTTP API for sending and reads
-the QR/status endpoints while linking the device.
+Eagle uses OpenWA Easy API for its WhatsApp connection and bulk campaign sends.
 
-## Start OpenWA
+1. Copy `deploy/openwa/.env.example` to `deploy/openwa/.env` and set a strong API key.
+2. Run `docker compose --env-file .env up -d` from `deploy/openwa`.
+3. In Eagle **Settings -> WhatsApp engine**, enter `http://127.0.0.1:8080` (or the private Docker/VPS address), the same API key, and the same session ID.
+4. Open **Devices**, add the named device, and scan the QR shown in the page with WhatsApp **Linked devices**.
+5. Start Eagle's queue worker and scheduler. Campaign sends are queued and enforce the workspace's delay, quiet-hours, daily-cap, and opt-out safeguards.
 
-Run a separate Easy API process for the workspace and keep the session ID stable:
-
-```powershell
-npx @open-wa/wa-automate --port 8080 --api-key "replace-with-a-long-secret" --session-id sales
-```
-
-The OpenWA repository included with this workspace notes that v5 is alpha. Test
-OpenWA in a non-production environment before enabling it for users. Keep the
-process private behind a firewall or reverse proxy; do not expose its port publicly.
-
-## Configure Eagle
-
-1. Run `php artisan migrate` after PHP/Laravel is available.
-2. Open **Settings -> WhatsApp engine**.
-3. Select **OpenWA Easy API**.
-4. Enter the Easy API URL, the `--api-key` value, and the exact `--session-id`.
-5. Scan the QR OpenWA prints in its terminal (or shows in its dashboard), then
-   add the connected session as one device in Eagle.
-
-One OpenWA Easy API process exposes one named session, so an OpenWA URL can be
-linked to one Eagle device. Run another OpenWA process with a different port and
-session ID for each additional device.
-
-## Current limitation
-
-OpenWA v5's CLI webhook registration is not restored upstream. Eagle can send
-messages and show connection state, but inbound replies and delivery receipts need
-an OpenWA webhook/SSE bridge before they can populate Eagle's inbox automatically.
+The OpenWA port is an authenticated private service. Do not expose it directly to the public internet.

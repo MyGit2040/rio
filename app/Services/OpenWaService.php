@@ -74,7 +74,7 @@ class OpenWaService implements WhatsappGateway
         return [
             // OpenWA exposes QR data as a token, not a PNG/base64 image. Its
             // terminal/dashboard renders that token locally for scanning.
-            'qrcode' => ['base64' => null, 'pairingCode' => null],
+            'qrcode' => ['base64' => $health['qr'] ?? null, 'pairingCode' => null],
             'instance' => ['state' => ($health['connected'] ?? false) ? 'open' : 'connecting'],
         ];
     }

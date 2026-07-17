@@ -118,7 +118,7 @@
                     Queue: {{ ($queueActive ?? false) ? 'Active' : 'Inactive' }}
                 </span>
             </x-slot:actions>
-            <div class="space-y-4" x-data="{ driver: '{{ old('whatsapp_driver', $tenant->whatsapp_driver ?: 'evolution') }}' }">
+            <div class="space-y-4" x-data="{ driver: 'openwa' }">
                 <div class="rounded-lg px-4 py-3 text-sm {{ $engineReady ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-yellow-50 text-yellow-800 border border-yellow-200' }}">
                     {{ $engineReady ? 'Engine is configured.' : 'Engine not configured yet — pick an engine and add its details below.' }}
                 </div>
@@ -126,12 +126,8 @@
                 {{-- Engine selector --}}
                 <div>
                     <x-input-label for="whatsapp_driver" value="Sending engine" />
-                    <select id="whatsapp_driver" name="whatsapp_driver" x-model="driver"
-                            class="block mt-1 w-full rounded-lg border-gray-300 focus:border-brand focus:ring-brand text-sm">
-                        <option value="evolution">Evolution API (Baileys)</option>
-                        <option value="webjs">whatsapp-web.js bridge (WhatsApp Web)</option>
-                        <option value="openwa">OpenWA Easy API</option>
-                    </select>
+                    <input type="hidden" name="whatsapp_driver" value="openwa">
+                    <div class="block mt-1 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700">OpenWA Easy API</div>
                     <p class="text-xs text-gray-500 mt-1">
                         The default engine for new numbers. Numbers already linked keep the engine they were created on.
                     </p>

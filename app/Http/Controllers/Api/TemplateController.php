@@ -67,11 +67,11 @@ class TemplateController extends Controller
         $number  = preg_replace('/\D+/', '', $data['phone']);
         $message = $this->render((string) $template->body, (array) ($data['variables'] ?? []), $number);
 
-        $evolution = Whatsapp::forInstance($device);
+        $gateway = Whatsapp::forInstance($device);
 
         // Media templates: send the media with the rendered body as caption.
         if ($template->type === 'media' && $template->media_url) {
-            $result = $evolution->sendMedia(
+            $result = $gateway->sendMedia(
                 $device->instance_name,
                 $number,
                 $template->media_type ?: 'image',
@@ -83,7 +83,7 @@ class TemplateController extends Controller
                 return response()->json(['message' => 'Rendered template is empty.'], 422);
             }
 
-            $result = $evolution->sendText($device->instance_name, $number, $message);
+            $result = $gateway->sendText($device->instance_name, $number, $message);
         }
 
         return response()->json(
