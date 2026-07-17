@@ -143,11 +143,22 @@ class OpenWaService implements WhatsappGateway
     public function sendText(string $instanceName, string $number, string $text, int $delay = 0): array
     {
         $this->assertSession($instanceName);
+        $chatId = $this->jid($number);
+        $sessionId = $this->sessionId($instanceName);
 
-        return $this->result($this->http()->post('/sessions/'.$this->sessionId($instanceName).'/messages/send-text', [
-            'chatId' => $this->jid($number),
+        $response = $this->http()->post('/sessions/'.$sessionId.'/messages/send-text', [
+            'chatId' => $chatId,
             'text' => $text,
-        ]));
+        ]);
+
+        // Some WhatsApp-Web builds persist a self-chat message successfully but
+        // return 500 while trying to read its optional message id. Do not mark a
+        // real delivery as failed: confirm the exact text exists in OpenWA first.
+        if ($response->status() === 500 && $this->persistedTextMessage($sessionId, $chatId, $text)) {
+            return ['ok' => true, 'message_id' => null, 'error' => null, 'raw' => $response->json()];
+        }
+
+        return $this->result($response);
     }
 
     public function sendMedia(string $instanceName, string $number, string $mediaType, string $media, ?string $caption = null, ?string $fileName = null, int $delay = 0): array
@@ -196,6 +207,19 @@ class OpenWaService implements WhatsappGateway
         }
 
         return (string) $session['id'];
+    }
+
+    private function persistedTextMessage(string $sessionId, string $chatId, string $text): bool
+    {
+        $response = $this->http()->get("/sessions/{$sessionId}/messages", ['chatId' => $chatId, 'limit' => 10]);
+
+        if (! $response->successful()) {
+            return false;
+        }
+
+        return collect(data_get($response->json(), 'messages', []))->contains(
+            fn (array $message) => ($message['chatId'] ?? null) === $chatId && ($message['body'] ?? null) === $text,
+        );
     }
 
     private function result(Response $response): array
