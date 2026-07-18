@@ -41,7 +41,11 @@ class BackupController extends Controller
             'groups'       => ContactGroup::get(['name', 'color'])->toArray(),
             'contacts'     => Contact::with('groups:id,name')->get()->map(fn ($c) => [
                 'name' => $c->name, 'phone' => $c->phone, 'email' => $c->email,
-                'country' => $c->country, 'opted_out' => $c->opted_out, 'wa_status' => $c->wa_status,
+                'country' => $c->country, 'opted_out' => $c->opted_out,
+                'marketing_opted_in' => $c->marketing_opted_in,
+                'marketing_opted_in_at' => $c->marketing_opted_in_at?->toIso8601String(),
+                'marketing_consent_source' => $c->marketing_consent_source,
+                'wa_status' => $c->wa_status,
                 'groups' => $c->groups->pluck('name')->all(),
             ])->all(),
             'templates'    => Template::get()->map->only([
@@ -102,6 +106,9 @@ class BackupController extends Controller
                     ['phone' => preg_replace('/\D+/', '', (string) $c['phone'])],
                     ['name' => $c['name'] ?? null, 'email' => $c['email'] ?? null,
                         'country' => $c['country'] ?? null, 'opted_out' => (bool) ($c['opted_out'] ?? false),
+                        'marketing_opted_in' => (bool) ($c['marketing_opted_in'] ?? false),
+                        'marketing_opted_in_at' => $c['marketing_opted_in_at'] ?? null,
+                        'marketing_consent_source' => $c['marketing_consent_source'] ?? null,
                         'wa_status' => $c['wa_status'] ?? 'unverified'],
                 );
                 $ids = collect($c['groups'] ?? [])->map(fn ($n) => $groupIds[$n] ?? null)->filter()->all();

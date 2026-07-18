@@ -352,7 +352,9 @@ class CampaignService
      */
     private function buildRecipients(Campaign $campaign, array $data, array $deviceIds): int
     {
-        $query = Contact::query()->reachable();
+        // This is deliberately enforced in the service, not just the UI: every
+        // campaign path can only select contacts with documented permission.
+        $query = Contact::query()->marketingEligible();
 
         // Verification gate: permissive by default. Turn OFF "allow non-verified" in Settings
         // to require every recipient be confirmed on WhatsApp first.

@@ -43,6 +43,8 @@ class ContactImportController extends Controller
             }],
             'group_id'     => ['nullable', 'integer', 'exists:contact_groups,id'],
             'new_group'    => ['nullable', 'string', 'max:255'],
+            'marketing_consent_confirmed' => ['accepted'],
+            'marketing_consent_source' => ['required', 'string', 'max:100'],
         ]);
 
         $path = $request->file('file')->getRealPath();
@@ -89,6 +91,9 @@ class ContactImportController extends Controller
                 'name'    => $row['name'] ?? null,
                 'email'   => $row['email'] ?? null,
                 'country' => $row['country'] ?? null,
+                'marketing_opted_in' => true,
+                'marketing_opted_in_at' => now(),
+                'marketing_consent_source' => $request->input('marketing_consent_source'),
             ]);
 
             if ($groupId) {
