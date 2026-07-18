@@ -32,6 +32,9 @@
 
             <x-card title="Audience">
                 <div class="space-y-4">
+                    @if ($campaign->audience === 'legacy')
+                        <p class="rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-800">This older campaign did not save its original audience. Choose All contacts, Groups, or Tag before saving so its remaining recipients are rebuilt safely.</p>
+                    @endif
                     <div class="grid grid-cols-3 gap-2">
                         <label><input type="radio" name="audience" x-model="audience" value="all" class="sr-only peer"><div class="px-4 py-2 rounded-lg border text-sm text-center cursor-pointer peer-checked:border-green-500 peer-checked:bg-green-50">All contacts</div></label>
                         <label><input type="radio" name="audience" x-model="audience" value="groups" class="sr-only peer"><div class="px-4 py-2 rounded-lg border text-sm text-center cursor-pointer peer-checked:border-green-500 peer-checked:bg-green-50">Groups</div></label>
