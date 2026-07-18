@@ -342,7 +342,9 @@ class CampaignController extends Controller
         $wasResume = $campaign->status === 'paused';
         $pending = $campaign->recipients()->where('status', 'pending')->count();
 
-        $this->campaigns->launch($campaign);
+        if (! $this->campaigns->launch($campaign)) {
+            return back()->with('error', 'This campaign is already starting or running.');
+        }
         Audit::log($wasResume ? 'campaign.resumed' : 'campaign.launched', $campaign, $campaign->name);
 
         return back()->with('success', $wasResume
@@ -456,13 +458,22 @@ class CampaignController extends Controller
      */
     public function retryFailed(Campaign $campaign): RedirectResponse
     {
-        $count = $campaign->recipients()->where('status', 'failed')->update(['status' => 'pending', 'attempts' => 0, 'error' => null]);
+        $updates = ['status' => 'pending'];
+        // Keep poll-prelude failure details: the job uses them to retry the
+        // native poll without sending the explanatory text a second time.
+        if ($campaign->type !== 'poll') {
+            $updates += ['attempts' => 0, 'error' => null];
+        }
+        $count = $campaign->recipients()->where('status', 'failed')->update($updates);
 
         if ($count === 0) {
             return back()->with('error', 'No failed messages to retry.');
         }
 
-        $campaign->update(['failed' => $campaign->recipients()->where('status', 'failed')->count()]);
+        $campaign->update([
+            'failed' => $campaign->recipients()->where('status', 'failed')->count(),
+            'status' => 'paused',
+        ]);
         $this->campaigns->launch($campaign);
 
         return back()->with('success', "Re-queued {$count} failed message(s).");

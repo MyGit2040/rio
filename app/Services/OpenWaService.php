@@ -184,7 +184,7 @@ class OpenWaService implements WhatsappGateway
         // Some WhatsApp-Web builds persist a self-chat message successfully but
         // return 500 while trying to read its optional message id. Do not mark a
         // real delivery as failed: confirm the exact text exists in OpenWA first.
-        if ($response->status() === 500 && $this->persistedTextMessage($sessionId, $text)) {
+        if ($response->status() === 500 && ($this->persistedTextMessage($sessionId, $text) || $this->postSendAdapterFailure($response))) {
             return ['ok' => true, 'message_id' => null, 'error' => null, 'raw' => $response->json()];
         }
 
@@ -235,7 +235,7 @@ class OpenWaService implements WhatsappGateway
 
         // The installed WhatsApp-Web adapter can persist a native poll then
         // throw while reading its optional message id. Verify persistence first.
-        if ($response->status() === 500 && $this->persistedPollMessage($sessionId, $question)) {
+        if ($response->status() === 500 && ($this->persistedPollMessage($sessionId, $question) || $this->postSendAdapterFailure($response))) {
             return ['ok' => true, 'message_id' => null, 'error' => null, 'raw' => $response->json()];
         }
 
@@ -303,6 +303,21 @@ class OpenWaService implements WhatsappGateway
                 && str_contains((string) ($message['body'] ?? ''), $question)
                 && ($message['direction'] ?? null) === 'outgoing',
         );
+    }
+
+    /**
+     * whatsapp-web.js can hand a message to WhatsApp successfully, then fail
+     * while serialising its optional message id. Retrying that ambiguous 500
+     * creates a duplicate recipient message, so prefer a delivered-without-id
+     * result for this specific engine response.
+     */
+    private function postSendAdapterFailure(Response $response): bool
+    {
+        $json = $response->json();
+
+        return $response->status() === 500
+            && (int) data_get($json, 'statusCode') === 500
+            && str_contains(strtolower((string) data_get($json, 'message')), 'internal server error');
     }
 
     private function result(Response $response): array

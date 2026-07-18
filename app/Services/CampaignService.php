@@ -78,17 +78,29 @@ class CampaignService
     /**
      * Dispatch the (pending) recipients as spaced-out queued jobs.
      */
-    public function launch(Campaign $campaign): void
+    public function launch(Campaign $campaign): bool
     {
+        // A double-click (or two browser requests arriving together) used to
+        // dispatch every pending recipient twice. Claim the launch atomically
+        // before placing any jobs on the queue.
+        $claimed = Campaign::withoutGlobalScopes()
+            ->whereKey($campaign->id)
+            ->whereIn('status', ['draft', 'scheduled', 'paused'])
+            ->update([
+                'status' => 'sending',
+                'started_at' => $campaign->started_at ?? now(),
+            ]);
+
+        if ($claimed !== 1) {
+            return false;
+        }
+
+        $campaign->refresh();
+
         // Resilience: move any still-pending recipients onto the campaign's devices that
         // are CONNECTED right now. So if some numbers were locked when it paused, resuming
         // sends the remaining batches from whatever accounts have recovered — nothing is lost.
         $this->reassignPendingToConnected($campaign);
-
-        $campaign->update([
-            'status'     => 'sending',
-            'started_at' => $campaign->started_at ?? now(),
-        ]);
 
         $cumulative = 0;
         $count = 0;
@@ -116,6 +128,8 @@ class CampaignService
                     }
                 }
             });
+
+        return true;
     }
 
     public function pause(Campaign $campaign): void

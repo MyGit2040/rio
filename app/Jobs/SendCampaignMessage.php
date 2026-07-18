@@ -114,8 +114,14 @@ class SendCampaignMessage implements ShouldQueue
         // the full text as its caption (bound together), or plain text — then the poll below.
         if ($campaign->type === 'poll') {
             $caption = $this->personalize($body, $contact, $number, $spinRandom);
+            // A retry after the gateway's post-send 500 must continue with the
+            // poll, not send the already-delivered explanatory text again.
+            $preludeAlreadyAttempted = $recipient->attempts > 0
+                && str_starts_with((string) $recipient->error, 'Poll prelude failed:');
 
-            if ($campaign->media_url) {
+            if ($preludeAlreadyAttempted) {
+                $prelude = ['ok' => true, 'error' => null];
+            } elseif ($campaign->media_url) {
                 $prelude = $engine->sendMedia(
                     $instance->instance_name,
                     $number,
