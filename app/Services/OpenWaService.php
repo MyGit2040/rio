@@ -270,7 +270,8 @@ class OpenWaService implements WhatsappGateway
 
         return collect(data_get($response->json(), 'messages', []))->contains(
             fn (array $message) => ($message['type'] ?? null) === 'poll'
-                && ($message['body'] ?? null) === $question
+                // The gateway persists native poll text as "📊 <question>".
+                && str_contains((string) ($message['body'] ?? ''), $question)
                 && ($message['direction'] ?? null) === 'outgoing',
         );
     }
