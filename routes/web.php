@@ -36,6 +36,7 @@ use App\Http\Controllers\UploadController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\WebhookController;
 use App\Http\Controllers\WebhookEndpointController;
+use App\Http\Controllers\WarmupPlanController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -87,6 +88,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/devices/{device}/connect', [DeviceController::class, 'connect'])->name('devices.connect');
     Route::post('/devices/{device}/pairing-code', [DeviceController::class, 'pairingCode'])->name('devices.pairing-code');
     Route::delete('/devices/{device}', [DeviceController::class, 'destroy'])->name('devices.destroy');
+
+    // Warm-up plans: manage every sending number's gradual cap from one screen.
+    Route::get('/warmup-plans', [WarmupPlanController::class, 'index'])->name('warmup-plans.index');
+    Route::patch('/warmup-plans/{device}', [WarmupPlanController::class, 'update'])->name('warmup-plans.update');
 
     // Contacts
     Route::get('/contacts/import/sample', [ContactImportController::class, 'sample'])->name('contacts.import.sample');
