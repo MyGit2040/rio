@@ -145,7 +145,10 @@
                     .then(r => r.json())
                     .then(d => { if (d.status === 'open') { clearInterval(timer); location.reload(); } })
                     .catch(() => {});
-            }, 4000);
+            // A completed QR/pairing login is time-sensitive in the UI. Poll at
+            // one second so the card switches to Connected almost immediately,
+            // while the request itself remains a lightweight session-status read.
+            }, 1000);
         });
     </script>
     @endpush
