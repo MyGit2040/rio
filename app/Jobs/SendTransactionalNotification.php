@@ -15,11 +15,11 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Delivers a single, already-processed transactional message through the
- * Evolution API gateway.
+ * OpenWA gateway.
  *
  * Design notes:
  *  - ONE message per job. Pacing is enforced by a flat, predictable delay
- *    (config evolution.flat_delay_seconds) acting purely as a load balancer
+ *    (config openwa.flat_delay_seconds) acting purely as a load balancer
  *    for the VPS — no randomisation, no human simulation, no evasion.
  *  - On an auth failure (401/403 = the Baileys session dropped/expired) the
  *    job trips a circuit breaker: the device is marked Disconnected, the
@@ -129,6 +129,6 @@ class SendTransactionalNotification implements ShouldQueue
             'context' => ['device_id' => $this->device->id, 'http_status' => $status],
         ]);
 
-        Log::alert("Circuit breaker: Evolution auth failure ({$status}) on '{$this->device->instance_name}' — device marked Disconnected, campaign paused.");
+        Log::alert("Circuit breaker: OpenWA auth failure ({$status}) on '{$this->device->instance_name}' — device marked Disconnected, campaign paused.");
     }
 }
