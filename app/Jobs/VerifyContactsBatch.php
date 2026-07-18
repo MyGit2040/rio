@@ -36,6 +36,7 @@ class VerifyContactsBatch implements ShouldQueue
             $engine = $device ? Whatsapp::forInstance($device) : null;
 
             if (! $device || ! $engine->configured()) {
+                self::dispatch($group->id)->delay(now()->addMinutes(2));
                 return; // no connected device — can't verify right now
             }
 
@@ -48,6 +49,8 @@ class VerifyContactsBatch implements ShouldQueue
                 $result = $engine->checkNumbers($device->instance_name, $contacts->pluck('phone')->all());
             } catch (\Throwable $e) {
                 Log::error('Batch verify failed', ['error' => $e->getMessage()]);
+
+                self::dispatch($group->id)->delay(now()->addMinutes(2));
 
                 return;
             }
