@@ -175,6 +175,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/campaigns/bulk', [CampaignController::class, 'bulk'])->name('campaigns.bulk');
     Route::resource('campaigns', CampaignController::class);
     Route::post('/campaigns/{campaign}/launch', [CampaignController::class, 'launch'])->name('campaigns.launch');
+    Route::post('/campaigns/{campaign}/duplicate', [CampaignController::class, 'duplicate'])->name('campaigns.duplicate');
     Route::post('/campaigns/{campaign}/pause', [CampaignController::class, 'pause'])->name('campaigns.pause');
     Route::post('/campaigns/{campaign}/devices', [CampaignController::class, 'assignDevices'])->name('campaigns.devices');
     Route::post('/campaigns/{campaign}/retry', [CampaignController::class, 'retryFailed'])->name('campaigns.retry');

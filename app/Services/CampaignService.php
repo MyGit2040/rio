@@ -135,6 +135,43 @@ class CampaignService
         return true;
     }
 
+    /**
+     * Copy a campaign's editable configuration into a fresh draft. Recipient
+     * rows are rebuilt for the copied audience, never copied from send history.
+     */
+    public function duplicate(Campaign $campaign): Campaign
+    {
+        return DB::transaction(function () use ($campaign) {
+            $copy = $campaign->replicate([
+                'sent', 'failed', 'total', 'status', 'scheduled_at', 'started_at', 'completed_at',
+            ]);
+            $copy->fill([
+                'name'         => 'Copy of '.$campaign->name,
+                'status'       => 'draft',
+                'scheduled_at' => null,
+                'started_at'   => null,
+                'completed_at' => null,
+                'total'        => 0,
+                'sent'         => 0,
+                'failed'       => 0,
+            ]);
+            $copy->save();
+
+            // Legacy campaigns require an explicit audience selection in Edit;
+            // never infer that an old group campaign meant every contact.
+            if (in_array($copy->audience, ['all', 'groups', 'tag'], true)) {
+                $count = $this->buildRecipients($copy, [
+                    'audience'  => $copy->audience,
+                    'group_ids' => $copy->group_ids ?? [],
+                    'tag'       => $copy->tag,
+                ], $copy->device_ids ?: [$copy->whatsapp_instance_id]);
+                $copy->update(['total' => $count]);
+            }
+
+            return $copy;
+        });
+    }
+
     public function pause(Campaign $campaign): void
     {
         $campaign->update(['status' => 'paused']);

@@ -119,13 +119,23 @@
                             </td>
                             <td class="px-5 py-3"><x-campaign-status :status="$campaign->status" /></td>
                             <td class="px-5 py-3 text-gray-500 whitespace-nowrap">{{ $campaign->created_at->format('M j, Y') }}</td>
-                            <td class="px-5 py-3">
-                                <div class="flex items-center gap-3 justify-end">
-                                    <a href="{{ route('campaigns.show', $campaign) }}" class="text-green-600 hover:text-green-700">View</a>
-                                    <form method="POST" action="{{ route('campaigns.destroy', $campaign) }}" onsubmit="return confirm('Delete this campaign?')">
-                                        @csrf @method('DELETE')
-                                        <button class="text-red-600 hover:text-red-700">Delete</button>
-                                    </form>
+                            <td class="px-5 py-3 text-right">
+                                <div class="relative inline-block text-left" x-data="{ open: false }" @click.outside="open = false">
+                                    <button type="button" @click="open = !open" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800" aria-label="Campaign actions" title="Campaign actions">
+                                        <span class="text-xl leading-none">⋮</span>
+                                    </button>
+                                    <div x-show="open" x-cloak x-transition class="absolute right-0 z-20 mt-1 w-36 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                                        <a href="{{ route('campaigns.show', $campaign) }}" class="block px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">View</a>
+                                        <a href="{{ route('campaigns.edit', $campaign) }}" class="block px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">Edit</a>
+                                        <form method="POST" action="{{ route('campaigns.duplicate', $campaign) }}">
+                                            @csrf
+                                            <button class="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">Duplicate</button>
+                                        </form>
+                                        <form method="POST" action="{{ route('campaigns.destroy', $campaign) }}" onsubmit="return confirm('Delete this campaign?')">
+                                            @csrf @method('DELETE')
+                                            <button class="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50">Delete</button>
+                                        </form>
+                                    </div>
                                 </div>
                             </td>
                         </tr>

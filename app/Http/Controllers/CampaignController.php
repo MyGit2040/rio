@@ -442,6 +442,15 @@ class CampaignController extends Controller
         return redirect()->route('campaigns.index')->with('success', 'Campaign deleted.');
     }
 
+    public function duplicate(Campaign $campaign): RedirectResponse
+    {
+        $copy = $this->campaigns->duplicate($campaign);
+        Audit::log('campaign.duplicated', $copy, "Copied from {$campaign->name}");
+
+        return redirect()->route('campaigns.edit', $copy)
+            ->with('success', 'Campaign duplicated as a new draft. Review the audience and edit anything you need before launching it.');
+    }
+
     public function bulk(Request $request): RedirectResponse
     {
         $data = $request->validate([
