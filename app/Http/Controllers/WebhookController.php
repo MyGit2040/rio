@@ -113,7 +113,7 @@ class WebhookController extends Controller
             }
 
             // Idempotency: the engine re-delivers the same messages.upsert event
-            // (Evolution retries, the webjs bridge re-posts). Without this guard we
+            // (OpenWA and upstream transport retries can re-post). Without this guard we
             // recorded a duplicate AND re-forwarded the reply to the hook number on
             // every delivery — the "same reply every minute" bug. If we've already
             // seen this exact WhatsApp message id on this number, skip it entirely.
@@ -212,7 +212,7 @@ class WebhookController extends Controller
             return ['button_response', $btn];
         }
 
-        // Poll vote (Evolution decodes the chosen option(s) when available).
+        // Poll vote (the gateway decodes the chosen option(s) when available).
         if (isset($m['pollUpdateMessage'])) {
             $opts = data_get($m, 'pollUpdateMessage.vote.selectedOptions')
                 ?? data_get($m, 'pollUpdateMessage.selectedOptions')

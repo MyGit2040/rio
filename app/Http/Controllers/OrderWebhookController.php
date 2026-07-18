@@ -17,7 +17,7 @@ use Illuminate\Support\Str;
  *
  * Expected payload:
  *   { instance, phone, name, currency, items:[{name, quantity, price}] }
- * The `instance` (Evolution instance name) identifies which workspace the order belongs to.
+ * The `instance` (OpenWA session name) identifies which workspace the order belongs to.
  */
 class OrderWebhookController extends Controller
 {

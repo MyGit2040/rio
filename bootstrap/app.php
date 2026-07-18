@@ -13,7 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // The Evolution engine posts here from outside — no CSRF token.
+        // The OpenWA engine posts here from outside — no CSRF token.
         $middleware->validateCsrfTokens(except: [
             'webhooks/openwa/*',
             'webhooks/openwa',

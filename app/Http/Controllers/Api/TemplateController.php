@@ -14,7 +14,7 @@ use Illuminate\Http\Request;
  *
  * Other apps (e.g. the connect CRM) list templates here and ask Eagle to send
  * one to a single recipient. Eagle renders the template's merge tags/spintax and
- * dispatches through the chosen connected device via Evolution.
+ * dispatches through the chosen connected device via OpenWA.
  */
 class TemplateController extends Controller
 {

@@ -50,7 +50,7 @@ class Contact extends Model
     }
 
     /**
-     * Store phone numbers as digits only (no +, spaces or dashes) — the format Evolution expects.
+     * Store phone numbers as digits only (no +, spaces or dashes) — the format WhatsApp gateways expect.
      */
     public function setPhoneAttribute($value): void
     {

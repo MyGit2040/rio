@@ -10,7 +10,7 @@ class UploadController extends Controller
 {
     /**
      * Store an uploaded attachment on the public disk and return its URL.
-     * The URL is what campaigns hand to Evolution (which fetches it to send).
+     * The URL is what campaigns hand to OpenWA (which fetches it to send).
      * Every upload is also filed in the reusable Media Library.
      */
     public function store(Request $request): JsonResponse

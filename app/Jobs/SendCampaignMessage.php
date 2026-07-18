@@ -430,7 +430,7 @@ class SendCampaignMessage implements ShouldQueue
     }
 
     /**
-     * Map stored button items to the Evolution button shape.
+     * Map stored button items to the gateway's portable button shape.
      *
      * @return array<int, array<string, string>>
      */
