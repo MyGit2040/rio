@@ -116,9 +116,26 @@ class SendCampaignMessage implements ShouldQueue
             $caption = $this->personalize($body, $contact, $number, $spinRandom);
 
             if ($campaign->media_url) {
-                $engine->sendMedia($instance->instance_name, $number, $campaign->media_type ?: 'image', $campaign->media_url, $caption !== '' ? $caption : null);
+                $prelude = $engine->sendMedia(
+                    $instance->instance_name,
+                    $number,
+                    $campaign->media_type ?: 'image',
+                    $campaign->media_url,
+                    $caption !== '' ? $caption : null,
+                );
             } elseif (trim($caption) !== '') {
-                $engine->sendText($instance->instance_name, $number, $caption);
+                $prelude = $engine->sendText($instance->instance_name, $number, $caption);
+            } else {
+                $prelude = ['ok' => true, 'error' => null];
+            }
+
+            // A poll is deliberately sent beneath its explanatory text/image.
+            // Do not send a detached poll when its required first step failed.
+            if (! $prelude['ok']) {
+                $this->markFailed($recipient, $campaign, 'Poll prelude failed: '.($prelude['error'] ?? 'unknown error'));
+                $this->finaliseIfDone($campaign);
+
+                return;
             }
         }
 

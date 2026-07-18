@@ -487,9 +487,15 @@ class CampaignController extends Controller
         // the image with the caption, or plain text — then the poll below it.
         if ($campaign->type === 'poll') {
             if ($campaign->media_url) {
-                $engine->sendMedia($device->instance_name, $number, $campaign->media_type ?: 'image', $campaign->media_url, $body !== '' ? $body : null);
+                $prelude = $engine->sendMedia($device->instance_name, $number, $campaign->media_type ?: 'image', $campaign->media_url, $body !== '' ? $body : null);
             } elseif (trim($body) !== '') {
-                $engine->sendText($device->instance_name, $number, $body);
+                $prelude = $engine->sendText($device->instance_name, $number, $body);
+            } else {
+                $prelude = ['ok' => true, 'error' => null];
+            }
+
+            if (! $prelude['ok']) {
+                return back()->with('error', 'Test failed before the poll could be sent: '.($prelude['error'] ?? 'unknown error'));
             }
         }
 
