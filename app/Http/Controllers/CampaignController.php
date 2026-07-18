@@ -58,8 +58,10 @@ class CampaignController extends Controller
         // id => connected? map for the whole tenant (one query) so each row can
         // show assigned-vs-connected sending numbers without an N+1.
         $deviceStatus = WhatsappInstance::pluck('status', 'id')->map(fn ($s) => $s === 'open');
+        $pollNotifications = Message::where('direction', 'in')->where('type', 'poll_response')
+            ->with(['contact', 'campaign'])->latest('id')->limit(5)->get();
 
-        return view('campaigns.index', compact('campaigns', 'stats', 'deviceStatus'));
+        return view('campaigns.index', compact('campaigns', 'stats', 'deviceStatus', 'pollNotifications'));
     }
 
     public function create(): View

@@ -6,6 +6,7 @@ use App\Jobs\DispatchWebhook;
 use App\Models\Campaign;
 use App\Models\CampaignRecipient;
 use App\Models\Contact;
+use App\Models\Alert;
 use App\Models\Message;
 use App\Models\Suppression;
 use App\Models\WhatsappInstance;
@@ -157,6 +158,23 @@ class WebhookController extends Controller
 
                 // Forward the full detail (who, what kind, which answer, which campaign) to the hook number.
                 $this->forwardToHook($instance, $contact, $phone, $kind, $detail, $campaignId);
+
+                if ($kind === 'poll_response') {
+                    $campaignName = $campaignId ? Campaign::whereKey($campaignId)->value('name') : null;
+                    $who = $contact->name ?: '+'.$phone;
+
+                    Alert::create([
+                        'level'   => 'info',
+                        'title'   => 'New poll vote'.($campaignName ? " · {$campaignName}" : ''),
+                        'body'    => "{$who} chose: {$detail}",
+                        'context' => [
+                            'campaign_id' => $campaignId,
+                            'contact_id'  => $contact->id,
+                            'phone'       => $phone,
+                            'answer'      => $detail,
+                        ],
+                    ]);
+                }
 
                 DispatchWebhook::fire($instance->tenant_id, 'message.received', [
                     'contact_id'  => $contact->id,

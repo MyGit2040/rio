@@ -37,6 +37,20 @@
         @endforeach
     </div>
 
+    @if ($pollNotifications->isNotEmpty())
+        <x-card title="New poll votes" class="mb-6">
+            <div class="space-y-2">
+                @foreach ($pollNotifications as $vote)
+                    <a href="{{ $vote->campaign_id ? route('campaigns.show', $vote->campaign_id) : route('campaigns.index') }}" class="flex items-center gap-3 rounded-lg border border-green-100 bg-green-50/50 px-3 py-2 text-sm hover:bg-green-50">
+                        <span class="text-lg">📊</span>
+                        <span class="min-w-0 flex-1"><strong>{{ $vote->contact?->name ?: '+'.$vote->phone }}</strong> chose <strong>{{ $vote->body }}</strong>@if ($vote->campaign) <span class="text-gray-500">· {{ $vote->campaign->name }}</span>@endif</span>
+                        <span class="shrink-0 text-xs text-gray-500">{{ $vote->created_at?->diffForHumans() }}</span>
+                    </a>
+                @endforeach
+            </div>
+        </x-card>
+    @endif
+
     <x-card flush x-data="bulkSelect({{ \Illuminate\Support\Js::from($campaigns->pluck('id')->values()->all()) }})">
         <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
             <h2 class="font-semibold text-gray-800">Campaigns</h2>
