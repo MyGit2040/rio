@@ -88,8 +88,10 @@
                             <td class="px-5 py-3">
                                 @if ($contact->opted_out)
                                     <x-badge color="red">Opted out</x-badge>
+                                @elseif ($contact->marketing_opted_in)
+                                    <x-badge color="green">Permission recorded</x-badge>
                                 @else
-                                    <x-badge color="green">Active</x-badge>
+                                    <x-badge color="yellow">Permission needed</x-badge>
                                 @endif
                             </td>
                             <td class="px-5 py-3">

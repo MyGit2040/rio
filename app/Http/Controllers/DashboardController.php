@@ -35,7 +35,7 @@ class DashboardController extends Controller
             'devices'           => WhatsappInstance::count(),
             'connected'         => WhatsappInstance::where('status', 'open')->count(),
             'contacts'          => Contact::count(),
-            'opted_in'          => Contact::where('opted_out', false)->count(),
+            'opted_in'          => Contact::marketingEligible()->count(),
             'templates'         => Template::count(),
             'rules_active'      => $rulesActive,
             'rules_total'       => $rulesTotal,

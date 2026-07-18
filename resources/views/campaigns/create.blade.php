@@ -179,6 +179,13 @@
                 </div>
             </x-card>
 
+            <div class="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
+                <label class="flex items-start gap-3 text-sm text-amber-950">
+                    <input type="checkbox" name="consent_confirmed" value="1" @checked(old('consent_confirmed')) required class="mt-0.5 rounded border-amber-300 text-brand focus:ring-brand">
+                    <span><strong>Permission check:</strong> I confirm this campaign is only for people who gave marketing permission. The system will automatically exclude opted-out contacts and contacts without a documented permission record.</span>
+                </label>
+            </div>
+
             <div class="flex items-center gap-3">
                 <x-btn type="submit" variant="primary">Create campaign</x-btn>
                 <x-btn :href="route('campaigns.index')" variant="ghost">Cancel</x-btn>

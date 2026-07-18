@@ -69,7 +69,7 @@
                         <x-input-label for="group_id" value="Audience" />
                         <select id="group_id" name="group_id"
                                 class="mt-1 block w-full rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500">
-                            <option value="">All opted-in contacts</option>
+                            <option value="">All contacts with recorded permission</option>
                             @foreach ($groups as $group)
                                 <option value="{{ $group->id }}">{{ $group->name }}</option>
                             @endforeach

@@ -48,7 +48,8 @@ class ContactController extends Controller
             return back()->withInput()->with('error', 'You have reached your plan\'s contact limit. Upgrade in Billing to add more.');
         }
 
-        $contact = Contact::create($request->safe()->except('groups'));
+        $data = $this->consentPayload($request->safe()->except('groups'));
+        $contact = Contact::create($data);
         $contact->groups()->sync($request->input('groups', []));
 
         return redirect()->route('contacts.index')->with('success', 'Contact added.');
@@ -80,7 +81,7 @@ class ContactController extends Controller
 
     public function update(ContactRequest $request, Contact $contact): RedirectResponse
     {
-        $contact->update($request->safe()->except('groups'));
+        $contact->update($this->consentPayload($request->safe()->except('groups'), $contact));
         $contact->groups()->sync($request->input('groups', []));
 
         return redirect()->route('contacts.index')->with('success', 'Contact updated.');
@@ -126,12 +127,12 @@ class ContactController extends Controller
                 $msg = "{$count} contact(s) removed from the group.";
                 break;
             case 'opt_out':
-                $query->update(['opted_out' => true]);
+                $query->update(['opted_out' => true, 'marketing_opted_in' => false]);
                 $msg = "{$count} contact(s) opted out.";
                 break;
             default: // opt_in
                 $query->update(['opted_out' => false]);
-                $msg = "{$count} contact(s) opted back in.";
+                $msg = "{$count} contact(s) reactivated. Record documented permission on each contact before marketing messages can be sent.";
         }
 
         return back()->with('success', $msg);
@@ -221,5 +222,26 @@ class ContactController extends Controller
         }
 
         return back()->with('success', "Verification complete: {$valid} on WhatsApp, {$invalid} not found.");
+    }
+
+    /** @param array<string, mixed> $data */
+    private function consentPayload(array $data, ?Contact $existing = null): array
+    {
+        if (($data['opted_out'] ?? false) === true) {
+            $data['marketing_opted_in'] = false;
+            $data['marketing_opted_in_at'] = null;
+            $data['marketing_consent_source'] = null;
+
+            return $data;
+        }
+
+        if (($data['marketing_opted_in'] ?? false) === true) {
+            $data['marketing_opted_in_at'] = $existing?->marketing_opted_in_at ?? now();
+        } elseif (array_key_exists('marketing_opted_in', $data)) {
+            $data['marketing_opted_in_at'] = null;
+            $data['marketing_consent_source'] = null;
+        }
+
+        return $data;
     }
 }

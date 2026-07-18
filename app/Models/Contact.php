@@ -14,6 +14,7 @@ class Contact extends Model
 
     protected $fillable = [
         'tenant_id', 'name', 'phone', 'email', 'country', 'attributes', 'tags', 'opted_out',
+        'marketing_opted_in', 'marketing_opted_in_at', 'marketing_consent_source',
         'wa_status', 'verified_at',
     ];
 
@@ -21,6 +22,8 @@ class Contact extends Model
         'attributes'  => 'array',
         'tags'        => 'array',
         'opted_out'   => 'boolean',
+        'marketing_opted_in' => 'boolean',
+        'marketing_opted_in_at' => 'datetime',
         'verified_at' => 'datetime',
     ];
 
@@ -58,11 +61,12 @@ class Contact extends Model
     }
 
     /**
-     * Consent flag (inverse of opted_out). Only opted-in contacts receive campaigns.
+     * A contact is eligible only when their permission was explicitly recorded
+     * and they have not opted out afterwards.
      */
     public function getIsOptedInAttribute(): bool
     {
-        return ! $this->opted_out;
+        return $this->marketing_opted_in && ! $this->opted_out;
     }
 
     public function scopeSearch(Builder $query, ?string $term): Builder
@@ -81,6 +85,12 @@ class Contact extends Model
     public function scopeReachable(Builder $query): Builder
     {
         return $query->where('opted_out', false);
+    }
+
+    /** Contacts with documented permission for marketing messages. */
+    public function scopeMarketingEligible(Builder $query): Builder
+    {
+        return $query->where('opted_out', false)->where('marketing_opted_in', true);
     }
 
     /**

@@ -55,7 +55,7 @@ class SequenceService
 
     /**
      * Enroll contacts (optionally limited to a group) into the sequence.
-     * Skips opted-out / suppressed / already-enrolled contacts. Returns the count.
+     * Skips contacts without marketing permission, opted-out / suppressed / already-enrolled contacts. Returns the count.
      */
     public function enroll(Sequence $sequence, ?int $groupId = null): int
     {
@@ -63,7 +63,7 @@ class SequenceService
         $existing = $sequence->enrollments()->pluck('contact_id')->all();
         $suppressed = Suppression::pluck('phone')->all();
 
-        $query = Contact::query()->reachable()
+        $query = Contact::query()->marketingEligible()
             ->when(! empty($existing), fn ($q) => $q->whereNotIn('id', $existing))
             ->when(! empty($suppressed), fn ($q) => $q->whereNotIn('phone', $suppressed))
             ->when($groupId, fn ($q) => $q->whereHas('groups', fn ($g) => $g->where('contact_groups.id', $groupId)));
@@ -123,7 +123,7 @@ class SequenceService
         }
 
         // Respect consent and the do-not-contact list.
-        if ($contact->opted_out || Suppression::has($contact->phone)) {
+        if (! $contact->is_opted_in || Suppression::has($contact->phone)) {
             $enrollment->update(['status' => 'stopped', 'next_run_at' => null]);
 
             return false;
