@@ -221,6 +221,12 @@
                     <x-text-input id="bulk_hook_number" name="bulk_hook_number" class="block mt-1 w-full" placeholder="971501234567" :value="old('bulk_hook_number', data_get($s, 'bulk_hook_number'))" />
                     <p class="text-xs text-gray-500 mt-1">When a contact replies, a copy is forwarded to this WhatsApp number. Full number with country code.</p>
                 </div>
+
+                <div>
+                    <x-input-label for="bulk_random_prefix" value="Random number prefix" />
+                    <x-text-input id="bulk_random_prefix" name="bulk_random_prefix" class="block mt-1 w-full" placeholder="EG-" :value="old('bulk_random_prefix', data_get($s, 'bulk_random_prefix'))" />
+                    <p class="text-xs text-gray-500 mt-1">Used before <code>@{{random}}</code>, <code>[random]</code>, and <code>@{{variant_ref_id}}</code>. Example: EG-482913.</p>
+                </div>
             </div>
         </x-card>
 

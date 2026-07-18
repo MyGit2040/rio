@@ -53,6 +53,7 @@ class SettingsController extends Controller
             'bulk_sleep_after'   => ['nullable', 'integer', 'min:0', 'max:1000'],
             'bulk_sleep_seconds' => ['nullable', 'integer', 'min:0', 'max:3600'],
             'bulk_hook_number'   => ['nullable', 'string', 'max:32'],
+            'bulk_random_prefix' => ['nullable', 'string', 'max:32'],
             'bulk_spintax'       => ['sometimes', 'boolean'],
             'bulk_device_failover' => ['sometimes', 'boolean'],
             // Quiet hours (compliant courtesy — delays sends, never alters content).
@@ -88,6 +89,7 @@ class SettingsController extends Controller
         $settings['bulk_sleep_after']   = (int) ($data['bulk_sleep_after'] ?? 0);
         $settings['bulk_sleep_seconds'] = (int) ($data['bulk_sleep_seconds'] ?? 0);
         $settings['bulk_hook_number']   = preg_replace('/\D+/', '', (string) ($data['bulk_hook_number'] ?? '')) ?: null;
+        $settings['bulk_random_prefix'] = trim((string) ($data['bulk_random_prefix'] ?? '')) ?: null;
         $settings['bulk_spintax']       = $request->boolean('bulk_spintax');
         $settings['bulk_device_failover'] = $request->boolean('bulk_device_failover');
 

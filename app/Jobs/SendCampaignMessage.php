@@ -23,6 +23,7 @@ class SendCampaignMessage implements ShouldQueue
 
     public int $tries = 2;
     public int $backoff = 30;
+    private array $activeTenantSettings = [];
 
     public function __construct(public int $recipientId)
     {
@@ -49,6 +50,7 @@ class SendCampaignMessage implements ShouldQueue
 
     private function send(CampaignRecipient $recipient, Campaign $campaign): void
     {
+        $this->activeTenantSettings = (array) ($campaign->tenant?->settings ?? []);
         // The sticky-assigned device — or, if it's disconnected, another connected
         // device from this campaign's pool (automatic failover; see resolveSendingDevice).
         $instance = $this->resolveSendingDevice($recipient, $campaign);
@@ -457,9 +459,10 @@ class SendCampaignMessage implements ShouldQueue
         $text = $this->spin((string) $body, $spinRandom);
 
         // 2) Built-in compliant merge tags — no random/tracking tokens.
+        $randomNumber = trim((string) data_get($this->activeTenantSettings, 'bulk_random_prefix', '')).($referenceId ?? '');
         $text = preg_replace(
-            ['/\{\{\s*name\s*\}\}/i', '/\{\{\s*phone\s*\}\}/i', '/\{\{\s*date\s*\}\}/i', '/\{\{\s*variant_ref_id\s*\}\}/i'],
-            [$name, $number, now()->format('M j, Y'), $referenceId ?? ''],
+            ['/\{\{\s*name\s*\}\}/i', '/\{\{\s*phone\s*\}\}/i', '/\{\{\s*date\s*\}\}/i', '/\{\{\s*variant_ref_id\s*\}\}/i', '/\{\{\s*random\s*\}\}/i', '/\[random\]/i'],
+            [$name, $number, now()->format('M j, Y'), $randomNumber, $randomNumber, $randomNumber],
             $text
         );
 
