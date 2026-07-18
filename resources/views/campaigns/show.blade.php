@@ -1,6 +1,12 @@
 <x-app-layout>
     <x-slot name="header">{{ $campaign->name }}</x-slot>
 
+    @if ($campaign->total === 0 && in_array($campaign->status, ['draft', 'scheduled'], true))
+        <div class="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+            <strong>This campaign has no eligible recipients.</strong> Contacts must have a recorded marketing-permission status and must not be opted out. Update the contacts first, then create a new campaign for that audience.
+        </div>
+    @endif
+
     @if ($campaign->status === 'paused')
         <div class="mb-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 px-5 py-4 text-sm flex items-center gap-2 flex-wrap">
             <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>

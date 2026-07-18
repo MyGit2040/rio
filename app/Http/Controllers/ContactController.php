@@ -100,10 +100,11 @@ class ContactController extends Controller
     public function bulk(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'action'   => ['required', 'in:delete,add_group,remove_group,opt_out,opt_in'],
+            'action'   => ['required', 'in:delete,add_group,remove_group,opt_out,opt_in,record_permission'],
             'ids'      => ['required', 'array', 'min:1'],
             'ids.*'    => ['integer'],
             'group_id' => ['nullable', 'integer', 'exists:contact_groups,id'],
+            'marketing_consent_source' => ['nullable', 'string', 'max:100', 'required_if:action,record_permission'],
         ]);
 
         $query = Contact::whereIn('id', $data['ids']); // tenant-scoped by the global scope
@@ -129,6 +130,16 @@ class ContactController extends Controller
             case 'opt_out':
                 $query->update(['opted_out' => true, 'marketing_opted_in' => false]);
                 $msg = "{$count} contact(s) opted out.";
+                break;
+            case 'record_permission':
+                // Never silently reverse an opt-out. Only active contacts can
+                // receive a documented marketing-permission record.
+                $updated = $query->where('opted_out', false)->update([
+                    'marketing_opted_in' => true,
+                    'marketing_opted_in_at' => now(),
+                    'marketing_consent_source' => $data['marketing_consent_source'],
+                ]);
+                $msg = "Permission recorded for {$updated} contact(s). Opted-out contacts were left unchanged.";
                 break;
             default: // opt_in
                 $query->update(['opted_out' => false]);

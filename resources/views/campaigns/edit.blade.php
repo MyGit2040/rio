@@ -19,6 +19,16 @@
             @csrf
             @method('PUT')
 
+            <x-card title="Campaign setup">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    <div><p class="text-xs text-gray-500">Message format</p><p class="font-medium text-gray-800">{{ ucfirst($campaign->type) }}</p></div>
+                    <div><p class="text-xs text-gray-500">Message source</p><p class="font-medium text-gray-800">{{ $campaign->template?->name ?? 'Custom message snapshot' }}</p></div>
+                    <div><p class="text-xs text-gray-500">Link tracking</p><p class="font-medium text-gray-800">{{ $campaign->track_links ? 'Enabled' : 'Disabled' }}</p></div>
+                    <div><p class="text-xs text-gray-500">Audience</p><p class="font-medium text-gray-800">{{ number_format($campaign->total) }} saved recipient{{ $campaign->total === 1 ? '' : 's' }}</p></div>
+                </div>
+                <p class="mt-3 text-xs text-gray-500">The message source, link-tracking choice and audience are shown here for clarity. The recipient list is fixed once created so changing a draft cannot accidentally add or remove people.</p>
+            </x-card>
+
             <x-card title="Basics">
                 <div class="space-y-4">
                     <div>
