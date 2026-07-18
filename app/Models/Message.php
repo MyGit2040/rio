@@ -24,4 +24,9 @@ class Message extends Model
     {
         return $this->belongsTo(Contact::class);
     }
+
+    public function campaign(): BelongsTo
+    {
+        return $this->belongsTo(Campaign::class);
+    }
 }
