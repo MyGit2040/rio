@@ -100,12 +100,16 @@ class DeviceController extends Controller
             $response = $engine->connect($device->instance_name);
             $qr = $this->extractQr($response);
             $state = data_get($response, 'instance.state', 'connecting');
+            $phone = preg_replace('/\D+/', '', (string) data_get($response, 'instance.phone')) ?: null;
+            $profileName = data_get($response, 'instance.profile_name');
 
             $device->update([
                 'qr_code'      => $state === 'open' ? null : ($qr ?: $device->qr_code),
                 'pairing_code' => null,
                 'status'       => $state,
                 'connected_at' => $state === 'open' ? ($device->connected_at ?? now()) : $device->connected_at,
+                'phone_number' => $state === 'open' ? ($phone ?: $device->phone_number) : $device->phone_number,
+                'profile_name' => $state === 'open' ? ($profileName ?: $device->profile_name) : $device->profile_name,
             ]);
 
             return response()->json(['ok' => true, 'qr' => $qr, 'status' => $state]);
@@ -124,11 +128,15 @@ class DeviceController extends Controller
         $engine = Whatsapp::forInstance($device);
         $response = $engine->connectionState($device->instance_name);
         $state = data_get($response, 'instance.state', $device->status);
+        $phone = preg_replace('/\D+/', '', (string) data_get($response, 'instance.phone')) ?: null;
+        $profileName = data_get($response, 'instance.profile_name');
 
         $device->update([
             'status'       => $state,
             'qr_code'      => $state === 'open' ? null : $device->qr_code,
             'connected_at' => $state === 'open' ? ($device->connected_at ?? now()) : $device->connected_at,
+            'phone_number' => $state === 'open' ? ($phone ?: $device->phone_number) : $device->phone_number,
+            'profile_name' => $state === 'open' ? ($profileName ?: $device->profile_name) : $device->profile_name,
         ]);
 
         return response()->json([

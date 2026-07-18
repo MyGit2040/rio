@@ -101,7 +101,11 @@ class OpenWaService implements WhatsappGateway
         $session = $this->http()->get('/sessions/'.$this->sessionId($instanceName))->json() ?? [];
         $status = strtoupper((string) (data_get($session, 'status') ?? data_get($session, 'data.status') ?? ''));
 
-        return ['instance' => ['state' => in_array($status, ['CONNECTED', 'READY', 'OPEN'], true) ? 'open' : 'connecting']];
+        return ['instance' => [
+            'state' => in_array($status, ['CONNECTED', 'READY', 'OPEN'], true) ? 'open' : 'connecting',
+            'phone' => data_get($session, 'phone') ?? data_get($session, 'data.phone'),
+            'profile_name' => data_get($session, 'pushName') ?? data_get($session, 'data.pushName'),
+        ]];
     }
 
     public function logout(string $instanceName): array
