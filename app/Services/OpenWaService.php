@@ -131,13 +131,17 @@ class OpenWaService implements WhatsappGateway
     public function checkNumbers(string $instanceName, array $numbers): array
     {
         $this->assertSession($instanceName);
+        $sessionId = $this->sessionId($instanceName);
 
-        return collect($numbers)->map(function (string $number) use ($instanceName) {
-            $jid = $this->jid($number);
-            $json = $this->http()->get('/sessions/'.$this->sessionId($instanceName)."/contacts/{$jid}")->throw()->json() ?? [];
-            $data = $json['data'] ?? $json;
+        return collect($numbers)->map(function (string $number) use ($sessionId) {
+            $clean = preg_replace('/\D+/', '', $number);
+            $json = $this->http()->get("/sessions/{$sessionId}/contacts/check/{$clean}")->throw()->json() ?? [];
 
-            return ['number' => $number, 'jid' => $jid, 'exists' => (bool) ($data['canReceiveMessage'] ?? $data['exists'] ?? false)];
+            return [
+                'number' => $number,
+                'jid' => data_get($json, 'whatsappId') ?: $this->jid($clean),
+                'exists' => (bool) data_get($json, 'exists', false),
+            ];
         })->all();
     }
 

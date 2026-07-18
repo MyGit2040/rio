@@ -56,9 +56,15 @@ class SingleMessageController extends Controller
         // A poll can't carry text/media — send the message/image first, then the poll.
         if ($type === 'poll') {
             if ($template?->media_url) {
-                $engine->sendMedia($name, $phone, $template->media_type ?: 'image', $template->media_url, $body !== '' ? $body : null);
+                $prelude = $engine->sendMedia($name, $phone, $template->media_type ?: 'image', $template->media_url, $body !== '' ? $body : null);
             } elseif (trim($body) !== '') {
-                $engine->sendText($name, $phone, $body);
+                $prelude = $engine->sendText($name, $phone, $body);
+            } else {
+                $prelude = ['ok' => true, 'error' => null];
+            }
+
+            if (! $prelude['ok']) {
+                return back()->withInput()->with('error', 'Poll prelude failed: '.($prelude['error'] ?? 'unknown error'));
             }
         }
 
