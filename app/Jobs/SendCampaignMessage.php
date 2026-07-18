@@ -461,8 +461,8 @@ class SendCampaignMessage implements ShouldQueue
         // 2) Built-in compliant merge tags — no random/tracking tokens.
         $randomNumber = trim((string) data_get($this->activeTenantSettings, 'bulk_random_prefix', '')).($referenceId ?? '');
         $text = preg_replace(
-            ['/\{\{\s*name\s*\}\}/i', '/\{\{\s*phone\s*\}\}/i', '/\{\{\s*date\s*\}\}/i', '/\{\{\s*variant_ref_id\s*\}\}/i', '/\{\{\s*random\s*\}\}/i', '/\[random\]/i'],
-            [$name, $number, now()->format('M j, Y'), $randomNumber, $randomNumber, $randomNumber],
+            ['/\{\{\s*name\s*\}\}/i', '/\{\{\s*phone\s*\}\}/i', '/\{\{\s*date\s*\}\}/i', '/\{\{\s*(?:variant_ref_id|ref_id|reference_id|random)\s*\}\}/i', '/\[(?:random|ref_id|reference_id)\]/i'],
+            [$name, $number, now()->format('M j, Y'), $randomNumber, $randomNumber],
             $text
         );
 

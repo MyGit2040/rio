@@ -49,7 +49,7 @@ class SingleMessageController extends Controller
 
         $type = $template->type ?? 'text';
         $reference = trim((string) data_get(auth()->user()?->tenant?->settings, 'bulk_random_prefix', '')).random_int(100000, 999999);
-        $body = str_replace(['{{name}}', '{{phone}}', '{{variant_ref_id}}', '{{random}}', '[random]'], ['there', $phone, $reference, $reference, $reference], (string) ($template->body ?? $data['body'] ?? ''));
+        $body = str_ireplace(['{{name}}', '{{phone}}', '{{variant_ref_id}}', '{{ref_id}}', '{{reference_id}}', '{{random}}', '[random]', '[ref_id]', '[reference_id]'], ['there', $phone, $reference, $reference, $reference, $reference, $reference, $reference, $reference], (string) ($template->body ?? $data['body'] ?? ''));
 
         $engine = Whatsapp::forInstance($device);
         $name = $device->instance_name;
