@@ -183,7 +183,25 @@ class OpenWaService implements WhatsappGateway
 
     public function sendPoll(string $instanceName, string $number, string $question, array $values, int $selectableCount = 1, int $delay = 0): array
     {
-        return $this->sendText($instanceName, $number, $question."\n".implode("\n", array_map(fn ($value, $index) => ($index + 1).'. '.$value, $values, array_keys($values))), $delay);
+        $this->assertSession($instanceName);
+
+        $options = collect($values)
+            ->map(fn ($value) => trim((string) $value))
+            ->filter()
+            ->values()
+            ->take(12)
+            ->all();
+
+        if (count($options) < 2) {
+            return ['ok' => false, 'message_id' => null, 'error' => 'A poll needs at least two options.', 'raw' => null];
+        }
+
+        return $this->result($this->http()->post('/sessions/'.$this->sessionId($instanceName).'/messages/send-poll', [
+            'chatId' => $this->jid($number),
+            'name' => mb_substr($question, 0, 255),
+            'options' => $options,
+            'allowMultipleAnswers' => $selectableCount > 1,
+        ]));
     }
 
     public function sendButtons(string $instanceName, string $number, string $title, ?string $description, ?string $footer, array $buttons, int $delay = 0): array
@@ -239,7 +257,7 @@ class OpenWaService implements WhatsappGateway
         $data = $json['data'] ?? $json;
 
         if ($response->successful() && ($json['success'] ?? true)) {
-            return ['ok' => true, 'message_id' => data_get($data, '_serialized') ?? data_get($data, 'id') ?? (is_string($data) ? $data : null), 'error' => null, 'raw' => $json];
+            return ['ok' => true, 'message_id' => data_get($data, 'messageId') ?? data_get($data, '_serialized') ?? data_get($data, 'id') ?? (is_string($data) ? $data : null), 'error' => null, 'raw' => $json];
         }
 
         $error = is_array($json) ? json_encode($json['error'] ?? $json['details'] ?? $json) : $response->body();
