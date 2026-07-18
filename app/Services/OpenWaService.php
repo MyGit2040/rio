@@ -196,12 +196,21 @@ class OpenWaService implements WhatsappGateway
             return ['ok' => false, 'message_id' => null, 'error' => 'A poll needs at least two options.', 'raw' => null];
         }
 
-        return $this->result($this->http()->post('/sessions/'.$this->sessionId($instanceName).'/messages/send-poll', [
+        $sessionId = $this->sessionId($instanceName);
+        $response = $this->http()->post('/sessions/'.$sessionId.'/messages/send-poll', [
             'chatId' => $this->jid($number),
             'name' => mb_substr($question, 0, 255),
             'options' => $options,
             'allowMultipleAnswers' => $selectableCount > 1,
-        ]));
+        ]);
+
+        // The installed WhatsApp-Web adapter can persist a native poll then
+        // throw while reading its optional message id. Verify persistence first.
+        if ($response->status() === 500 && $this->persistedPollMessage($sessionId, $question)) {
+            return ['ok' => true, 'message_id' => null, 'error' => null, 'raw' => $response->json()];
+        }
+
+        return $this->result($response);
     }
 
     public function sendButtons(string $instanceName, string $number, string $title, ?string $description, ?string $footer, array $buttons, int $delay = 0): array
@@ -247,6 +256,21 @@ class OpenWaService implements WhatsappGateway
             // OpenWA may resolve a phone's @c.us id to its internal @lid id.
             // The message body is the stable value after that conversion.
             fn (array $message) => ($message['body'] ?? null) === $text
+                && ($message['direction'] ?? null) === 'outgoing',
+        );
+    }
+
+    private function persistedPollMessage(string $sessionId, string $question): bool
+    {
+        $response = $this->http()->get("/sessions/{$sessionId}/messages", ['limit' => 20]);
+
+        if (! $response->successful()) {
+            return false;
+        }
+
+        return collect(data_get($response->json(), 'messages', []))->contains(
+            fn (array $message) => ($message['type'] ?? null) === 'poll'
+                && ($message['body'] ?? null) === $question
                 && ($message['direction'] ?? null) === 'outgoing',
         );
     }
