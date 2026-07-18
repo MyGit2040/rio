@@ -41,19 +41,6 @@
                     </div>
                 </div>
 
-                <div class="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                    <p class="text-sm font-medium text-amber-900">Permission declaration</p>
-                    <p class="mt-1 text-xs text-amber-800">Import only people who gave permission for marketing messages. Imported contacts are eligible for campaigns only after this declaration.</p>
-                    <div class="mt-3">
-                        <x-input-label for="marketing_consent_source" value="Permission source" />
-                        <x-text-input id="marketing_consent_source" name="marketing_consent_source" class="block mt-1 w-full" placeholder="e.g. website signup form" :value="old('marketing_consent_source')" required />
-                    </div>
-                    <label class="mt-3 flex items-start gap-2 text-sm text-amber-950">
-                        <input type="checkbox" name="marketing_consent_confirmed" value="1" class="mt-0.5 rounded border-amber-300 text-brand focus:ring-brand" required>
-                        <span>I confirm every imported contact gave permission to receive marketing messages and can opt out at any time.</span>
-                    </label>
-                </div>
-
                 <div class="flex items-center gap-3">
                     <x-btn type="submit" variant="primary">Import contacts</x-btn>
                     <x-btn :href="route('contacts.index')" variant="ghost">Cancel</x-btn>

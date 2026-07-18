@@ -81,7 +81,7 @@ class CampaignController extends Controller
 
         if ($campaign->total === 0) {
             return redirect()->route('campaigns.show', $campaign)
-                ->with('error', 'No eligible contacts matched this audience. Campaigns only include contacts with recorded marketing permission who have not opted out. Record permission in Contacts, then create the campaign again.');
+                ->with('error', 'No verified WhatsApp contacts matched this audience. Use Verify WhatsApp in Contacts, then create the campaign again.');
         }
 
         Audit::log('campaign.created', $campaign, $campaign->name);

@@ -50,8 +50,6 @@
             <button type="button" @click="run('add_group', { needGroup: true })" class="px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-sm hover:bg-gray-50">Add to group</button>
             <button type="button" @click="run('remove_group', { needGroup: true })" class="px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-sm hover:bg-gray-50">Remove from group</button>
             <button type="button" @click="run('opt_out')" class="px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-sm hover:bg-gray-50">Opt out</button>
-            <input name="marketing_consent_source" placeholder="Permission source (e.g. signup form)" class="w-56 rounded-lg border-gray-300 text-sm focus:ring-brand focus:border-brand">
-            <button type="button" @click="run('record_permission', { confirm: 'Confirm that the selected %d contact(s) gave permission to receive marketing messages.' })" class="px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-sm hover:bg-gray-50">Record permission</button>
             <button type="button" @click="run('delete', { confirm: 'Delete %d contact(s)? This cannot be undone.' })" class="px-3 py-1.5 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700">Delete</button>
         </x-bulk-bar>
 
@@ -90,10 +88,8 @@
                             <td class="px-5 py-3">
                                 @if ($contact->opted_out)
                                     <x-badge color="red">Opted out</x-badge>
-                                @elseif ($contact->marketing_opted_in)
-                                    <x-badge color="green">Permission recorded</x-badge>
                                 @else
-                                    <x-badge color="yellow">Permission needed</x-badge>
+                                    <x-badge color="green">Active</x-badge>
                                 @endif
                             </td>
                             <td class="px-5 py-3">

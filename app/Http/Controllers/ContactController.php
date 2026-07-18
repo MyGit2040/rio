@@ -48,8 +48,7 @@ class ContactController extends Controller
             return back()->withInput()->with('error', 'You have reached your plan\'s contact limit. Upgrade in Billing to add more.');
         }
 
-        $data = $this->consentPayload($request->safe()->except('groups'));
-        $contact = Contact::create($data);
+        $contact = Contact::create($request->safe()->except('groups'));
         $contact->groups()->sync($request->input('groups', []));
 
         return redirect()->route('contacts.index')->with('success', 'Contact added.');
@@ -81,7 +80,7 @@ class ContactController extends Controller
 
     public function update(ContactRequest $request, Contact $contact): RedirectResponse
     {
-        $contact->update($this->consentPayload($request->safe()->except('groups'), $contact));
+        $contact->update($request->safe()->except('groups'));
         $contact->groups()->sync($request->input('groups', []));
 
         return redirect()->route('contacts.index')->with('success', 'Contact updated.');
@@ -100,11 +99,10 @@ class ContactController extends Controller
     public function bulk(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'action'   => ['required', 'in:delete,add_group,remove_group,opt_out,opt_in,record_permission'],
+            'action'   => ['required', 'in:delete,add_group,remove_group,opt_out,opt_in'],
             'ids'      => ['required', 'array', 'min:1'],
             'ids.*'    => ['integer'],
             'group_id' => ['nullable', 'integer', 'exists:contact_groups,id'],
-            'marketing_consent_source' => ['nullable', 'string', 'max:100', 'required_if:action,record_permission'],
         ]);
 
         $query = Contact::whereIn('id', $data['ids']); // tenant-scoped by the global scope
@@ -128,22 +126,12 @@ class ContactController extends Controller
                 $msg = "{$count} contact(s) removed from the group.";
                 break;
             case 'opt_out':
-                $query->update(['opted_out' => true, 'marketing_opted_in' => false]);
+                $query->update(['opted_out' => true]);
                 $msg = "{$count} contact(s) opted out.";
-                break;
-            case 'record_permission':
-                // Never silently reverse an opt-out. Only active contacts can
-                // receive a documented marketing-permission record.
-                $updated = $query->where('opted_out', false)->update([
-                    'marketing_opted_in' => true,
-                    'marketing_opted_in_at' => now(),
-                    'marketing_consent_source' => $data['marketing_consent_source'],
-                ]);
-                $msg = "Permission recorded for {$updated} contact(s). Opted-out contacts were left unchanged.";
                 break;
             default: // opt_in
                 $query->update(['opted_out' => false]);
-                $msg = "{$count} contact(s) reactivated. Record documented permission on each contact before marketing messages can be sent.";
+                $msg = "{$count} contact(s) reactivated.";
         }
 
         return back()->with('success', $msg);
@@ -235,24 +223,4 @@ class ContactController extends Controller
         return back()->with('success', "Verification complete: {$valid} on WhatsApp, {$invalid} not found.");
     }
 
-    /** @param array<string, mixed> $data */
-    private function consentPayload(array $data, ?Contact $existing = null): array
-    {
-        if (($data['opted_out'] ?? false) === true) {
-            $data['marketing_opted_in'] = false;
-            $data['marketing_opted_in_at'] = null;
-            $data['marketing_consent_source'] = null;
-
-            return $data;
-        }
-
-        if (($data['marketing_opted_in'] ?? false) === true) {
-            $data['marketing_opted_in_at'] = $existing?->marketing_opted_in_at ?? now();
-        } elseif (array_key_exists('marketing_opted_in', $data)) {
-            $data['marketing_opted_in_at'] = null;
-            $data['marketing_consent_source'] = null;
-        }
-
-        return $data;
-    }
 }

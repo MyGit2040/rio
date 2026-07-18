@@ -3,7 +3,7 @@
 
     @if ($campaign->total === 0 && in_array($campaign->status, ['draft', 'scheduled'], true))
         <div class="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
-            <strong>This campaign has no eligible recipients.</strong> Contacts must have a recorded marketing-permission status and must not be opted out. Update the contacts first, then create a new campaign for that audience.
+            <strong>This campaign has no eligible recipients.</strong> Use the Contacts page to verify the selected numbers on WhatsApp, and make sure they are not opted out. Then create a new campaign for that audience.
         </div>
     @endif
 

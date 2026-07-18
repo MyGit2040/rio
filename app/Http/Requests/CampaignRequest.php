@@ -41,7 +41,6 @@ class CampaignRequest extends FormRequest
             'max_retries' => ['nullable', 'integer', 'min:0', 'max:10'],
             'schedule'    => ['required', 'in:now,later'],
             'scheduled_at' => ['nullable', 'date', 'after:now', 'required_if:schedule,later'],
-            'consent_confirmed' => ['accepted'],
         ];
     }
 }

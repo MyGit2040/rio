@@ -249,8 +249,7 @@ class WebhookController extends Controller
             return false;
         }
 
-        // Withdrawal is authoritative across every outbound feature.
-        $contact->update(['opted_out' => true, 'marketing_opted_in' => false]);
+        $contact->update(['opted_out' => true]);
 
         Suppression::updateOrCreate(
             ['tenant_id' => $instance->tenant_id, 'phone' => $contact->phone],

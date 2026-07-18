@@ -202,14 +202,10 @@
                     </div>
                 </div>
 
-                <label class="flex items-start gap-3">
-                    <input type="hidden" name="allow_non_verified" value="0">
-                    <input type="checkbox" name="allow_non_verified" value="1" @checked(data_get($s, 'allow_non_verified', true)) class="mt-1 rounded border-gray-300 text-brand focus:ring-brand">
-                    <span>
-                        <span class="text-sm font-medium text-gray-800">Allow non-verified contacts</span>
-                        <span class="block text-xs text-gray-500">Include contacts not yet confirmed on WhatsApp. Off = only send to verified numbers (use <strong>Verify WhatsApp</strong> in Contacts first). Sending to unverified numbers risks failures.</span>
-                    </span>
-                </label>
+                <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm">
+                    <p class="font-medium text-gray-800">Verified WhatsApp recipients only</p>
+                    <p class="mt-1 text-xs text-gray-500">Campaigns and sequences use contacts confirmed by the <strong>Verify WhatsApp</strong> button in Contacts. This prevents delivery attempts to numbers that are not on WhatsApp.</p>
+                </div>
 
                 <label class="flex items-start gap-3">
                     <input type="hidden" name="bulk_device_failover" value="0">

@@ -28,8 +28,6 @@ class ContactRequest extends FormRequest
             'email'    => ['nullable', 'email', 'max:255'],
             'country'  => ['nullable', 'string', 'max:64'],
             'opted_out' => ['sometimes', 'boolean'],
-            'marketing_opted_in' => ['sometimes', 'boolean'],
-            'marketing_consent_source' => ['nullable', 'string', 'max:100', 'required_if:marketing_opted_in,1'],
             'tags'       => ['array'],
             'tags.*'     => ['string', 'max:64'],
             'attributes' => ['array'],
@@ -67,9 +65,5 @@ class ContactRequest extends FormRequest
             $this->merge(['attributes' => $attributes]);
         }
 
-        // A withdrawal always wins over a recorded permission.
-        if ($this->boolean('opted_out')) {
-            $this->merge(['marketing_opted_in' => false]);
-        }
     }
 }

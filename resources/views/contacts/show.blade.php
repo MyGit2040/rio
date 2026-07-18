@@ -20,7 +20,7 @@
                         <x-badge :color="$contact->wa_status === 'valid' ? 'green' : ($contact->wa_status === 'invalid' ? 'red' : 'gray')">{{ ucfirst($contact->wa_status ?? 'unverified') }}</x-badge>
                     </dd></div>
                     <div class="flex justify-between gap-3"><dt class="text-gray-500">Consent</dt><dd>
-                        <x-badge :color="$contact->opted_out ? 'red' : ($contact->marketing_opted_in ? 'green' : 'yellow')">{{ $contact->opted_out ? 'Opted out' : ($contact->marketing_opted_in ? 'Permission recorded' : 'Permission needed') }}</x-badge>
+                        <x-badge :color="$contact->opted_out ? 'red' : 'green'">{{ $contact->opted_out ? 'Opted out' : 'Active' }}</x-badge>
                     </dd></div>
                 </dl>
 
