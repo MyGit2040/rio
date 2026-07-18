@@ -27,6 +27,9 @@ interface WhatsappGateway
 
     public function connect(string $instanceName, ?string $number = null): array;
 
+    /** Request a short code for WhatsApp's "Link with phone number" flow. */
+    public function requestPairingCode(string $instanceName, string $phoneNumber): array;
+
     public function connectionState(string $instanceName): array;
 
     public function logout(string $instanceName): array;

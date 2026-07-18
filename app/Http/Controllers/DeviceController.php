@@ -120,6 +120,35 @@ class DeviceController extends Controller
         }
     }
 
+    /** Generate the short code used by WhatsApp's "Link with phone number" flow. */
+    public function pairingCode(Request $request, WhatsappInstance $device): JsonResponse
+    {
+        $data = $request->validate([
+            'phone_number' => ['required', 'string', 'min:6', 'max:32'],
+        ]);
+
+        if ($device->isConnected()) {
+            return response()->json(['ok' => false, 'error' => 'This device is already connected.'], 422);
+        }
+
+        try {
+            $response = Whatsapp::forInstance($device)->requestPairingCode($device->instance_name, $data['phone_number']);
+            $code = data_get($response, 'pairingCode');
+
+            if (! is_string($code) || $code === '') {
+                throw new \RuntimeException('The WhatsApp engine did not return a pairing code.');
+            }
+
+            $device->update(['pairing_code' => $code, 'status' => 'connecting']);
+
+            return response()->json(['ok' => true, 'pairing_code' => $code]);
+        } catch (\Throwable $e) {
+            Log::warning('OpenWA pairing-code request failed', ['device_id' => $device->id, 'error' => $e->getMessage()]);
+
+            return response()->json(['ok' => false, 'error' => 'Could not get a pairing code: '.$e->getMessage()], 422);
+        }
+    }
+
     /**
      * Poll the engine for connection status (used by the QR screen).
      */
@@ -134,6 +163,7 @@ class DeviceController extends Controller
         $device->update([
             'status'       => $state,
             'qr_code'      => $state === 'open' ? null : $device->qr_code,
+            'pairing_code' => $state === 'open' ? null : $device->pairing_code,
             'connected_at' => $state === 'open' ? ($device->connected_at ?? now()) : $device->connected_at,
             'phone_number' => $state === 'open' ? ($phone ?: $device->phone_number) : $device->phone_number,
             'profile_name' => $state === 'open' ? ($profileName ?: $device->profile_name) : $device->profile_name,

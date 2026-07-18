@@ -85,6 +85,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/devices/{device}/privacy', [DeviceController::class, 'updatePrivacy'])->name('devices.privacy');
     Route::get('/devices/{device}/state', [DeviceController::class, 'state'])->name('devices.state');
     Route::post('/devices/{device}/connect', [DeviceController::class, 'connect'])->name('devices.connect');
+    Route::post('/devices/{device}/pairing-code', [DeviceController::class, 'pairingCode'])->name('devices.pairing-code');
     Route::delete('/devices/{device}', [DeviceController::class, 'destroy'])->name('devices.destroy');
 
     // Contacts

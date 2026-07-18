@@ -22,7 +22,7 @@
                         <x-text-input id="daily_limit" name="daily_limit" type="number" min="0" class="block mt-1 w-full" :value="old('daily_limit', 0)" :disabled="! $engineReady" />
                     </div>
                     <x-btn type="submit" variant="primary" class="w-full" :disabled="! $engineReady">Create &amp; link</x-btn>
-                    <p class="text-xs text-gray-500">After creating, scan the QR code with WhatsApp → Linked devices.</p>
+                    <p class="text-xs text-gray-500">After creating, scan the QR code or use WhatsApp's Link with phone number option.</p>
                 </form>
             </x-card>
         </div>
@@ -70,6 +70,21 @@
                                         </div>
                                     @endif
 
+                                    <div class="border-t border-gray-100 pt-3" data-pairing-wrap>
+                                        <p class="text-xs font-medium text-gray-700">Or link with a phone number</p>
+                                        <p class="mt-1 text-xs text-gray-500">In WhatsApp: Linked devices → Link with phone number.</p>
+                                        @if ($device->pairing_code)
+                                            <div class="mt-2 rounded-lg bg-brand/10 px-3 py-2 text-center">
+                                                <span class="text-xs text-gray-600">Pairing code</span>
+                                                <p class="font-mono text-lg font-bold tracking-[0.2em] text-gray-900">{{ $device->pairing_code }}</p>
+                                            </div>
+                                        @endif
+                                        <div class="mt-2 flex gap-2">
+                                            <input type="tel" inputmode="numeric" data-pairing-phone placeholder="971501234567" class="min-w-0 flex-1 rounded-lg border-gray-300 text-sm focus:border-brand focus:ring-brand">
+                                            <button type="button" class="shrink-0 rounded-lg bg-brand px-3 py-2 text-xs font-medium text-white hover:opacity-90" onclick="getPairingCode({{ $device->id }}, this)">Get code</button>
+                                        </div>
+                                    </div>
+
                                 </div>
                             @endif
 
@@ -98,6 +113,26 @@
                 .then(r => r.json())
                 .then(d => { if (d.ok) location.reload(); else alert(d.error || 'Could not get a QR code.'); })
                 .catch(() => alert('Could not reach the engine.'));
+        }
+
+        function getPairingCode(id, button) {
+            const card = button.closest('[data-device-id]');
+            const phone = card.querySelector('[data-pairing-phone]').value;
+            if (!phone.trim()) {
+                alert('Enter the WhatsApp phone number with country code first.');
+                return;
+            }
+            button.disabled = true;
+            button.textContent = 'Getting…';
+            fetch(`/devices/${id}/pairing-code`, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone_number: phone })
+            })
+                .then(r => r.json())
+                .then(d => { if (d.ok) location.reload(); else alert(d.error || 'Could not get a pairing code.'); })
+                .catch(() => alert('Could not reach the engine.'))
+                .finally(() => { button.disabled = false; button.textContent = 'Get code'; });
         }
 
         // Poll connection state for devices that are waiting to be scanned.

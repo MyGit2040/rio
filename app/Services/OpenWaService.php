@@ -95,6 +95,27 @@ class OpenWaService implements WhatsappGateway
         ];
     }
 
+    public function requestPairingCode(string $instanceName, string $phoneNumber): array
+    {
+        $this->assertSession($instanceName);
+        $phoneNumber = preg_replace('/\D+/', '', $phoneNumber);
+
+        if (strlen($phoneNumber) < 6) {
+            throw new \InvalidArgumentException('Enter the WhatsApp phone number with its country code.');
+        }
+
+        $response = $this->http()->post('/sessions/'.$this->sessionId($instanceName).'/pairing-code', [
+            'phoneNumber' => $phoneNumber,
+        ]);
+        $response->throw();
+        $json = $response->json() ?? [];
+
+        return [
+            'pairingCode' => data_get($json, 'pairingCode') ?? data_get($json, 'data.pairingCode'),
+            'status' => data_get($json, 'status') ?? data_get($json, 'data.status') ?? 'connecting',
+        ];
+    }
+
     public function connectionState(string $instanceName): array
     {
         $this->assertSession($instanceName);
