@@ -15,7 +15,8 @@
             </div>
         @endif
 
-        <form method="POST" action="{{ route('campaigns.update', $campaign) }}" class="space-y-6">
+        <form method="POST" action="{{ route('campaigns.update', $campaign) }}" class="space-y-6"
+              x-data="{ audience: '{{ old('audience', $campaign->audience ?? 'all') }}' }">
             @csrf
             @method('PUT')
 
@@ -26,7 +27,37 @@
                     <div><p class="text-xs text-gray-500">Link tracking</p><p class="font-medium text-gray-800">{{ $campaign->track_links ? 'Enabled' : 'Disabled' }}</p></div>
                     <div><p class="text-xs text-gray-500">Audience</p><p class="font-medium text-gray-800">{{ number_format($campaign->total) }} saved recipient{{ $campaign->total === 1 ? '' : 's' }}</p></div>
                 </div>
-                <p class="mt-3 text-xs text-gray-500">The message source, link-tracking choice and audience are shown here for clarity. The recipient list is fixed once created so changing a draft cannot accidentally add or remove people.</p>
+                <p class="mt-3 text-xs text-gray-500">The message source and link-tracking choice are fixed snapshots. You can change the audience, sending numbers, message content and pacing below. Only unsent recipients are rebuilt.</p>
+            </x-card>
+
+            <x-card title="Audience">
+                <div class="space-y-4">
+                    <div class="grid grid-cols-3 gap-2">
+                        <label><input type="radio" name="audience" x-model="audience" value="all" class="sr-only peer"><div class="px-4 py-2 rounded-lg border text-sm text-center cursor-pointer peer-checked:border-green-500 peer-checked:bg-green-50">All contacts</div></label>
+                        <label><input type="radio" name="audience" x-model="audience" value="groups" class="sr-only peer"><div class="px-4 py-2 rounded-lg border text-sm text-center cursor-pointer peer-checked:border-green-500 peer-checked:bg-green-50">Groups</div></label>
+                        <label><input type="radio" name="audience" x-model="audience" value="tag" class="sr-only peer"><div class="px-4 py-2 rounded-lg border text-sm text-center cursor-pointer peer-checked:border-green-500 peer-checked:bg-green-50">By tag</div></label>
+                    </div>
+
+                    <div x-show="audience === 'groups'" x-cloak>
+                        <div class="flex flex-wrap gap-2">
+                            @forelse ($groups as $group)
+                                <label class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
+                                    <input type="checkbox" name="group_ids[]" value="{{ $group->id }}" @checked(collect(old('group_ids', $campaign->group_ids ?? []))->contains($group->id)) class="rounded border-gray-300 text-green-600 focus:ring-green-500">
+                                    <span class="text-sm">{{ $group->name }} ({{ $group->contacts_count }})</span>
+                                </label>
+                            @empty
+                                <p class="text-sm text-gray-500">No groups yet.</p>
+                            @endforelse
+                        </div>
+                        @error('group_ids')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
+
+                    <div x-show="audience === 'tag'" x-cloak>
+                        <x-input-label for="tag" value="Tag" />
+                        <x-text-input id="tag" name="tag" class="block mt-1 w-full" placeholder="vip" :value="old('tag', $campaign->tag)" />
+                        @error('tag')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
+                </div>
             </x-card>
 
             <x-card title="Basics">

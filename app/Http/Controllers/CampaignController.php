@@ -112,6 +112,7 @@ class CampaignController extends Controller
         return view('campaigns.edit', [
             'campaign' => $campaign,
             'devices'  => WhatsappInstance::latest()->get(),
+            'groups'   => ContactGroup::withCount('contacts')->orderBy('name')->get(),
         ]);
     }
 

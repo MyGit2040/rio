@@ -56,6 +56,9 @@ class CampaignService
                 'buttons'              => $message['buttons'],
                 'cards'                => $message['cards'],
                 'track_links'          => ! empty($data['track_links']),
+                'audience'             => $data['audience'],
+                'group_ids'            => $data['audience'] === 'groups' ? array_values($data['group_ids'] ?? []) : null,
+                'tag'                  => $data['audience'] === 'tag' ? $data['tag'] : null,
                 'min_delay'            => (int) $data['min_delay'],
                 'max_delay'            => (int) $data['max_delay'],
                 'max_retries'          => (int) ($data['max_retries'] ?? 3),
@@ -170,6 +173,9 @@ class CampaignService
             'body'                 => $body,
             'footer'               => $data['footer'] ?? null,
             'variants'             => ($data['variants'] ?? []) ?: null,
+            'audience'             => $data['audience'],
+            'group_ids'            => $data['audience'] === 'groups' ? array_values($data['group_ids'] ?? []) : null,
+            'tag'                  => $data['audience'] === 'tag' ? $data['tag'] : null,
             'min_delay'            => (int) $data['min_delay'],
             'max_delay'            => (int) $data['max_delay'],
             'max_retries'          => (int) ($data['max_retries'] ?? 3),
@@ -191,7 +197,13 @@ class CampaignService
             $payload['scheduled_at'] = Carbon::parse($data['scheduled_at']);
         }
 
-        $campaign->update($payload);
+        DB::transaction(function () use ($campaign, $payload, $data, $deviceIds) {
+            $campaign->update($payload);
+            $campaign->recipients()->where('status', 'pending')->delete();
+            $preserved = $campaign->recipients()->count();
+            $newRecipients = $this->buildRecipients($campaign, $data, $deviceIds);
+            $campaign->update(['total' => $preserved + $newRecipients]);
+        });
 
         return $campaign;
     }
@@ -369,6 +381,15 @@ class CampaignService
         // Campaigns use the WhatsApp verification result as the eligibility
         // gate. Opted-out contacts remain excluded at every send path.
         $query = Contact::query()->reachable()->whatsappValid();
+
+        // On an edit, historical rows remain for reporting. Do not recreate a
+        // recipient for a contact that this campaign has already processed.
+        $query->whereNotExists(function ($existing) use ($campaign) {
+            $existing->selectRaw('1')
+                ->from('campaign_recipients as existing_campaign_recipients')
+                ->whereColumn('existing_campaign_recipients.contact_id', 'contacts.id')
+                ->where('existing_campaign_recipients.campaign_id', $campaign->id);
+        });
 
         // Never build a recipient for a number on the do-not-contact (suppression) list.
         $suppressed = Suppression::pluck('phone')->all();
