@@ -235,7 +235,10 @@ class OpenWaService implements WhatsappGateway
 
         // The installed WhatsApp-Web adapter can persist a native poll then
         // throw while reading its optional message id. Verify persistence first.
-        if ($response->status() === 500 && ($this->persistedPollMessage($sessionId, $question) || $this->postSendAdapterFailure($response))) {
+        // A poll must be confirmed in the gateway history before it is marked
+        // delivered. Unlike text, treating an ambiguous 500 as success would
+        // hide a missing interactive poll from the operator.
+        if ($response->status() === 500 && $this->persistedPollMessage($sessionId, $question)) {
             return ['ok' => true, 'message_id' => null, 'error' => null, 'raw' => $response->json()];
         }
 
