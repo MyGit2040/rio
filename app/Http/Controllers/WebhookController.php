@@ -30,8 +30,14 @@ class WebhookController extends Controller
         }
 
         $event = str_replace('_', '.', strtolower((string) $request->input('event')));
-        $instanceName = $request->input('instance');
-        $data = $request->input('data', []);
+
+        // OpenWA v5 delivers { sessionId, event, payload: { message: ... } }.
+        // Earlier adapters used { instance, event, data }. Accept both envelopes:
+        // linked numbers created before an engine upgrade must not lose replies.
+        $instanceName = $request->input('instance')
+            ?? $request->input('sessionId')
+            ?? $request->input('payload.sessionId');
+        $data = $request->input('payload', $request->input('data', []));
 
         $instance = WhatsappInstance::withoutGlobalScopes()
             ->where('instance_name', $instanceName)
@@ -43,7 +49,7 @@ class WebhookController extends Controller
 
         Tenancy::run($instance->tenant_id, function () use ($event, $instance, $data) {
             match ($event) {
-                'connection.update', 'session.status' => $this->onConnectionUpdate($instance, $data),
+                'connection.update', 'session.status', 'session.state.changed' => $this->onConnectionUpdate($instance, $data),
                 'qrcode.updated'    => $this->onQrUpdated($instance, $data),
                 'messages.upsert', 'message.received' => $this->onMessages($instance, $data),
                 'messages.update'   => $this->onMessageStatus($data),
@@ -56,7 +62,9 @@ class WebhookController extends Controller
 
     private function onConnectionUpdate(WhatsappInstance $instance, array $data): void
     {
-        $state = $data['state'] ?? data_get($data, 'instance.state');
+        $state = $data['state']
+            ?? data_get($data, 'instance.state')
+            ?? data_get($data, 'details.next');
 
         if (! $state) {
             return;
@@ -83,8 +91,12 @@ class WebhookController extends Controller
 
     private function onMessages(WhatsappInstance $instance, array $data): void
     {
-        // The payload may be a single message or a list of them.
-        $items = isset($data['key']) ? [$data] : array_filter($data, 'is_array');
+        // The payload may be a legacy Baileys message/list or OpenWA v5's
+        // { payload: { message: { id, from, body, type, ... } } } envelope.
+        $message = $data['message'] ?? null;
+        $items = is_array($message)
+            ? [$this->normaliseOpenWaMessage($message)]
+            : (isset($data['key']) ? [$data] : array_filter($data, 'is_array'));
 
         foreach ($items as $item) {
             $key = $item['key'] ?? null;
@@ -197,7 +209,32 @@ class WebhookController extends Controller
      */
     private function parseInbound(array $m): array
     {
-        $text = $m['conversation'] ?? data_get($m, 'extendedTextMessage.text');
+        // A current OpenWA poll vote can include a human-readable `body`; inspect
+        // its declared poll type first so it is never misclassified as plain text.
+        if (isset($m['pollUpdateMessage']) || $this->isOpenWaPoll($m)) {
+            $opts = data_get($m, 'pollUpdateMessage.vote.selectedOptions')
+                ?? data_get($m, 'pollUpdateMessage.selectedOptions')
+                ?? data_get($m, 'pollUpdateMessage.pollVotes')
+                ?? data_get($m, 'poll.selectedOptions')
+                ?? data_get($m, 'poll.optionsSelected')
+                ?? data_get($m, 'pollVote.selectedOptions')
+                ?? data_get($m, 'selectedOptions')
+                ?? data_get($m, 'answer');
+
+            $detail = '';
+            if (is_array($opts)) {
+                $detail = collect($opts)->map(fn ($o) => is_array($o) ? ($o['name'] ?? $o['optionName'] ?? '') : $o)->filter()->implode(', ');
+            } elseif (is_string($opts)) {
+                $detail = $opts;
+            }
+
+            return ['poll_response', $detail !== '' ? $detail : 'voted'];
+        }
+
+        $text = $m['conversation']
+            ?? data_get($m, 'extendedTextMessage.text')
+            ?? ($m['body'] ?? null)
+            ?? ($m['caption'] ?? null);
         if (is_string($text) && $text !== '') {
             return ['text', $text];
         }
@@ -210,22 +247,6 @@ class WebhookController extends Controller
             ?? data_get($m, 'listResponseMessage.singleSelectReply.selectedRowId');
         if (is_string($btn) && $btn !== '') {
             return ['button_response', $btn];
-        }
-
-        // Poll vote (the gateway decodes the chosen option(s) when available).
-        if (isset($m['pollUpdateMessage'])) {
-            $opts = data_get($m, 'pollUpdateMessage.vote.selectedOptions')
-                ?? data_get($m, 'pollUpdateMessage.selectedOptions')
-                ?? data_get($m, 'pollUpdateMessage.pollVotes');
-
-            $detail = '';
-            if (is_array($opts)) {
-                $detail = collect($opts)->map(fn ($o) => is_array($o) ? ($o['name'] ?? $o['optionName'] ?? '') : $o)->filter()->implode(', ');
-            } elseif (is_string($opts)) {
-                $detail = $opts;
-            }
-
-            return ['poll_response', $detail !== '' ? $detail : 'voted'];
         }
 
         return ['', ''];
@@ -305,7 +326,43 @@ class WebhookController extends Controller
             default           => "📩 Reply from {$who} (+{$phone}):\n{$detail}{$ctx}",
         };
 
-        Whatsapp::forInstance($instance)->sendText($instance->instance_name, $hook, $body);
+        $result = Whatsapp::forInstance($instance)->sendText($instance->instance_name, $hook, $body);
+
+        // Do not silently claim a hook notification worked when the engine rejected
+        // it. The activity panel remains useful and the server log has diagnostics.
+        if (! ($result['ok'] ?? false)) {
+            \Log::warning('Hook notification failed', [
+                'instance_id' => $instance->id,
+                'kind' => $kind,
+                'error' => $result['error'] ?? 'unknown error',
+            ]);
+            Alert::create([
+                'level' => 'warning',
+                'title' => 'Hook notification could not be sent',
+                'body' => 'The incoming '.str_replace('_', ' ', $kind).' was saved, but forwarding it to the hook number failed. Reconnect this sending number and try again.',
+                'context' => ['instance_id' => $instance->id, 'contact_id' => $contact->id, 'kind' => $kind],
+            ]);
+        }
+    }
+
+    /** Convert OpenWA's current public message schema to the internal message shape. */
+    private function normaliseOpenWaMessage(array $message): array
+    {
+        return [
+            'key' => [
+                'id' => $message['id'] ?? null,
+                'remoteJid' => $message['from'] ?? $message['chatId'] ?? '',
+                'fromMe' => (bool) ($message['fromMe'] ?? false),
+            ],
+            'pushName' => $message['pushName'] ?? $message['notifyName'] ?? null,
+            'message' => $message,
+        ];
+    }
+
+    private function isOpenWaPoll(array $message): bool
+    {
+        return in_array(strtolower((string) ($message['type'] ?? '')), ['poll', 'poll_vote', 'poll_response'], true)
+            || isset($message['poll'], $message['pollVote'], $message['selectedOptions'], $message['answer']);
     }
 
     private function onMessageStatus(array $data): void
