@@ -78,6 +78,9 @@
                     <div class="flex justify-between gap-3"><dt class="text-gray-500">Sending numbers</dt><dd class="text-gray-800 truncate">{{ $deviceSummary['assigned'] }} assigned · <span class="text-green-600">{{ $deviceSummary['connected'] }} connected</span>@if ($deviceSummary['disconnected'] > 0)<span class="text-red-500"> · {{ $deviceSummary['disconnected'] }} off</span>@endif</dd></div>
                     <div class="flex justify-between gap-3"><dt class="text-gray-500">Type</dt><dd class="text-gray-800">{{ ucfirst($campaign->type) }}</dd></div>
                     <div class="flex justify-between gap-3"><dt class="text-gray-500">Delay</dt><dd class="text-gray-800">{{ $campaign->min_delay }}–{{ $campaign->max_delay }}s</dd></div>
+                    @if ($campaign->type === 'poll' && ($campaign->body || $campaign->media_url))
+                        <div class="flex justify-between gap-3"><dt class="text-gray-500">Poll prelude gap</dt><dd class="text-gray-800">Random {{ $campaign->min_delay }}–{{ $campaign->max_delay }}s</dd></div>
+                    @endif
                     @if ($campaign->scheduled_at)
                         <div class="flex justify-between gap-3"><dt class="text-gray-500">Scheduled</dt><dd class="text-gray-800">{{ $campaign->scheduled_at->format('M j, g:i A') }}</dd></div>
                     @endif

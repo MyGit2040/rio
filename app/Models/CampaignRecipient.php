@@ -12,11 +12,12 @@ class CampaignRecipient extends Model
 
     protected $fillable = [
         'tenant_id', 'campaign_id', 'whatsapp_instance_id', 'contact_id', 'phone',
-        'status', 'variant_index', 'attempts', 'error', 'message_id', 'sent_at',
+        'status', 'variant_index', 'attempts', 'error', 'message_id', 'sent_at', 'prelude_sent_at',
     ];
 
     protected $casts = [
-        'sent_at'       => 'datetime',
+        'sent_at'        => 'datetime',
+        'prelude_sent_at' => 'datetime',
         'variant_index' => 'integer',
     ];
 

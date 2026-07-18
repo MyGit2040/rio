@@ -114,12 +114,20 @@ class SendCampaignMessage implements ShouldQueue
         // the full text as its caption (bound together), or plain text — then the poll below.
         if ($campaign->type === 'poll') {
             $caption = $this->personalize($body, $contact, $number, $spinRandom);
+            $hasPrelude = (bool) $campaign->media_url || trim($caption) !== '';
+
+            // This recipient has already completed the first stage. Continue only
+            // with the poll, even if this job is retried or delivered twice.
+            if ($recipient->prelude_sent_at) {
+                $hasPrelude = false;
+            }
+
             // A retry after the gateway's post-send 500 must continue with the
             // poll, not send the already-delivered explanatory text again.
             $preludeAlreadyAttempted = $recipient->attempts > 0
                 && str_starts_with((string) $recipient->error, 'Poll prelude failed:');
 
-            if ($preludeAlreadyAttempted) {
+            if (! $hasPrelude || $preludeAlreadyAttempted) {
                 $prelude = ['ok' => true, 'error' => null];
             } elseif ($campaign->media_url) {
                 $prelude = $engine->sendMedia(
@@ -140,6 +148,15 @@ class SendCampaignMessage implements ShouldQueue
             if (! $prelude['ok']) {
                 $this->markFailed($recipient, $campaign, 'Poll prelude failed: '.($prelude['error'] ?? 'unknown error'));
                 $this->finaliseIfDone($campaign);
+
+                return;
+            }
+
+            // Do not hold a queue worker with sleep(). Persist the confirmed first
+            // stage and queue the native poll after the campaign's random delay.
+            if ($hasPrelude && ! $recipient->prelude_sent_at) {
+                $recipient->update(['prelude_sent_at' => now(), 'error' => null]);
+                self::dispatch($recipient->id)->delay(now()->addSeconds($this->pollPreludeDelay($campaign)));
 
                 return;
             }
@@ -259,6 +276,15 @@ class SendCampaignMessage implements ShouldQueue
         $recipient->update(['status' => 'failed', 'error' => Str::limit($error, 990)]);
         $campaign->increment('failed');
         $this->finaliseIfDone($campaign);
+    }
+
+    /** Use the campaign's normal min/max pacing for its poll's second message. */
+    private function pollPreludeDelay(Campaign $campaign): int
+    {
+        $min = max(1, (int) $campaign->min_delay);
+        $max = max($min, (int) $campaign->max_delay);
+
+        return random_int($min, $max);
     }
 
     /**

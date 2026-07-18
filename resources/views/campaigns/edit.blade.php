@@ -148,7 +148,7 @@
                             <x-text-input id="max_delay" name="max_delay" type="number" min="1" max="600" class="block mt-1 w-full" :value="old('max_delay', $campaign->max_delay)" required />
                         </div>
                     </div>
-                    <p class="text-xs text-gray-500">A pause between each message keeps a steady send rate.</p>
+                    <p class="text-xs text-gray-500">A random pause between each message keeps a steady send rate. For polls with text or an image, the same range is also used between the prelude and the poll.</p>
                     @error('max_delay')<p class="text-xs text-red-600">{{ $message }}</p>@enderror
 
                     <div>
