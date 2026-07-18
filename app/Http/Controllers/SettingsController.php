@@ -175,6 +175,33 @@ class SettingsController extends Controller
      */
     public function syncEngineUpdates(): JsonResponse
     {
+        $instances = WhatsappInstance::all();
+        if ($instances->isEmpty()) {
+            return response()->json(['ok' => false, 'message' => 'No linked WhatsApp numbers yet — add a device first.'], 422);
+        }
+
+        $secret = (string) config('openwa.webhook_secret');
+        $url = rtrim((string) config('app.url'), '/').'/webhooks/openwa'.($secret !== '' ? '/'.$secret : '');
+        $updated = 0;
+        $failed = [];
+
+        foreach ($instances as $instance) {
+            try {
+                Whatsapp::forInstance($instance)->setWebhook($instance->instance_name, $url);
+                $updated++;
+            } catch (\Throwable $e) {
+                $failed[] = $instance->name;
+                Log::warning('OpenWA webhook registration failed', ['instance' => $instance->instance_name, 'error' => $e->getMessage()]);
+            }
+        }
+
+        return response()->json([
+            'ok' => $updated > 0,
+            'message' => $updated > 0
+                ? "Webhook updates enabled on {$updated} device(s).".($failed ? ' Failed: '.implode(', ', $failed).'.' : '')
+                : 'Could not register webhook updates. Check the OpenWA session and API connection.',
+        ], $updated > 0 ? 200 : 422);
+
         return response()->json([
             'ok' => false,
             'message' => 'Configure OpenWA with --webhook using this app’s /webhooks/openwa endpoint. OpenWA webhook registration is set when its runtime starts.',

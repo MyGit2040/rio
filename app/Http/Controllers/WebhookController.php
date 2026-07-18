@@ -43,9 +43,9 @@ class WebhookController extends Controller
 
         Tenancy::run($instance->tenant_id, function () use ($event, $instance, $data) {
             match ($event) {
-                'connection.update' => $this->onConnectionUpdate($instance, $data),
+                'connection.update', 'session.status' => $this->onConnectionUpdate($instance, $data),
                 'qrcode.updated'    => $this->onQrUpdated($instance, $data),
-                'messages.upsert'   => $this->onMessages($instance, $data),
+                'messages.upsert', 'message.received' => $this->onMessages($instance, $data),
                 'messages.update'   => $this->onMessageStatus($data),
                 default             => null,
             };

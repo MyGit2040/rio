@@ -72,9 +72,15 @@ class OpenWaService implements WhatsappGateway
 
     public function setWebhook(string $instanceName, string $webhookUrl): array
     {
-        // This OpenWA deployment configures webhooks when its runtime starts.
-        // A guessed per-session request is rejected with HTTP 400.
-        return [];
+        $this->assertSession($instanceName);
+        $response = $this->http()->post('/sessions/'.$this->sessionId($instanceName).'/webhooks', [
+            'url' => $webhookUrl,
+            'events' => ['message.received', 'session.status'],
+            'secret' => config('openwa.webhook_secret') ?: null,
+        ]);
+        $response->throw();
+
+        return $response->json() ?? [];
     }
 
     public function connect(string $instanceName, ?string $number = null): array
