@@ -493,7 +493,7 @@ class CampaignController extends Controller
         }
 
         $engine = Whatsapp::forInstance($device);
-        $body = str_replace(['{{name}}', '{{phone}}'], ['there', $number], (string) $campaign->body);
+        $body = str_replace(['{{name}}', '{{phone}}', '{{variant_ref_id}}'], ['there', $number, (string) random_int(100000, 999999)], (string) $campaign->body);
 
         // A poll can't carry text/media, so (like a real send) send the message FIRST —
         // the image with the caption, or plain text — then the poll below it.

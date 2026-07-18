@@ -32,6 +32,7 @@
     <button type="button" data-msg-tool data-insert="@{{name}}" class="{{ $btn }} px-2.5 text-xs font-medium text-brand">name</button>
     <button type="button" data-msg-tool data-insert="@{{phone}}" class="{{ $btn }} px-2.5 text-xs font-medium text-brand">phone</button>
     <button type="button" data-msg-tool data-insert="@{{date}}" class="{{ $btn }} px-2.5 text-xs font-medium text-brand">date</button>
+    <button type="button" data-msg-tool data-insert="@{{variant_ref_id}}" class="{{ $btn }} px-2.5 text-xs font-medium text-brand">ref ID</button>
 
     <span class="w-px h-5 bg-gray-300 mx-0.5"></span>
 

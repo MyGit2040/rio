@@ -111,8 +111,8 @@ class TemplateController extends Controller
         // 2) Built-in tags.
         $name = trim((string) ($variables['name'] ?? '')) ?: 'there';
         $text = preg_replace(
-            ['/\{\{\s*name\s*\}\}/i', '/\{\{\s*phone\s*\}\}/i', '/\{\{\s*date\s*\}\}/i'],
-            [$name, $number, now()->format('M j, Y')],
+            ['/\{\{\s*name\s*\}\}/i', '/\{\{\s*phone\s*\}\}/i', '/\{\{\s*date\s*\}\}/i', '/\{\{\s*variant_ref_id\s*\}\}/i'],
+            [$name, $number, now()->format('M j, Y'), (string) random_int(100000, 999999)],
             $text
         );
 

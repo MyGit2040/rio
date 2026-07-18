@@ -103,6 +103,7 @@ class SendCampaignMessage implements ShouldQueue
         // The variant slot is assigned round-robin at build time so each successive
         // message uses the next variant in order (not random).
         [$variantIndex, $body] = $this->variantFor($campaign, $recipient->variant_index);
+        $referenceId = $this->ensureReferenceId($recipient);
 
         // Footer (signature) is stored separately and merged onto the message here, so
         // every variant stays clean and the footer is appended automatically to all.
@@ -113,7 +114,7 @@ class SendCampaignMessage implements ShouldQueue
         // A poll can't hold text/media itself, so send the message FIRST — the image with
         // the full text as its caption (bound together), or plain text — then the poll below.
         if ($campaign->type === 'poll') {
-            $caption = $this->personalize($body, $contact, $number, $spinRandom);
+            $caption = $this->personalize($body, $contact, $number, $spinRandom, $referenceId);
             $hasPrelude = (bool) $campaign->media_url || trim($caption) !== '';
 
             // This recipient has already completed the first stage. Continue only
@@ -168,7 +169,7 @@ class SendCampaignMessage implements ShouldQueue
                 $number,
                 $campaign->media_type ?: 'image',
                 $campaign->media_url,
-                $this->personalize($body, $contact, $number, $spinRandom),
+                $this->personalize($body, $contact, $number, $spinRandom, $referenceId),
             ),
             'poll' => $engine->sendPoll(
                 $instance->instance_name,
@@ -181,15 +182,15 @@ class SendCampaignMessage implements ShouldQueue
                 $instance->instance_name,
                 $number,
                 data_get($campaign->buttons, 'title', 'Menu'),
-                $this->personalize($body, $contact, $number, $spinRandom),
+                $this->personalize($body, $contact, $number, $spinRandom, $referenceId),
                 data_get($campaign->buttons, 'footer'),
                 $this->mapButtons($campaign),
             ),
-            'carousel' => $this->sendCarousel($engine, $instance, $number, $campaign, $contact, $spinRandom),
+            'carousel' => $this->sendCarousel($engine, $instance, $number, $campaign, $contact, $spinRandom, $referenceId),
             default => $engine->sendText(
                 $instance->instance_name,
                 $number,
-                $this->personalize($body, $contact, $number, $spinRandom),
+                $this->personalize($body, $contact, $number, $spinRandom, $referenceId),
             ),
         };
 
@@ -288,6 +289,28 @@ class SendCampaignMessage implements ShouldQueue
     }
 
     /**
+     * Campaigns created before reference IDs existed receive one on first send.
+     * It is stored before delivery, so a retry uses the exact same six digits.
+     */
+    private function ensureReferenceId(CampaignRecipient $recipient): string
+    {
+        if ($recipient->variant_ref_id) {
+            return $recipient->variant_ref_id;
+        }
+
+        do {
+            $reference = (string) random_int(100000, 999999);
+        } while (CampaignRecipient::withoutGlobalScopes()
+            ->where('campaign_id', $recipient->campaign_id)
+            ->where('variant_ref_id', $reference)
+            ->exists());
+
+        $recipient->update(['variant_ref_id' => $reference]);
+
+        return $reference;
+    }
+
+    /**
      * Circuit breaker: a dropped/disconnected device freezes the WHOLE campaign.
      *
      * The current recipient is left PENDING (nothing is lost). Because handle()
@@ -359,7 +382,7 @@ class SendCampaignMessage implements ShouldQueue
      *
      * @return array{ok: bool, message_id: ?string, error: ?string, raw: mixed}
      */
-    private function sendCarousel($engine, WhatsappInstance $instance, string $number, Campaign $campaign, $contact, bool $spinRandom): array
+    private function sendCarousel($engine, WhatsappInstance $instance, string $number, Campaign $campaign, $contact, bool $spinRandom, string $referenceId): array
     {
         $cards = $campaign->cards ?? [];
         $anyOk = false;
@@ -379,7 +402,7 @@ class SendCampaignMessage implements ShouldQueue
                 }
             }
 
-            $caption = $this->personalize($caption, $contact, $number, $spinRandom);
+            $caption = $this->personalize($caption, $contact, $number, $spinRandom, $referenceId);
 
             try {
                 $r = ! empty($card['image'])
@@ -426,7 +449,7 @@ class SendCampaignMessage implements ShouldQueue
         })->all();
     }
 
-    private function personalize(?string $body, $contact, string $number, bool $spinRandom = true): string
+    private function personalize(?string $body, $contact, string $number, bool $spinRandom = true, ?string $referenceId = null): string
     {
         $name = $contact?->name ?: 'there';
 
@@ -435,8 +458,8 @@ class SendCampaignMessage implements ShouldQueue
 
         // 2) Built-in compliant merge tags — no random/tracking tokens.
         $text = preg_replace(
-            ['/\{\{\s*name\s*\}\}/i', '/\{\{\s*phone\s*\}\}/i', '/\{\{\s*date\s*\}\}/i'],
-            [$name, $number, now()->format('M j, Y')],
+            ['/\{\{\s*name\s*\}\}/i', '/\{\{\s*phone\s*\}\}/i', '/\{\{\s*date\s*\}\}/i', '/\{\{\s*variant_ref_id\s*\}\}/i'],
+            [$name, $number, now()->format('M j, Y'), $referenceId ?? ''],
             $text
         );
 

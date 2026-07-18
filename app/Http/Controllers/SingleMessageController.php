@@ -48,7 +48,7 @@ class SingleMessageController extends Controller
         $template = ! empty($data['template_id']) ? Template::find($data['template_id']) : null;
 
         $type = $template->type ?? 'text';
-        $body = str_replace(['{{name}}', '{{phone}}'], ['there', $phone], (string) ($template->body ?? $data['body'] ?? ''));
+        $body = str_replace(['{{name}}', '{{phone}}', '{{variant_ref_id}}'], ['there', $phone, (string) random_int(100000, 999999)], (string) ($template->body ?? $data['body'] ?? ''));
 
         $engine = Whatsapp::forInstance($device);
         $name = $device->instance_name;

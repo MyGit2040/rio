@@ -408,6 +408,10 @@ class CampaignService
         $count = 0;
         $index = 0;
         $skipped = 0;
+        $referenceIds = array_fill_keys(
+            $campaign->recipients()->whereNotNull('variant_ref_id')->pluck('variant_ref_id')->all(),
+            true
+        );
         $used = [];                                   // device id => messages assigned so far
         $deviceCount = max(1, count($deviceIds));
         $rotateEvery = (int) ($campaign->rotate_every ?? 0);
@@ -421,7 +425,7 @@ class CampaignService
             fn ($v) => filled($v)
         ))));
 
-        $query->select('id', 'phone')->distinct()->chunkById(500, function ($contacts) use ($campaign, $deviceIds, $deviceCount, $rotateEvery, $variantCount, $caps, $hasCaps, &$count, &$index, &$skipped, &$used) {
+        $query->select('id', 'phone')->distinct()->chunkById(500, function ($contacts) use ($campaign, $deviceIds, $deviceCount, $rotateEvery, $variantCount, $caps, $hasCaps, &$count, &$index, &$skipped, &$used, &$referenceIds) {
             $rows = [];
 
             foreach ($contacts as $contact) {
@@ -448,6 +452,7 @@ class CampaignService
                     'campaign_id'          => $campaign->id,
                     'whatsapp_instance_id' => $device,
                     'variant_index'        => $index % $variantCount,
+                    'variant_ref_id'       => $this->uniqueReferenceId($referenceIds),
                     'contact_id'           => $contact->id,
                     'phone'                => $contact->phone,
                     'status'               => 'pending',
@@ -469,6 +474,18 @@ class CampaignService
         $campaign->skippedForCapacity = $skipped;
 
         return $count;
+    }
+
+    /** @param array<string, bool> $used */
+    private function uniqueReferenceId(array &$used): string
+    {
+        do {
+            $reference = (string) random_int(100000, 999999);
+        } while (isset($used[$reference]));
+
+        $used[$reference] = true;
+
+        return $reference;
     }
 
     /**
