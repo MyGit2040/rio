@@ -155,7 +155,7 @@ class OpenWaService implements WhatsappGateway
         // Some WhatsApp-Web builds persist a self-chat message successfully but
         // return 500 while trying to read its optional message id. Do not mark a
         // real delivery as failed: confirm the exact text exists in OpenWA first.
-        if ($response->status() === 500 && $this->persistedTextMessage($sessionId, $chatId, $text)) {
+        if ($response->status() === 500 && $this->persistedTextMessage($sessionId, $text)) {
             return ['ok' => true, 'message_id' => null, 'error' => null, 'raw' => $response->json()];
         }
 
@@ -217,16 +217,19 @@ class OpenWaService implements WhatsappGateway
         return (string) $session['id'];
     }
 
-    private function persistedTextMessage(string $sessionId, string $chatId, string $text): bool
+    private function persistedTextMessage(string $sessionId, string $text): bool
     {
-        $response = $this->http()->get("/sessions/{$sessionId}/messages", ['chatId' => $chatId, 'limit' => 10]);
+        $response = $this->http()->get("/sessions/{$sessionId}/messages", ['limit' => 20]);
 
         if (! $response->successful()) {
             return false;
         }
 
         return collect(data_get($response->json(), 'messages', []))->contains(
-            fn (array $message) => ($message['chatId'] ?? null) === $chatId && ($message['body'] ?? null) === $text,
+            // OpenWA may resolve a phone's @c.us id to its internal @lid id.
+            // The message body is the stable value after that conversion.
+            fn (array $message) => ($message['body'] ?? null) === $text
+                && ($message['direction'] ?? null) === 'outgoing',
         );
     }
 
