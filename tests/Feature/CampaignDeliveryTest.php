@@ -26,17 +26,30 @@ class CampaignDeliveryTest extends TestCase
     {
         parent::setUp();
 
-        config(['evolution.base_url' => 'https://evo.test', 'evolution.api_key' => 'k']);
-        Http::fake(['*' => Http::response(['key' => ['id' => 'MSG-1']], 200)]);
+        config([
+            'openwa.base_url' => 'https://openwa.test/api',
+            'openwa.api_key' => 'k',
+            'openwa.session_id' => 'inst-1',
+        ]);
+        Http::fake(function ($request) {
+            if (str_ends_with($request->url(), '/sessions')) {
+                return Http::response([['id' => 'session-uuid-1', 'name' => 'inst-1', 'status' => 'ready']], 200);
+            }
 
-        $this->tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme-del']);
+            return Http::response(['messageId' => 'MSG-1'], 201);
+        });
+
+        $this->tenant = Tenant::create([
+            'name' => 'Acme', 'slug' => 'acme-del',
+            'openwa_base_url' => 'https://openwa.test/api', 'openwa_api_key' => 'k', 'openwa_session_id' => 'inst-1',
+        ]);
         $user = User::create([
             'tenant_id' => $this->tenant->id, 'name' => 'Owner', 'email' => 'del@x.dev',
             'role' => 'owner', 'password' => Hash::make('secret'),
         ]);
         $this->actingAs($user);
 
-        // A "connected" device is status 'open' (Evolution's connected state).
+        // A connected OpenWA device has status 'open'.
         $this->device = WhatsappInstance::create([
             'tenant_id' => $this->tenant->id, 'name' => 'Device 1',
             'instance_name' => 'inst-1', 'token' => 'tok-1', 'status' => 'open',
@@ -60,7 +73,7 @@ class CampaignDeliveryTest extends TestCase
 
         $this->assertSame('sent', $recipient->fresh()->status);
         $this->assertSame(1, (int) $campaign->fresh()->sent);
-        Http::assertSent(fn ($r) => str_contains($r->url(), '/message/sendText/inst-1'));
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/sessions/session-uuid-1/messages/send-text'));
     }
 
     public function test_poll_campaign_delivers_poll(): void
@@ -80,7 +93,7 @@ class CampaignDeliveryTest extends TestCase
         (new SendCampaignMessage($recipient->id))->handle();
 
         $this->assertSame('sent', $recipient->fresh()->status);
-        Http::assertSent(fn ($r) => str_contains($r->url(), '/message/sendPoll/inst-1'));
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/sessions/session-uuid-1/messages/send-poll'));
     }
 
     public function test_scheduled_campaign_is_marked_scheduled(): void
