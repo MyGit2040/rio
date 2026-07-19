@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Log;
  *
  * Design notes:
  *  - ONE message per job. Pacing is enforced by a flat, predictable delay
- *    (config openwa.flat_delay_seconds) acting purely as a load balancer
+ *    (config whatsapp.flat_delay_seconds) acting purely as a load balancer
  *    for the VPS — no randomisation, no human simulation, no evasion.
  *  - On an auth failure (401/403 = the Baileys session dropped/expired) the
  *    job trips a circuit breaker: the device is marked Disconnected, the
@@ -101,7 +101,7 @@ class SendTransactionalNotification implements ShouldQueue
      */
     private function throttle(): void
     {
-        $seconds = (int) config('openwa.flat_delay_seconds', 60);
+        $seconds = (int) config('whatsapp.flat_delay_seconds', 60);
 
         if ($seconds > 0 && ! app()->runningUnitTests()) {
             sleep($seconds);

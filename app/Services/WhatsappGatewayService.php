@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 /**
  * Driver for the modern OpenWA gateway API.
  */
-class OpenWaService implements WhatsappGateway
+class WhatsappGatewayService implements WhatsappGateway
 {
     public function __construct(
         protected string $baseUrl,
@@ -25,9 +25,9 @@ class OpenWaService implements WhatsappGateway
     public static function forTenant(?Tenant $tenant): static
     {
         return new static(
-            rtrim((string) ($tenant?->openwa_base_url ?: config('openwa.base_url')), '/'),
-            (string) ($tenant?->openwa_api_key ?: config('openwa.api_key')),
-            (string) ($tenant?->openwa_session_id ?: config('openwa.session_id')),
+            rtrim((string) ($tenant?->openwa_base_url ?: config('whatsapp.base_url')), '/'),
+            (string) ($tenant?->openwa_api_key ?: config('whatsapp.api_key')),
+            (string) ($tenant?->openwa_session_id ?: config('whatsapp.session_id')),
         );
     }
 
@@ -76,7 +76,7 @@ class OpenWaService implements WhatsappGateway
         $response = $this->http()->post('/sessions/'.$this->sessionId($instanceName).'/webhooks', [
             'url' => $webhookUrl,
             'events' => ['message.received', 'session.status'],
-            'secret' => config('openwa.webhook_secret') ?: null,
+            'secret' => config('whatsapp.webhook_secret') ?: null,
         ]);
         $response->throw();
 

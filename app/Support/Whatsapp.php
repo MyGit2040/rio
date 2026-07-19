@@ -5,7 +5,7 @@ namespace App\Support;
 use App\Contracts\WhatsappGateway;
 use App\Models\Tenant;
 use App\Models\WhatsappInstance;
-use App\Services\OpenWaService;
+use App\Services\WhatsappGatewayService;
 
 /**
  * Resolves the OpenWA gateway for tenant and device operations.
@@ -21,12 +21,12 @@ class Whatsapp
     {
         $driver = $instance->driver ?: self::tenantDriver($instance->tenant);
 
-        return OpenWaService::forInstance($instance);
+        return WhatsappGatewayService::forInstance($instance);
     }
 
     public static function forTenant(?Tenant $tenant): WhatsappGateway
     {
-        return OpenWaService::forTenant($tenant);
+        return WhatsappGatewayService::forTenant($tenant);
     }
 
     /** The engine a brand-new device for this tenant should be created on. */

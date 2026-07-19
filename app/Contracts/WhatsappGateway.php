@@ -5,7 +5,7 @@ namespace App\Contracts;
 /**
  * A pluggable WhatsApp engine.
  *
- * OpenWaService implements this contract. Callers resolve it through the
+ * The CRM gateway service implements this contract. Callers resolve it through the
  * App\Support\Whatsapp helper.
  *
  * IMPORTANT: every driver MUST return the SAME array shapes so the app's

@@ -24,7 +24,7 @@ class WebhookController extends Controller
 
     public function handle(Request $request, ?string $secret = null): JsonResponse
     {
-        $expected = config('openwa.webhook_secret');
+        $expected = config('whatsapp.webhook_secret');
         if ($expected && $secret !== $expected) {
             return response()->json(['ok' => false], 403);
         }

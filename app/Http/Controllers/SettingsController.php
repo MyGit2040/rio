@@ -180,7 +180,7 @@ class SettingsController extends Controller
             return response()->json(['ok' => false, 'message' => 'No linked WhatsApp numbers yet — add a device first.'], 422);
         }
 
-        $secret = (string) config('openwa.webhook_secret');
+        $secret = (string) config('whatsapp.webhook_secret');
         $url = rtrim((string) config('app.url'), '/').'/webhooks/openwa'.($secret !== '' ? '/'.$secret : '');
         $updated = 0;
         $failed = [];
