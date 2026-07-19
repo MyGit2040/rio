@@ -108,10 +108,24 @@
 
         document.querySelectorAll('[data-openwa-qr]').forEach(canvas => window.renderOpenWaQr(canvas, canvas.dataset.qrPayload));
 
-        function refreshQr(id) {
+        function refreshQr(id, attempt = 0) {
             fetch(`/devices/${id}/connect`, { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' } })
                 .then(r => r.json())
-                .then(d => { if (d.ok) location.reload(); else alert(d.error || 'Could not get a QR code.'); })
+                .then(d => {
+                    if (!d.ok) {
+                        alert(d.error || 'Could not get a QR code.');
+                        return;
+                    }
+                    // OpenWA creates a QR asynchronously after a session starts.
+                    // Keep asking briefly instead of reloading a blank card.
+                    if (d.qr) {
+                        location.reload();
+                    } else if (d.status !== 'open' && attempt < 10) {
+                        setTimeout(() => refreshQr(id, attempt + 1), 3000);
+                    } else if (d.status !== 'open') {
+                        alert('QR generation is taking longer than expected. Please try again in a minute.');
+                    }
+                })
                 .catch(() => alert('Could not reach the engine.'));
         }
 
