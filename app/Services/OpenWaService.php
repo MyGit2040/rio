@@ -93,7 +93,23 @@ class OpenWaService implements WhatsappGateway
         }
         $state = $this->connectionState($instanceName);
         $isConnected = data_get($state, 'instance.state') === 'open';
-        $qr = $isConnected ? [] : ($this->http()->get("/sessions/{$sessionId}/qr")->throw()->json() ?? []);
+        // A freshly-started session needs a few seconds before OpenWA can render
+        // its QR. Treat its initial 400 ("QR code is not ready yet") as the
+        // normal connecting state instead of failing the Refresh QR action.
+        $qr = [];
+        if (! $isConnected) {
+            for ($attempt = 0; $attempt < 3; $attempt++) {
+                $response = $this->http()->get("/sessions/{$sessionId}/qr");
+                if ($response->successful()) {
+                    $qr = $response->json() ?? [];
+                    break;
+                }
+                if ($response->status() !== 400) {
+                    $response->throw();
+                }
+                sleep(2);
+            }
+        }
 
         return [
             'qrcode' => ['base64' => data_get($qr, 'qr') ?? data_get($qr, 'qrCode') ?? data_get($qr, 'data.qr'), 'pairingCode' => null],
