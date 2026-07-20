@@ -8,6 +8,20 @@
             </div>
         </x-card>
 
+        <x-card title="Get your Google Client ID — step by step" subtitle="Complete this once. Keep this page open so you can copy the callback URL below.">
+            <ol class="list-decimal ml-5 space-y-3 text-sm text-gray-700">
+                <li><a class="text-brand underline" target="_blank" rel="noopener" href="https://console.cloud.google.com/">Open Google Cloud Console</a> and sign in with your business Google account.</li>
+                <li>Use the project selector at the top, then click <strong>New project</strong>. Name it <strong>Eagle CRM</strong> and click <strong>Create</strong>.</li>
+                <li><a class="text-brand underline" target="_blank" rel="noopener" href="https://console.cloud.google.com/apis/library/people.googleapis.com">Open Google People API</a>, select your new project, then click <strong>Enable</strong>.</li>
+                <li><a class="text-brand underline" target="_blank" rel="noopener" href="https://console.cloud.google.com/auth/branding">Open Google Auth Platform</a>. Click <strong>Get started</strong>, enter <strong>Eagle CRM</strong> as the app name, choose your support email, then save. Choose <strong>External</strong> if your Gmail accounts are normal Gmail accounts.</li>
+                <li>In <strong>Audience</strong>, if the app remains in testing, add every Gmail account you will connect as a <strong>Test user</strong>.</li>
+                <li><a class="text-brand underline" target="_blank" rel="noopener" href="https://console.cloud.google.com/auth/clients">Open Clients</a> → <strong>Create client</strong> → choose <strong>Web application</strong>. Under <strong>Authorized redirect URIs</strong>, click Add URI and paste the exact address below.</li>
+                <li>Click <strong>Create</strong>. Copy the new <strong>Client ID</strong> and <strong>Client Secret</strong> into the fields in the next section, then save.</li>
+            </ol>
+            <div class="mt-4"><p class="text-xs font-medium text-gray-700 mb-1">Copy this Authorized redirect URI exactly</p><code class="block rounded-lg bg-gray-900 text-gray-100 p-3 text-xs break-all">{{ $callbackUrl }}</code></div>
+            <p class="mt-3 text-xs text-gray-500">Google requires OAuth because Eagle needs permission to create contacts in each Gmail account. Never share the Client Secret publicly or add it to GitHub.</p>
+        </x-card>
+
         <x-card title="1. Connect Google securely" subtitle="Enter the OAuth details from Google Cloud once. They are encrypted before storage and never shown again.">
             <form method="POST" action="{{ route('settings.google-contacts.credentials') }}" class="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end">
                 @csrf
@@ -57,8 +71,8 @@
             </ol>
         </x-card>
 
-        <x-card title="Future CRM contact sync" subtitle="Optional — this is separate from the phone’s native WhatsApp backup.">
-            <p class="text-sm text-gray-600">When you create Google OAuth credentials, Eagle can be connected to Google People API to import and sync contacts directly. The required callback URL will be:</p>
+        <x-card title="About this connection" subtitle="This is separate from the phone’s native WhatsApp backup.">
+            <p class="text-sm text-gray-600">Google OAuth authorizes Eagle to create contacts in the Gmail accounts you choose. It does not give Eagle access to Gmail passwords, WhatsApp chats, or WhatsApp backups. The required callback URL is:</p>
             <code class="mt-3 block rounded-lg bg-gray-900 text-gray-100 p-3 text-xs break-all">{{ $callbackUrl }}</code>
             <p class="mt-3 text-xs text-gray-500">Do not enter Gmail passwords into Eagle. Google OAuth is the safe connection method used by the Connect Google button above.</p>
         </x-card>
