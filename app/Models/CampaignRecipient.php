@@ -11,7 +11,7 @@ class CampaignRecipient extends Model
     use BelongsToTenant;
 
     protected $fillable = [
-        'tenant_id', 'campaign_id', 'whatsapp_instance_id', 'contact_id', 'phone',
+        'tenant_id', 'campaign_id', 'whatsapp_instance_id', 'preferred_whatsapp_instance_id', 'contact_id', 'phone',
         'status', 'variant_index', 'variant_ref_id', 'attempts', 'error', 'message_id', 'sent_at', 'prelude_sent_at',
     ];
 

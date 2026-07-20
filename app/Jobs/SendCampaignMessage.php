@@ -237,33 +237,43 @@ class SendCampaignMessage implements ShouldQueue
         $poolIds = $campaign->device_ids ?: array_filter([$campaign->whatsapp_instance_id]);
 
         // Connected numbers, kept in the campaign's pool order.
-        $connectedIds = WhatsappInstance::whereIn('id', $poolIds)->where('status', 'open')->pluck('id')->all();
-        $connected = array_values(array_filter(
-            array_map('intval', $poolIds),
-            fn ($id) => in_array($id, array_map('intval', $connectedIds), true)
-        ));
+        $devices = WhatsappInstance::whereIn('id', $poolIds)->where('status', 'open')->get()->keyBy('id');
+        $connected = array_values(array_filter(array_map('intval', $poolIds), fn ($id) => $devices->has($id)));
 
         if (empty($connected)) {
             return null; // nothing connected → circuit breaker (campaign pauses, nothing lost)
         }
 
         // Stick to the assigned number while it's active.
-        $sticky = (int) ($recipient->whatsapp_instance_id ?: $campaign->whatsapp_instance_id);
-        if ($sticky && in_array($sticky, $connected, true)) {
-            return WhatsappInstance::find($sticky);
+        $preferred = (int) ($recipient->preferred_whatsapp_instance_id ?: $recipient->whatsapp_instance_id ?: $campaign->whatsapp_instance_id);
+        if (! $recipient->preferred_whatsapp_instance_id && $preferred) {
+            $recipient->update(['preferred_whatsapp_instance_id' => $preferred]);
+        }
+        if ($preferred && isset($devices[$preferred]) && ! $devices[$preferred]->atDailyCap()) {
+            if ((int) $recipient->whatsapp_instance_id !== $preferred) {
+                $recipient->update(['whatsapp_instance_id' => $preferred]);
+            }
+            return $devices[$preferred];
         }
 
         // Assigned number is down: only rotate away if failover is on (default).
         if (! (bool) data_get($campaign->tenant?->settings, 'bulk_device_failover', true)) {
-            return null;
+            // A connected preferred number at its cap should wait, not trigger the
+            // disconnection circuit breaker. A genuinely disconnected one still pauses.
+            return isset($devices[$preferred]) ? $devices[$preferred] : null;
         }
 
         // Rotate to the next connected number — the pointer advances every message, so
         // successive sends spread across all live numbers instead of piling on one.
-        $deviceId = $connected[(int) ($campaign->sent + $campaign->failed) % count($connected)];
+        $available = array_values(array_filter($connected, fn ($id) => ! $devices[$id]->atDailyCap()));
+        if (empty($available)) {
+            return $devices[$connected[0]];
+        }
+
+        $deviceId = $available[(int) ($campaign->sent + $campaign->failed) % count($available)];
         $recipient->update(['whatsapp_instance_id' => $deviceId]);
 
-        return WhatsappInstance::find($deviceId);
+        return $devices[$deviceId];
     }
 
     private function markFailed(CampaignRecipient $recipient, Campaign $campaign, string $error, ?WhatsappInstance $instance = null): void

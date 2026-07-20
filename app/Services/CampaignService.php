@@ -488,6 +488,7 @@ class CampaignService
                     'tenant_id'            => $campaign->tenant_id,
                     'campaign_id'          => $campaign->id,
                     'whatsapp_instance_id' => $device,
+                    'preferred_whatsapp_instance_id' => $device,
                     'variant_index'        => $index % $variantCount,
                     'variant_ref_id'       => $this->uniqueReferenceId($referenceIds),
                     'contact_id'           => $contact->id,
