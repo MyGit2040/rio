@@ -85,13 +85,23 @@ class BaileysGatewayDriver implements WhatsappGateway
      */
     protected function request(string $method, string $path, array $payload = []): Response
     {
-        $body = $payload === [] ? '' : json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        // The body is decided ONCE here and used for both signing and sending.
+        // Methods that carry no body must sign the empty string, and a
+        // body-carrying method with no payload still transmits '{}' — so that
+        // is what gets signed. An earlier version signed '' and then sent '{}'
+        // for empty POSTs, which produced a 401 on exactly the calls that take
+        // no arguments (/start, /logout) while every call with a payload
+        // succeeded. Never reintroduce a `?:` fallback on either side.
+        $body = $this->carriesBody($method)
+            ? ($payload === [] ? '{}' : (string) json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE))
+            : '';
+
         $timestamp = (string) time();
         $nonce = Str::random(32);
 
         $signature = hash_hmac(
             'sha256',
-            implode("\n", [$timestamp, $nonce, strtoupper($method), $path, $body ?: '']),
+            implode("\n", [$timestamp, $nonce, strtoupper($method), $path, $body]),
             $this->signingSecret,
         );
 
@@ -110,6 +120,12 @@ class BaileysGatewayDriver implements WhatsappGateway
         return $this->dispatch($request, $method, $path, $body);
     }
 
+    /** Whether this HTTP method transmits a request body. */
+    protected function carriesBody(string $method): bool
+    {
+        return ! in_array(strtoupper($method), ['GET', 'DELETE'], true);
+    }
+
     protected function dispatch(PendingRequest $request, string $method, string $path, string $body): Response
     {
         // The signed bytes and the transmitted bytes must be identical, so the
@@ -117,7 +133,7 @@ class BaileysGatewayDriver implements WhatsappGateway
         return match (strtoupper($method)) {
             'GET' => $request->get($path),
             'DELETE' => $request->delete($path),
-            default => $request->withBody($body ?: '{}', 'application/json')->send(strtoupper($method), $path),
+            default => $request->withBody($body, 'application/json')->send(strtoupper($method), $path),
         };
     }
 
