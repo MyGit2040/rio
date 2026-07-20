@@ -229,6 +229,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/settings/google-contacts/{device}/connect', [SettingsController::class, 'connectGoogleContacts'])->name('settings.google-contacts.connect');
     Route::get('/settings/google/callback', [SettingsController::class, 'googleContactsCallback'])->name('settings.google-contacts.callback');
     Route::post('/settings/google-contacts/sync', [SettingsController::class, 'syncGoogleContacts'])->name('settings.google-contacts.sync');
+    Route::get('/settings/google-contacts/sample', [SettingsController::class, 'googleContactsSample'])->name('settings.google-contacts.sample');
 
     // Profile (Breeze)
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

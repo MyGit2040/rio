@@ -7,7 +7,6 @@ use App\Models\Contact;
 use App\Services\AiService;
 use App\Services\GoogleContactsService;
 use App\Support\ContactCsv;
-use App\Support\ContactSpreadsheet;
 use App\Support\CronHealth;
 use App\Support\MailConfig;
 use App\Support\Whatsapp;
@@ -20,6 +19,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SettingsController extends Controller
 {
@@ -228,15 +228,12 @@ class SettingsController extends Controller
     public function syncGoogleContacts(Request $request, GoogleContactsService $google): RedirectResponse
     {
         $data = $request->validate([
-            'contacts_file' => ['required', 'file', 'max:10240', 'mimes:csv,txt,xlsx'],
+            'contacts_file' => ['required', 'file', 'max:10240', 'mimes:csv,txt'],
             'device_ids' => ['required', 'array', 'min:1'],
             'device_ids.*' => ['integer'],
         ]);
-        if (strtolower($request->file('contacts_file')->getClientOriginalExtension()) === 'xls') {
-            return back()->with('error', 'Please save the old .xls file as .xlsx or CSV, then upload it again.');
-        }
         try {
-            $rows = ContactSpreadsheet::rows($request->file('contacts_file')->getRealPath());
+            $rows = ContactCsv::rows($request->file('contacts_file')->getRealPath());
         } catch (\Throwable $e) {
             return back()->with('error', $e->getMessage());
         }
@@ -267,6 +264,17 @@ class SettingsController extends Controller
             }
         }
         return back()->with($failed ? 'error' : 'success', "Google sync complete: {$created} created, {$skipped} already synced, {$failed} failed across {$devices->count()} account(s).");
+    }
+
+    public function googleContactsSample(): StreamedResponse
+    {
+        return response()->streamDownload(function () {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, ['name', 'phone', 'email']);
+            fputcsv($out, ['Ahmed Ali', '971501234567', 'ahmed@example.com']);
+            fputcsv($out, ['Sara Khan', '447911123456', 'sara@example.com']);
+            fclose($out);
+        }, 'eagle-google-contacts-sample.csv', ['Content-Type' => 'text/csv']);
     }
 
     private function googleCallbackUrl(): string
