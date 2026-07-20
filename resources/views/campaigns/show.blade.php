@@ -224,6 +224,11 @@
                 'who'  => $r->contact->name ?? '+'.$r->phone,
                 'body' => Str::limit($r->body, 120),
                 'ago'  => $r->created_at?->diffForHumans(),
+                'recipient_phone' => '+'.$r->phone,
+                'sender_name' => $r->instance?->name ?: 'Unknown device',
+                'sender_phone' => $r->instance?->phone_number ? '+'.$r->instance->phone_number : '—',
+                'type' => $r->type,
+                'received_label' => $r->created_at?->format('d M Y, h:i A'),
             ]),
         ];
     @endphp
@@ -252,8 +257,17 @@
 
         <template x-if="latest.length">
             <div>
+                <div class="flex flex-col gap-2 mb-3 sm:flex-row">
+                    <input x-model.debounce.200ms="search" type="search" class="input flex-1" placeholder="Search recipient, phone or answer">
+                    <select x-model="type" class="input sm:w-40"><option value="">All responses</option><option value="poll_response">Poll answers</option><option value="button_response">Button clicks</option><option value="text">Replies</option></select>
+                    <select x-model="sender" class="input sm:w-48"><option value="">All sending numbers</option><template x-for="option in senderOptions" :key="option"><option :value="option" x-text="option"></option></template></select>
+                </div>
+                <p class="text-xs font-semibold text-gray-600 mb-2">Responses · live <span class="text-gray-400 font-normal" x-text="`(${filteredRows.length})`"></span></p>
+                <div class="overflow-x-auto border border-gray-100 rounded-lg max-h-96">
+                    <table class="w-full text-sm"><thead class="sticky top-0 bg-gray-50 text-xs text-gray-500"><tr><th class="px-3 py-2 text-left">Recipient</th><th class="px-3 py-2 text-left">Received by</th><th class="px-3 py-2 text-left">Type</th><th class="px-3 py-2 text-left">Answer / message</th><th class="px-3 py-2 text-left">Received at</th></tr></thead><tbody class="divide-y divide-gray-100"><template x-for="r in filteredRows" :key="r.id"><tr class="align-top"><td class="px-3 py-2"><p class="font-medium text-gray-800" x-text="r.who"></p><p class="text-xs text-gray-500" x-text="r.recipient_phone"></p></td><td class="px-3 py-2"><p class="text-gray-800" x-text="r.sender_name"></p><p class="text-xs text-gray-500" x-text="r.sender_phone"></p></td><td class="px-3 py-2"><span class="badge badge-gray" x-text="r.type === 'poll_response' ? 'Poll answer' : (r.type === 'button_response' ? 'Button click' : 'Reply')"></span></td><td class="px-3 py-2 text-gray-700 max-w-sm" x-text="r.body"></td><td class="px-3 py-2 whitespace-nowrap text-gray-600" x-text="r.received_label"></td></tr></template><tr x-show="!filteredRows.length"><td colspan="5" class="px-3 py-6 text-center text-gray-500">No responses match these filters.</td></tr></tbody></table>
+                </div>
                 <p class="text-xs font-semibold text-gray-600 mb-2">Latest responses <span class="text-gray-400 font-normal">· live</span></p>
-                <ul class="divide-y divide-gray-100 max-h-80 overflow-y-auto">
+                <ul x-show="false" class="divide-y divide-gray-100 max-h-80 overflow-y-auto">
                     <template x-for="(r, i) in latest" :key="i">
                         <li class="py-2 flex items-start gap-2 text-sm">
                             <span class="shrink-0" x-text="r.icon"></span>
@@ -544,6 +558,18 @@
                 engagement: initial.engagement,
                 breakdown: initial.poll,
                 latest: initial.latest,
+                search: '',
+                type: '',
+                sender: '',
+                get senderOptions() {
+                    return [...new Set(this.latest.map(r => r.sender_name).filter(Boolean))].sort();
+                },
+                get filteredRows() {
+                    const needle = this.search.trim().toLowerCase();
+                    return this.latest.filter(r => (!this.type || r.type === this.type)
+                        && (!this.sender || r.sender_name === this.sender)
+                        && (!needle || [r.who, r.recipient_phone, r.sender_name, r.sender_phone, r.body].join(' ').toLowerCase().includes(needle)));
+                },
                 pollPercent(count) {
                     const total = this.breakdown.reduce((s, r) => s + r.count, 0);
                     return total ? Math.round(count / total * 100) : 0;

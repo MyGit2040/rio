@@ -243,7 +243,7 @@ class CampaignController extends Controller
             ],
             'pollBreakdown' => (clone $inbound)->where('type', 'poll_response')
                 ->selectRaw('body, COUNT(*) as c')->groupBy('body')->orderByDesc('c')->pluck('c', 'body'),
-            'responses'     => (clone $inbound)->with('contact')->latest('id')->limit(30)->get(),
+            'responses'     => (clone $inbound)->with(['contact', 'instance'])->latest('id')->limit(100)->get(),
         ]);
     }
 
@@ -425,12 +425,17 @@ class CampaignController extends Controller
             'poll' => (clone $inbound)->where('type', 'poll_response')
                 ->selectRaw('body, COUNT(*) as c')->groupBy('body')->orderByDesc('c')->get()
                 ->map(fn ($r) => ['option' => $r->body, 'count' => (int) $r->c]),
-            'latest' => (clone $inbound)->with('contact')->latest('id')->limit(30)->get()
+            'latest' => (clone $inbound)->with(['contact', 'instance'])->latest('id')->limit(100)->get()
                 ->map(fn ($r) => [
                     'icon' => ['poll_response' => '📊', 'button_response' => '🔘'][$r->type] ?? '📩',
                     'who'  => $r->contact->name ?? '+'.$r->phone,
                     'body' => \Illuminate\Support\Str::limit($r->body, 120),
                     'ago'  => $r->created_at?->diffForHumans(),
+                    'recipient_phone' => '+'.$r->phone,
+                    'sender_name' => $r->instance?->name ?: 'Unknown device',
+                    'sender_phone' => $r->instance?->phone_number ? '+'.$r->instance->phone_number : '—',
+                    'type' => $r->type,
+                    'received_label' => $r->created_at?->format('d M Y, h:i A'),
                 ]),
         ]);
     }
