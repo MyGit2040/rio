@@ -1,0 +1,3 @@
+# Prisma uses this to refuse a migration generated for a different database
+# engine. Do not edit by hand.
+provider = "postgresql"
