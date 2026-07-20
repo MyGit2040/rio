@@ -22,6 +22,17 @@
             <p class="mt-3 text-xs text-gray-500">Google requires OAuth because Eagle needs permission to create contacts in each Gmail account. Never share the Client Secret publicly or add it to GitHub.</p>
         </x-card>
 
+        <x-card title="Seeing “Access blocked” or Error 403?" subtitle="This is Google’s test-user protection. It is not an Eagle error.">
+            <ol class="list-decimal ml-5 space-y-2 text-sm text-gray-700">
+                <li><a class="text-brand underline" target="_blank" rel="noopener" href="https://console.cloud.google.com/auth/audience">Open Google Auth Platform → Audience</a> and ensure the <strong>Eagle CRM</strong> project is selected.</li>
+                <li>Under <strong>Test users</strong>, click <strong>Add users</strong>.</li>
+                <li>Add the Gmail shown in the Google error message — for example, <strong>raimsdigi1@gmail.com</strong>.</li>
+                <li>Add every other Gmail account you plan to connect to a WhatsApp number, then click <strong>Save</strong>.</li>
+                <li>Wait one or two minutes. Return here and click <strong>Connect Google</strong> again for that number.</li>
+            </ol>
+            <p class="mt-3 text-xs text-green-700 bg-green-50 rounded-lg p-3">Google verification is not required while you use your own accounts as test users. Verification is only needed later if you publish the integration for broad public use.</p>
+        </x-card>
+
         <x-card title="1. Connect Google securely" subtitle="Enter the OAuth details from Google Cloud once. They are encrypted before storage and never shown again.">
             <form method="POST" action="{{ route('settings.google-contacts.credentials') }}" class="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end">
                 @csrf
