@@ -33,7 +33,14 @@ class ReportController extends Controller
         $inbound = fn (string $type) => Message::where('direction', 'in')->where('type', $type)
             ->when($type === 'text', fn ($q) => $q->whereNotNull('campaign_id'))->count();
 
-        $recipientTotals = CampaignRecipient::selectRaw("\n+            SUM(CASE WHEN status IN ('sent','delivered','read') THEN 1 ELSE 0 END) as sent,\n+            SUM(CASE WHEN status IN ('delivered','read') THEN 1 ELSE 0 END) as delivered,\n+            SUM(CASE WHEN status = 'read' THEN 1 ELSE 0 END) as read,\n+            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed\n+        ")->first();
+        // `read` is quoted because it is a reserved word on MySQL; SQLite
+        // accepts the backticks too, so one expression works on both.
+        $recipientTotals = CampaignRecipient::selectRaw(
+            "SUM(CASE WHEN status IN ('sent','delivered','read') THEN 1 ELSE 0 END) as sent,
+             SUM(CASE WHEN status IN ('delivered','read') THEN 1 ELSE 0 END) as delivered,
+             SUM(CASE WHEN status = 'read' THEN 1 ELSE 0 END) as `read`,
+             SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed"
+        )->first();
 
         $totals = [
             'campaigns'     => Campaign::count(),

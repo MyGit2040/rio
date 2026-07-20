@@ -19,12 +19,10 @@ class InboundDedupTest extends TestCase
     {
         parent::setUp();
 
-        config(['evolution.base_url' => 'https://evo.test', 'evolution.api_key' => 'k', 'evolution.webhook_secret' => null]);
-        Http::fake(['*' => Http::response(['key' => ['id' => 'HOOK-1']], 200)]);
+        $this->fakeGateway();
 
         $tenant = Tenant::create([
             'name' => 'Acme', 'slug' => 'acme-dedup',
-            'evolution_base_url' => 'https://evo.test', 'evolution_api_key' => 'k',
             // Forward inbound replies to this hook number.
             'settings' => ['bulk_hook_number' => '971500000999'],
         ]);
@@ -38,13 +36,15 @@ class InboundDedupTest extends TestCase
     private function payload(string $messageId, string $text): array
     {
         return [
-            'event'    => 'messages.upsert',
-            'instance' => 'inst-1',
-            'data'     => [
-                'key'     => ['remoteJid' => '971508564493@s.whatsapp.net', 'fromMe' => false, 'id' => $messageId],
+            'event'     => 'message.received',
+            'sessionId' => 'inst-1',
+            'payload'   => ['message' => [
+                'id'       => $messageId,
+                'from'     => '971508564493@c.us',
+                'fromMe'   => false,
                 'pushName' => 'Bhaktar Travel',
-                'message' => ['conversation' => $text],
-            ],
+                'body'     => $text,
+            ]],
         ];
     }
 
@@ -53,9 +53,9 @@ class InboundDedupTest extends TestCase
         $body = $this->payload('MSG-ABC', 'Thank you for contacting');
 
         // The engine delivers the same message three times.
-        $this->postJson(route('webhooks.evolution'), $body)->assertOk();
-        $this->postJson(route('webhooks.evolution'), $body)->assertOk();
-        $this->postJson(route('webhooks.evolution'), $body)->assertOk();
+        $this->postJson(route('webhooks.openwa'), $body)->assertOk();
+        $this->postJson(route('webhooks.openwa'), $body)->assertOk();
+        $this->postJson(route('webhooks.openwa'), $body)->assertOk();
 
         // Only one inbound record.
         $this->assertSame(1, Message::where('message_id', 'MSG-ABC')->where('direction', 'in')->count());
@@ -63,7 +63,7 @@ class InboundDedupTest extends TestCase
         // The hook number was notified exactly once (one sendText to the engine).
         $hookSends = 0;
         Http::assertSent(function ($r) use (&$hookSends) {
-            if (str_contains($r->url(), '/message/sendText/') && ($r['number'] ?? null) === '971500000999') {
+            if (str_contains($r->url(), '/messages/send-text') && ($r['chatId'] ?? null) === '971500000999@c.us') {
                 $hookSends++;
             }
 
@@ -74,8 +74,8 @@ class InboundDedupTest extends TestCase
 
     public function test_distinct_messages_still_recorded_and_forwarded(): void
     {
-        $this->postJson(route('webhooks.evolution'), $this->payload('MSG-1', 'first'))->assertOk();
-        $this->postJson(route('webhooks.evolution'), $this->payload('MSG-2', 'second'))->assertOk();
+        $this->postJson(route('webhooks.openwa'), $this->payload('MSG-1', 'first'))->assertOk();
+        $this->postJson(route('webhooks.openwa'), $this->payload('MSG-2', 'second'))->assertOk();
 
         $this->assertSame(2, Message::where('direction', 'in')->count());
     }

@@ -48,7 +48,7 @@ class CampaignEditTest extends TestCase
         foreach (range(1, 4) as $i) {
             Contact::create([
                 'tenant_id' => $this->tenant->id, 'name' => "C{$i}",
-                'phone' => '97152000000'.$i, 'opted_out' => false,
+                'phone' => '97152000000'.$i, 'opted_out' => false, 'wa_status' => 'valid',
             ]);
         }
 
@@ -70,6 +70,8 @@ class CampaignEditTest extends TestCase
             'rotate_every' => 0,
             'body'        => 'Original body',
             'footer'      => null,
+            // The edit form re-submits the audience with every save.
+            'audience'    => 'all',
             'min_delay'   => 5,
             'max_delay'   => 15,
             'max_retries' => 3,

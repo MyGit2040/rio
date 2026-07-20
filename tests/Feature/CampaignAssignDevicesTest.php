@@ -42,7 +42,7 @@ class CampaignAssignDevicesTest extends TestCase
         foreach (range(1, 6) as $i) {
             Contact::create([
                 'tenant_id' => $this->tenant->id, 'name' => "C{$i}",
-                'phone' => '97151000000'.$i, 'opted_out' => false,
+                'phone' => '97151000000'.$i, 'opted_out' => false, 'wa_status' => 'valid',
             ]);
         }
 

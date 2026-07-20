@@ -42,6 +42,8 @@ class CampaignLargeAudienceTest extends TestCase
                 'tenant_id' => $tenant->id, 'name' => "Contact $i",
                 'phone' => '97150'.str_pad((string) $i, 7, '0', STR_PAD_LEFT),
                 'opted_out' => false,
+                // Campaigns only build recipients for WhatsApp-verified contacts.
+                'wa_status' => 'valid',
             ];
         }
         Contact::insert($rows);

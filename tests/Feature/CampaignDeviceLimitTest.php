@@ -47,7 +47,7 @@ class CampaignDeviceLimitTest extends TestCase
         foreach (range(1, 10) as $i) {
             Contact::create([
                 'tenant_id' => $this->tenant->id, 'name' => "C{$i}",
-                'phone' => '9715000000'.str_pad((string) $i, 2, '0', STR_PAD_LEFT), 'opted_out' => false,
+                'phone' => '9715000000'.str_pad((string) $i, 2, '0', STR_PAD_LEFT), 'opted_out' => false, 'wa_status' => 'valid',
             ]);
         }
     }

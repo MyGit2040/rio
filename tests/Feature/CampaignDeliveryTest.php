@@ -57,7 +57,7 @@ class CampaignDeliveryTest extends TestCase
 
         Contact::create([
             'tenant_id' => $this->tenant->id, 'name' => 'Sara',
-            'phone' => '971500000001', 'opted_out' => false,
+            'phone' => '971500000001', 'opted_out' => false, 'wa_status' => 'valid',
         ]);
     }
 
