@@ -117,7 +117,12 @@ class WebhookController extends Controller
     {
         // The payload may be a legacy Baileys message/list or OpenWA v5's
         // { payload: { message: { id, from, body, type, ... } } } envelope.
-        $message = $data['message'] ?? null;
+        // Current gateway deliveries put the message directly in `data`.
+        // Older gateway versions wrap it as `data.message`. Accept both shapes;
+        // otherwise a perfectly valid poll vote reaches the webhook with 200 but
+        // is silently skipped before it can be saved or forwarded to the hook.
+        $message = $data['message']
+            ?? ((isset($data['id']) && (isset($data['from']) || isset($data['chatId']))) ? $data : null);
         $items = is_array($message)
             ? [$this->normaliseOpenWaMessage($message)]
             : (isset($data['key']) ? [$data] : array_filter($data, 'is_array'));
