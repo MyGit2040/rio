@@ -59,15 +59,15 @@
             </div>
         </x-card>
 
-        <x-card title="2. One-click contact sync" subtitle="Download the sample, open it in Excel, fill it, save as CSV, then sync. Existing synced contacts are skipped so repeat uploads do not duplicate them.">
+        <x-card title="2. One-by-one Gmail contact sync" subtitle="Choose one Gmail account, then sync your list. Repeat for the next account. Existing synced contacts are skipped so repeat uploads do not duplicate them.">
             @if (! $oauthReady)
                 <p class="text-sm text-amber-700 bg-amber-50 rounded-lg p-3">Save Google OAuth details and connect at least one Gmail account before syncing.</p>
             @else
                 <form method="POST" action="{{ route('settings.google-contacts.sync') }}" enctype="multipart/form-data" class="space-y-4">
                     @csrf
                     <div><div class="flex items-center justify-between gap-3"><x-input-label for="contacts_file" value="Contact list (CSV)" /><a href="{{ route('settings.google-contacts.sample') }}" class="text-sm text-brand hover:underline">Download sample for Excel</a></div><input id="contacts_file" name="contacts_file" type="file" accept=".csv,.txt" required class="mt-1 block w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-brand file:text-white"><p class="text-xs text-gray-500 mt-1">Open the sample in Excel, fill <strong>name</strong>, <strong>phone</strong> (country code included), and optional <strong>email</strong>. In Excel choose <strong>File → Save As → CSV UTF-8</strong>, then upload it here.</p></div>
-                    <div><p class="text-sm font-medium text-gray-800 mb-2">Sync to these Gmail accounts</p><div class="grid grid-cols-1 md:grid-cols-2 gap-2">@foreach ($devices->whereNotNull('google_contacts_connected_at') as $device)<label class="flex items-center gap-2 rounded-lg border border-gray-200 p-3 text-sm"><input type="checkbox" name="device_ids[]" value="{{ $device->id }}" checked class="rounded border-gray-300 text-brand focus:ring-brand"><span>{{ $device->name }} <span class="text-gray-500">— {{ $device->google_contacts_email }}</span></span></label>@endforeach</div></div>
-                    <x-btn type="submit" variant="primary">Sync contacts to selected Gmail accounts</x-btn>
+                    <div><p class="text-sm font-medium text-gray-800 mb-2">Choose one Gmail account</p><div class="grid grid-cols-1 md:grid-cols-2 gap-2">@foreach ($devices->whereNotNull('google_contacts_connected_at') as $device)<label class="flex items-center gap-2 rounded-lg border border-gray-200 p-3 text-sm"><input type="radio" name="device_ids[]" value="{{ $device->id }}" @checked($loop->first) required class="border-gray-300 text-brand focus:ring-brand"><span>{{ $device->name }} <span class="text-gray-500">— {{ $device->google_contacts_email }}</span></span></label>@endforeach</div></div>
+                    <x-btn type="submit" variant="primary">Sync contacts to this Gmail account</x-btn>
                 </form>
             @endif
         </x-card>

@@ -232,7 +232,7 @@ class SettingsController extends Controller
     {
         $data = $request->validate([
             'contacts_file' => ['required', 'file', 'max:10240', 'mimes:csv,txt'],
-            'device_ids' => ['required', 'array', 'min:1'],
+            'device_ids' => ['required', 'array', 'size:1'],
             'device_ids.*' => ['integer'],
         ]);
         try {
@@ -267,7 +267,7 @@ class SettingsController extends Controller
         ]);
         SyncGoogleContactsRun::dispatch($run->id);
 
-        return back()->with('success', "Google sync started in the background for {$run->total} contact/account operations. You can safely leave this page; progress appears below.");
+        return back()->with('success', "Google sync started for {$devices->first()->name}. You can safely leave this page; progress appears below.");
     }
 
     public function googleContactsSample(): StreamedResponse
