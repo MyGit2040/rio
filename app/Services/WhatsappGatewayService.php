@@ -151,6 +151,30 @@ class WhatsappGatewayService implements WhatsappGateway
         ]];
     }
 
+    /**
+     * Resolve the gateway's immutable session UUID back to the CRM's session name.
+     *
+     * Webhook deliveries identify a session by UUID, while devices are stored by
+     * their human-safe `instance_name`. Keeping this translation here prevents
+     * inbound replies and poll votes from being silently discarded.
+     */
+    public function instanceNameForGatewaySessionId(string $gatewaySessionId): ?string
+    {
+        if ($gatewaySessionId === '') {
+            return null;
+        }
+
+        $response = $this->http()->get('/sessions/'.$gatewaySessionId);
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $name = data_get($response->json(), 'name') ?? data_get($response->json(), 'data.name');
+
+        return is_string($name) && $name !== '' ? $name : null;
+    }
+
     public function logout(string $instanceName): array
     {
         $this->assertSession($instanceName);

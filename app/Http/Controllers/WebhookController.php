@@ -11,10 +11,12 @@ use App\Models\Message;
 use App\Models\Suppression;
 use App\Models\WhatsappInstance;
 use App\Services\ChatbotService;
+use App\Services\WhatsappGatewayService;
 use App\Support\Tenancy;
 use App\Support\Whatsapp;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class WebhookController extends Controller
 {
@@ -42,6 +44,28 @@ class WebhookController extends Controller
         $instance = WhatsappInstance::withoutGlobalScopes()
             ->where('instance_name', $instanceName)
             ->first();
+
+        // The gateway sends its immutable UUID in `sessionId`, whereas CRM
+        // devices are stored under the gateway's session *name*. Resolve that
+        // UUID once and cache it. Without this bridge every valid inbound event
+        // (including poll votes) was quietly ignored as an unknown device.
+        if (! $instance && is_string($instanceName) && $instanceName !== '') {
+            try {
+                $resolvedName = Cache::remember(
+                    'whatsapp-gateway-session-name:'.$instanceName,
+                    now()->addDay(),
+                    fn () => WhatsappGatewayService::forTenant(null)->instanceNameForGatewaySessionId($instanceName),
+                );
+
+                if (is_string($resolvedName) && $resolvedName !== '') {
+                    $instance = WhatsappInstance::withoutGlobalScopes()
+                        ->where('instance_name', $resolvedName)
+                        ->first();
+                }
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
+        }
 
         if (! $instance) {
             return response()->json(['ok' => true]); // unknown instance — ignore quietly
