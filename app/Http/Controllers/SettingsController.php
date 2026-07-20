@@ -12,6 +12,7 @@ use App\Support\ContactCsv;
 use App\Support\CronHealth;
 use App\Support\MailConfig;
 use App\Support\Whatsapp;
+use Illuminate\Validation\Rule;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -46,10 +47,13 @@ class SettingsController extends Controller
     public function update(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'whatsapp_driver'    => ['nullable', 'in:openwa'],
+            'whatsapp_driver'    => ['nullable', Rule::in(Whatsapp::DRIVERS)],
             'openwa_base_url'    => ['nullable', 'url', 'max:255'],
             'openwa_api_key'     => ['nullable', 'string', 'max:255'],
             'openwa_session_id'  => ['nullable', 'string', 'max:100', 'regex:/^[A-Za-z0-9_-]+$/'],
+            'baileys_base_url'       => ['nullable', 'url', 'max:255'],
+            'baileys_api_key'        => ['nullable', 'string', 'max:255'],
+            'baileys_signing_secret' => ['nullable', 'string', 'max:255'],
             'ai_enabled'         => ['sometimes', 'boolean'],
             'brand_name'         => ['nullable', 'string', 'max:60'],
             'accent_color'       => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
@@ -140,10 +144,16 @@ class SettingsController extends Controller
         }
 
         $tenant->update([
-            'whatsapp_driver'    => 'openwa',
+            'whatsapp_driver'    => ($data['whatsapp_driver'] ?? null) ?: ($tenant->whatsapp_driver ?: Whatsapp::DEFAULT_DRIVER),
             'openwa_base_url'    => ($data['openwa_base_url'] ?? null) ?: null,
             'openwa_api_key'     => ($data['openwa_api_key'] ?? null) ?: null,
             'openwa_session_id'  => ($data['openwa_session_id'] ?? null) ?: null,
+            'baileys_base_url'   => ($data['baileys_base_url'] ?? null) ?: null,
+            // A blank secret keeps the stored one, matching how the SMTP and AI
+            // keys behave — re-saving the form must not silently wipe a
+            // credential the operator cannot see in the field.
+            'baileys_api_key'        => ($data['baileys_api_key'] ?? null) ?: $tenant->baileys_api_key,
+            'baileys_signing_secret' => ($data['baileys_signing_secret'] ?? null) ?: $tenant->baileys_signing_secret,
             'settings'           => $settings,
         ]);
 
@@ -345,58 +355,6 @@ class SettingsController extends Controller
                 ? "Webhook updates enabled on {$updated} device(s).".($failed ? ' Failed: '.implode(', ', $failed).'.' : '')
                 : 'Could not register webhook updates. Check the OpenWA session and API connection.',
         ], $updated > 0 ? 200 : 422);
-
-        return response()->json([
-            'ok' => false,
-            'message' => 'Configure OpenWA with --webhook using this app’s /webhooks/openwa endpoint. OpenWA webhook registration is set when its runtime starts.',
-        ], 422);
-
-        $instances = WhatsappInstance::all();
-
-        if ($instances->isEmpty()) {
-            return response()->json(['ok' => false, 'message' => 'No linked WhatsApp numbers yet — add a device first.'], 422);
-        }
-
-        $url = '';
-        $ok = 0;
-        $failed = [];
-
-        foreach ($instances as $instance) {
-            // Each number keeps the engine it was linked on (Evolution or webjs).
-            // Resolve per instance — using the tenant default would push a number's
-            // webhook to the wrong engine, which 404s (e.g. an Evolution number
-            // hitting the webjs bridge → "Failed on: <name>").
-            $engine = Whatsapp::forInstance($instance);
-
-            if (! $engine->configured()) {
-                $failed[] = $instance->name;
-                continue;
-            }
-
-            try {
-                $engine->setWebhook($instance->instance_name, $url);
-                $ok++;
-            } catch (\Throwable $e) {
-                $failed[] = $instance->name;
-                Log::warning('setWebhook failed', ['instance' => $instance->instance_name, 'driver' => $instance->driver, 'error' => $e->getMessage()]);
-            }
-        }
-
-        if ($ok === 0) {
-            return response()->json([
-                'ok' => false,
-                'message' => 'Could not enable automatic updates. Check the engine URL and key are correct. Failed on: '.implode(', ', $failed).'.',
-            ], 422);
-        }
-
-        $message = "Automatic updates enabled on {$ok} number".($ok === 1 ? '' : 's').
-            '. Delivery receipts and replies will now sync automatically.';
-
-        if ($failed !== []) {
-            $message .= ' Could not update: '.implode(', ', $failed).'.';
-        }
-
-        return response()->json(['ok' => true, 'message' => $message]);
     }
 
     /**

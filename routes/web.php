@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\WorkspaceController;
 use App\Http\Controllers\ApiTokenController;
 use App\Http\Controllers\AuditController;
 use App\Http\Controllers\BackupController;
+use App\Http\Controllers\BaileysWebhookController;
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\ChatbotRuleController;
@@ -239,6 +240,10 @@ Route::middleware('auth')->group(function () {
 
 // Inbound webhook from the OpenWA engine (no auth — verified by secret).
 Route::post('/webhooks/openwa/{secret?}', [WebhookController::class, 'handle'])->name('webhooks.openwa');
+
+// Inbound events from the Baileys gateway (no auth middleware — every delivery
+// is HMAC-signed over its own body and verified in the controller).
+Route::post('/webhooks/baileys', [BaileysWebhookController::class, 'handle'])->name('webhooks.baileys');
 
 // Inbound WhatsApp shop order webhook (no auth — verified by secret).
 Route::post('/webhooks/order/{secret?}', [OrderWebhookController::class, 'handle'])->name('webhooks.order');

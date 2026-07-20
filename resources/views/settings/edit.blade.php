@@ -124,30 +124,56 @@
                     {{ $engineReady ? 'Engine is configured.' : 'Engine not configured yet — pick an engine and add its details below.' }}
                 </div>
 
-                {{-- Engine selector --}}
-                <div>
-                    <x-input-label for="whatsapp_driver" value="Sending engine" />
-                    <input type="hidden" name="whatsapp_driver" value="openwa">
-                    <div class="block mt-1 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700">OpenWA Easy API</div>
-                    <p class="text-xs text-gray-500 mt-1">
-                        The default engine for new numbers. Numbers already linked keep the engine they were created on.
-                    </p>
-                </div>
+                {{-- Engine selector. Only the chosen engine's credential fields
+                     are shown, so an operator cannot fill in settings that will
+                     never be read. --}}
+                <div x-data="{ driver: '{{ old('whatsapp_driver', $tenant->whatsapp_driver ?: 'openwa') }}' }">
+                    <div>
+                        <x-input-label for="whatsapp_driver" value="Sending engine" />
+                        <select id="whatsapp_driver" name="whatsapp_driver" x-model="driver"
+                                class="block mt-1 w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                            <option value="openwa">OpenWA Easy API</option>
+                            <option value="baileys">Baileys gateway</option>
+                        </select>
+                        <p class="text-xs text-gray-500 mt-1">
+                            The default engine for new numbers. Numbers already linked keep the engine they were
+                            created on — a WhatsApp session cannot be moved between engines without re-linking.
+                        </p>
+                    </div>
 
-                {{-- OpenWA gateway fields --}}
-                <div class="space-y-4">
-                    <div>
-                        <x-input-label for="openwa_base_url" value="Easy API URL" />
-                        <x-text-input id="openwa_base_url" name="openwa_base_url" class="block mt-1 w-full" placeholder="http://your-vps-ip:8080" :value="old('openwa_base_url', $tenant->openwa_base_url)" />
+                    {{-- OpenWA gateway fields --}}
+                    <div class="space-y-4 mt-4" x-show="driver === 'openwa'" x-cloak>
+                        <div>
+                            <x-input-label for="openwa_base_url" value="Easy API URL" />
+                            <x-text-input id="openwa_base_url" name="openwa_base_url" class="block mt-1 w-full" placeholder="http://your-vps-ip:8080" :value="old('openwa_base_url', $tenant->openwa_base_url)" />
+                        </div>
+                        <div>
+                            <x-input-label for="openwa_api_key" value="API key" />
+                            <x-text-input id="openwa_api_key" name="openwa_api_key" class="block mt-1 w-full" placeholder="Matches OpenWA --api-key" :value="old('openwa_api_key', $tenant->openwa_api_key)" />
+                        </div>
+                        <div>
+                            <x-input-label for="openwa_session_id" value="OpenWA session ID" />
+                            <x-text-input id="openwa_session_id" name="openwa_session_id" class="block mt-1 w-full" placeholder="sales" :value="old('openwa_session_id', $tenant->openwa_session_id)" />
+                            <p class="text-xs text-gray-500 mt-1">Default session used for connection checks. Each device you add creates its own OpenWA session automatically.</p>
+                        </div>
                     </div>
-                    <div>
-                        <x-input-label for="openwa_api_key" value="API key" />
-                        <x-text-input id="openwa_api_key" name="openwa_api_key" class="block mt-1 w-full" placeholder="Matches OpenWA --api-key" :value="old('openwa_api_key', $tenant->openwa_api_key)" />
-                    </div>
-                    <div>
-                        <x-input-label for="openwa_session_id" value="OpenWA session ID" />
-                        <x-text-input id="openwa_session_id" name="openwa_session_id" class="block mt-1 w-full" placeholder="sales" :value="old('openwa_session_id', $tenant->openwa_session_id)" />
-                        <p class="text-xs text-gray-500 mt-1">Default session used for connection checks. Each device you add creates its own OpenWA session automatically.</p>
+
+                    {{-- Baileys gateway fields --}}
+                    <div class="space-y-4 mt-4" x-show="driver === 'baileys'" x-cloak>
+                        <div>
+                            <x-input-label for="baileys_base_url" value="Gateway URL" />
+                            <x-text-input id="baileys_base_url" name="baileys_base_url" class="block mt-1 w-full" placeholder="http://baileys-gateway:3090" :value="old('baileys_base_url', $tenant->baileys_base_url)" />
+                            <p class="text-xs text-gray-500 mt-1">Reach the gateway over the internal network or a reverse proxy. It must never be exposed publicly.</p>
+                        </div>
+                        <div>
+                            <x-input-label for="baileys_api_key" value="API key" />
+                            <x-text-input id="baileys_api_key" name="baileys_api_key" type="password" autocomplete="new-password" class="block mt-1 w-full" placeholder="{{ $tenant->baileys_api_key ? 'Saved — leave blank to keep' : 'Matches LARAVEL_API_KEY' }}" value="" />
+                        </div>
+                        <div>
+                            <x-input-label for="baileys_signing_secret" value="Signing secret" />
+                            <x-text-input id="baileys_signing_secret" name="baileys_signing_secret" type="password" autocomplete="new-password" class="block mt-1 w-full" placeholder="{{ $tenant->baileys_signing_secret ? 'Saved — leave blank to keep' : 'Matches LARAVEL_SIGNING_SECRET' }}" value="" />
+                            <p class="text-xs text-gray-500 mt-1">Signs every request to the gateway. Must match <code>LARAVEL_SIGNING_SECRET</code> in the gateway environment.</p>
+                        </div>
                     </div>
                 </div>
 

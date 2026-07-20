@@ -13,10 +13,13 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // The OpenWA engine posts here from outside — no CSRF token.
+        // Engines post here from outside — no CSRF token. Each endpoint
+        // authenticates its own payload (shared secret for OpenWA/order, HMAC
+        // signature for Baileys).
         $middleware->validateCsrfTokens(except: [
             'webhooks/openwa/*',
             'webhooks/openwa',
+            'webhooks/baileys',
             'webhooks/order/*',
             'webhooks/order',
         ]);
