@@ -181,9 +181,12 @@ export class SocketManager {
       })
     }
 
-    if (update.connection === 'connecting') {
-      await this.instances.transitionTo(instanceId, 'SYNCING', { reason: 'Socket connecting' })
-    }
+    // Deliberately no transition for `connecting`. STARTING already means "a
+    // socket is opening", and SYNCING is not reachable from it — SYNCING means
+    // "authenticated, pulling history". Emitting it here threw on the very
+    // first event of every connection, because `connecting` is what Baileys
+    // sends before anything else. The throw was caught and logged, so it
+    // presented as a QR that never appeared rather than as an error.
 
     if (update.connection === 'open') {
       await this.instances.transitionTo(instanceId, 'AUTHENTICATED', { reason: 'Socket open' })
