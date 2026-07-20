@@ -72,6 +72,21 @@
             @endif
         </x-card>
 
+        @if ($recentSyncs->isNotEmpty())
+            <x-card title="Recent Google syncs" subtitle="Large imports run safely in the background, so Cloudflare timeouts do not interrupt them.">
+                <div class="space-y-4">
+                    @foreach ($recentSyncs as $sync)
+                        @php($done = $sync->created + $sync->skipped + $sync->failed)
+                        <div class="rounded-lg border border-gray-200 p-3">
+                            <div class="flex items-center justify-between gap-3 text-sm"><span class="font-medium text-gray-800">{{ ucfirst($sync->status) }} · {{ $done }} of {{ $sync->total }}</span><span class="text-xs text-gray-500">{{ $sync->created_at->diffForHumans() }}</span></div>
+                            <div class="mt-2 h-2 rounded-full bg-gray-100 overflow-hidden"><div class="h-full {{ $sync->status === 'failed' ? 'bg-red-500' : 'bg-brand' }}" style="width: {{ $sync->progressPercent() }}%"></div></div>
+                            <p class="mt-2 text-xs text-gray-600">{{ $sync->created }} created · {{ $sync->skipped }} already synced · {{ $sync->failed }} failed @if($sync->error) · {{ $sync->error }} @endif</p>
+                        </div>
+                    @endforeach
+                </div>
+            </x-card>
+        @endif
+
         <x-card title="Set up every phone" subtitle="Do this directly on each Android phone. It takes about two minutes per number.">
             <ol class="list-decimal ml-5 space-y-2 text-sm text-gray-700">
                 <li>Open <strong>Settings → Passwords & accounts → Add account → Google</strong>.</li>

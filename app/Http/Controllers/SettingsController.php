@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\WhatsappInstance;
 use App\Models\Contact;
+use App\Models\GoogleContactSyncRun;
+use App\Jobs\SyncGoogleContactsRun;
 use App\Services\AiService;
 use App\Services\GoogleContactsService;
 use App\Support\ContactCsv;
@@ -160,6 +162,7 @@ class SettingsController extends Controller
             'callbackUrl' => rtrim((string) config('app.url'), '/').'/settings/google/callback',
             'oauthReady' => filled(data_get(auth()->user()->tenant->settings, 'google_contacts_client_id'))
                 && filled(data_get(auth()->user()->tenant->settings, 'google_contacts_client_secret')),
+            'recentSyncs' => GoogleContactSyncRun::latest()->take(5)->get(),
         ]);
     }
 
@@ -225,7 +228,7 @@ class SettingsController extends Controller
         return back()->with('success', "Google account saved for {$device->name}.");
     }
 
-    public function syncGoogleContacts(Request $request, GoogleContactsService $google): RedirectResponse
+    public function syncGoogleContacts(Request $request): RedirectResponse
     {
         $data = $request->validate([
             'contacts_file' => ['required', 'file', 'max:10240', 'mimes:csv,txt'],
@@ -252,18 +255,19 @@ class SettingsController extends Controller
         if (! $contacts) {
             return back()->with('error', 'No valid contacts found. Your file needs a name and a number/phone column with country codes.');
         }
-        $devices = WhatsappInstance::whereIn('id', $data['device_ids'])->get();
-        $created = $skipped = $failed = 0;
-        foreach ($devices as $device) {
-            try {
-                $result = $google->sync($device, array_values($contacts));
-                $created += $result['created']; $skipped += $result['skipped']; $failed += $result['failed'];
-            } catch (\Throwable $e) {
-                report($e);
-                $failed += count($contacts);
-            }
+        $devices = WhatsappInstance::whereIn('id', $data['device_ids'])->whereNotNull('google_contacts_token')->get();
+        if ($devices->isEmpty()) {
+            return back()->with('error', 'Connect at least one selected Gmail account before syncing.');
         }
-        return back()->with($failed ? 'error' : 'success', "Google sync complete: {$created} created, {$skipped} already synced, {$failed} failed across {$devices->count()} account(s).");
+
+        $run = GoogleContactSyncRun::create([
+            'device_ids' => $devices->pluck('id')->all(),
+            'contact_ids' => array_keys($contacts),
+            'total' => count($contacts) * $devices->count(),
+        ]);
+        SyncGoogleContactsRun::dispatch($run->id);
+
+        return back()->with('success', "Google sync started in the background for {$run->total} contact/account operations. You can safely leave this page; progress appears below.");
     }
 
     public function googleContactsSample(): StreamedResponse
