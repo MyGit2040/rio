@@ -1,0 +1,2329 @@
+openapi: 3.1.0
+
+info:
+  title: Eagleto Baileys Gateway
+  version: "1.0.0"
+  summary: WhatsApp connection and delivery service for Eagleto.
+  description: |
+    This gateway owns WhatsApp sockets, session authentication, sending,
+    receipts, inbound events and signed webhooks back to Laravel. It owns
+    nothing else. Contacts, campaigns, templates, sending limits, account
+    assignment and reporting live in the Laravel application at
+    rio.eagleto.com and are never duplicated here.
+
+    ## Status of this document
+
+    Every path, status code, field name and error code below was read from the
+    implementation in `src/`. Where something could not be verified it says so
+    in the description of the affected operation or schema. Nothing here is
+    inferred silently.
+
+    ## A note on casing
+
+    The wire format is snake_case almost everywhere: request bodies, the
+    webhook envelope, the QR response, the diagnostics responses and the
+    message lookup.
+
+    The one exception is the `instance` object returned by the instance
+    endpoints. It is the database row with three encrypted columns removed, so
+    its keys are camelCase (`externalInstanceId`, `lastConnectedAt`,
+    `reconnectAttempts`). This is a real inconsistency in the current
+    implementation, documented here as it is rather than as it ought to be.
+
+    ## Secrets in responses
+
+    The `instance` object omits exactly three columns: `proxyUsernameEnc`,
+    `proxyPasswordEnc` and `webhookSecretEnc`. Proxy credentials and webhook
+    secrets are therefore never returned, in any form, not even as ciphertext.
+
+    It does, however, include `lastQr` and `pairingCode`. Both are live
+    credentials until they are used. Treat any instance response as sensitive:
+    do not log it whole, and do not cache it.
+
+    ## Routes not covered here
+
+    `GET /media/*` exists and is deliberately omitted. It is the only route in
+    the process outside the HMAC authentication scope: media URLs are
+    authorised by a signature and an expiry embedded in the URL itself, because
+    whatever fetches the file holds no signing secret and cannot mint a nonce.
+    See `src/api/routes/media.routes.ts`.
+
+servers:
+  - url: https://gateway.internal
+    description: |
+      Reached through a reverse proxy. The container binds to 127.0.0.1 only
+      (see docker-compose.yml). Replace with your own host.
+
+tags:
+  - name: Health
+    description: Unauthenticated probes for the orchestrator.
+  - name: Instances
+    description: Lifecycle of one WhatsApp connection.
+  - name: Proxy
+    description: Per-instance outbound proxy configuration.
+  - name: Messages
+    description: Sending. Accepted for delivery, never delivered inline.
+  - name: Webhooks
+    description: Operator view of the outbound event queue.
+  - name: Diagnostics
+    description: Operational detail. Authenticated — it describes internals.
+
+security:
+  - EagletoKey: []
+    EagletoTimestamp: []
+    EagletoNonce: []
+    EagletoSignature: []
+
+paths:
+  # -------------------------------------------------------------------------
+  # Health
+  # -------------------------------------------------------------------------
+  /health/live:
+    get:
+      tags: [Health]
+      summary: Liveness probe
+      operationId: healthLive
+      description: |
+        Answers "is this process alive?". If the handler runs at all, the event
+        loop is turning, which is the whole question.
+
+        Touches no database, no Redis and no WhatsApp — deliberately. If
+        liveness checked Postgres, a database blip would fail the liveness
+        probe on every replica at once and the orchestrator would restart the
+        entire fleet, turning a recoverable hiccup into a restart storm at the
+        moment the database can least afford one.
+
+        Unauthenticated, and exempt from rate limiting: an orchestrator
+        throttled out of its own liveness check would restart a healthy
+        container.
+      security: []
+      responses:
+        "200":
+          description: Alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LivenessReport"
+        "503":
+          description: Not alive, or draining.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LivenessReport"
+
+  /health/ready:
+    get:
+      tags: [Health]
+      summary: Readiness probe
+      operationId: healthReady
+      description: |
+        Answers "should this node get traffic?". Dependencies belong here
+        rather than in liveness: an unready node keeps running and keeps its
+        WhatsApp sockets, it simply stops receiving requests.
+
+        A `warning` level still serves traffic. Warnings describe degradation
+        the node can work through, and taking it out of rotation would
+        concentrate the same load on fewer nodes and make the warning worse.
+        Only `critical` returns 503.
+
+        Three distinct 503 bodies are possible — draining, unable to build a
+        report, and a critical report. They are separated below because the
+        operator response to each differs.
+
+        Unauthenticated, and exempt from rate limiting.
+      security: []
+      responses:
+        "200":
+          description: Ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessReport"
+        "503":
+          description: |
+            Not ready. One of three shapes:
+
+              * `status: "shutting_down"` — draining. Once a node begins
+                shutting down it never becomes ready again.
+              * `status: "unready"` with a `message` — the health check itself
+                threw, so the node cannot determine its own state.
+              * `status: "unready"` with a full report — a dependency is at
+                `critical`.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ReadinessReport"
+                  - $ref: "#/components/schemas/ReadinessUnavailable"
+
+  # -------------------------------------------------------------------------
+  # Instances
+  # -------------------------------------------------------------------------
+  /v1/instances:
+    post:
+      tags: [Instances]
+      summary: Register a WhatsApp instance
+      operationId: createInstance
+      description: |
+        Creates the gateway's record of one WhatsApp account. Does not open a
+        socket — call `start` for that. The new instance is in state `CREATED`.
+
+        `external_instance_id` is the join key with Laravel
+        (`whatsapp_instances.instance_name`) and is unique. A second row for
+        the same key would split one WhatsApp account across two sessions, so
+        it is refused with 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInstanceRequest"
+      responses:
+        "201":
+          description: Registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstanceEnvelope"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: "`instance_already_exists` — that `external_instance_id` is taken."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/InvalidBody" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/instances/{instanceId}:
+    delete:
+      tags: [Instances]
+      summary: Delete an instance
+      operationId: deleteInstance
+      description: |
+        Closes the socket first, then deletes the row. The order matters: auth
+        rows cascade with the instance, so deleting under a live socket would
+        leave it writing credentials to a parent that no longer exists.
+
+        Stored credentials, Signal keys, messages, polls and events all cascade
+        away. Not reversible — the number must be linked again before it can
+        send. Prefer `logout` to end the WhatsApp session, or `pause` to stop
+        sending.
+
+        Answers **200 with the pre-delete instance**, not 204, so the caller
+        can see exactly what went.
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "200":
+          description: Deleted. The body is the instance as it was.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/InstanceEnvelope"
+                  - type: object
+                    properties:
+                      deleted:
+                        type: boolean
+                        const: true
+                      live:
+                        type: boolean
+                        const: false
+        "400": { $ref: "#/components/responses/InvalidParams" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/InstanceNotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/instances/{instanceId}/start:
+    post:
+      tags: [Instances]
+      summary: Open the WhatsApp socket
+      operationId: startInstance
+      description: |
+        Opens a socket. If usable credentials are stored the session resumes;
+        otherwise the instance moves to `QR_REQUIRED` or
+        `PAIRING_CODE_REQUIRED`.
+
+        **202, not 200.** The socket is opening. `READY` still has to be earned
+        through the handshake and the stabilization window, and it arrives as
+        an `instance.ready` webhook.
+
+        Every refusal is 409 `instance_conflict` and is a "not right now"
+        condition — the instance is disabled, the node is shutting down, or
+        another node holds the Redis ownership lease. A stored session written
+        by a different Baileys package also refuses here; see
+        `PackageMismatchError` in `src/baileys/auth-store.ts`.
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "202":
+          description: |
+            Accepted. Normally the refreshed instance; `{"started": true}` in
+            the rare case the row disappeared between the start and the reread.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/InstanceEnvelope"
+                  - type: object
+                    properties:
+                      started:
+                        type: boolean
+                        const: true
+        "400": { $ref: "#/components/responses/InvalidParams" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/InstanceNotFound" }
+        "409": { $ref: "#/components/responses/InstanceConflict" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/instances/{instanceId}/qr:
+    get:
+      tags: [Instances]
+      summary: Read the current QR
+      operationId: getInstanceQr
+      description: |
+        A pure read of the stored payload. **This endpoint never starts,
+        restarts or touches a socket.**
+
+        That is a hard rule, not an implementation detail. Laravel polls this
+        every 1-3 seconds while a QR is on screen. If polling had any effect on
+        the socket, watching the QR would churn the very session the user is
+        linking, and a forgotten browser tab would keep killing a working
+        number.
+
+        `qr_image_base64` is a PNG rendered on demand from `qr_data`, so a
+        rotation can never leave a stale image. If rendering fails the field is
+        null and `qr_data` still lets the caller draw its own.
+
+        `expires_at` is reported, not enforced. WhatsApp rotates roughly every
+        20 seconds, so the newest stored code can briefly read as expired.
+        Withholding it would blank the screen mid-scan.
+
+        `qr_data` is a live credential until it is scanned. Do not log it.
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "200":
+          description: |
+            The stored QR. All three QR fields are null when none is
+            outstanding — this is still a 200.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QrResponse"
+        "400": { $ref: "#/components/responses/InvalidParams" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/InstanceNotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/instances/{instanceId}/pairing-code:
+    post:
+      tags: [Instances]
+      summary: Request a pairing code
+      operationId: requestPairingCode
+      description: |
+        Asks WhatsApp for a pairing code, as an alternative to scanning a QR.
+
+        Requires a **live socket on this node** — codes are issued by the
+        connection, not by the database. Start the instance first, otherwise
+        this answers 409.
+
+        The submitted number may be formatted (`+971 50 123 4567`); separators
+        are stripped before it reaches Baileys, which wants bare digits.
+
+        `expires_at` is advertised as two minutes out so a stale code looks
+        stale in the UI. WhatsApp remains the authority on whether a code is
+        still accepted — the real lifetime is not published.
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PairingCodeRequest"
+      responses:
+        "200":
+          description: Code issued.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/InstanceEnvelope"
+                  - type: object
+                    required: [pairing_code, expires_at]
+                    properties:
+                      pairing_code:
+                        type: string
+                        description: Entered on the phone. Treat as a credential.
+                      expires_at:
+                        type: string
+                        format: date-time
+        "400": { $ref: "#/components/responses/InvalidParams" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/InstanceNotFound" }
+        "409":
+          description: |
+            `instance_conflict` — no live socket on this node, the current
+            state cannot move to `PAIRING_CODE_REQUIRED`, or WhatsApp refused
+            the request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422": { $ref: "#/components/responses/InvalidBody" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/instances/{instanceId}/status:
+    get:
+      tags: [Instances]
+      summary: Read instance state
+      operationId: getInstanceStatus
+      description: |
+        The instance row and whether **this node** currently holds its socket.
+        The fleet-wide view is in diagnostics.
+
+        Sending requires state `READY` **and** an elapsed stabilization window;
+        `state` alone does not tell you whether a send will be accepted.
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "200":
+          description: Current state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstanceEnvelope"
+        "400": { $ref: "#/components/responses/InvalidParams" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/InstanceNotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/instances/{instanceId}/restart:
+    post:
+      tags: [Instances]
+      summary: Close and reopen the socket
+      operationId: restartInstance
+      description: |
+        Stops the socket, records `STOPPED`, then starts again. The explicit
+        stop is not decoration: `STARTING` is not a legal transition out of
+        `READY`, so without it a restart of a healthy instance would be
+        rejected by the state machine.
+
+        Keeps the stored session. **No re-link is needed.** Use this when a
+        number is connected but misbehaving; use `logout` only when you intend
+        to unlink it.
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "202":
+          description: Accepted.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/InstanceEnvelope"
+                  - type: object
+                    properties:
+                      restarted:
+                        type: boolean
+                        const: true
+        "400": { $ref: "#/components/responses/InvalidParams" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/InstanceNotFound" }
+        "409": { $ref: "#/components/responses/InstanceConflict" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/instances/{instanceId}/pause:
+    post:
+      tags: [Instances]
+      summary: Stop using this number
+      operationId: pauseInstance
+      description: |
+        Closes the socket and clears `enabled`, which blocks sending outright
+        regardless of state. Auth state is kept, so `resume` needs no QR.
+
+        The socket is closed **before** the flag flips. The close arrives back
+        as a `DISCONNECTED` transition, and `DISCONNECTED -> PAUSED` is legal
+        while `PAUSED -> DISCONNECTED` is not; the other order would make the
+        socket's own close event illegal on every pause.
+
+        Pausing an instance that is already terminal (logged out, replaced,
+        restricted) still succeeds. There is no session to pause, but the
+        operator's intent is recorded, and that is what stops boot-time resume
+        picking it up later.
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "200":
+          description: Paused.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstanceEnvelope"
+        "400": { $ref: "#/components/responses/InvalidParams" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/InstanceNotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/instances/{instanceId}/resume:
+    post:
+      tags: [Instances]
+      summary: Start using this number again
+      operationId: resumeInstance
+      description: |
+        Sets `enabled` and starts the socket. Because pausing closed the
+        socket, resuming replays the full handshake — there is no
+        `PAUSED -> READY` shortcut, and the stabilization window applies again
+        before sending is permitted.
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "202":
+          description: Accepted.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/InstanceEnvelope"
+                  - type: object
+                    properties:
+                      resumed:
+                        type: boolean
+                        const: true
+        "400": { $ref: "#/components/responses/InvalidParams" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/InstanceNotFound" }
+        "409": { $ref: "#/components/responses/InstanceConflict" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/instances/{instanceId}/logout:
+    post:
+      tags: [Instances]
+      summary: Unlink the number from WhatsApp
+      operationId: logoutInstance
+      description: |
+        Logs the session out and clears the stored auth material. The next
+        start needs a fresh QR or pairing code.
+
+        **This is not a heavier restart.** It unlinks the number. Use `restart`
+        for a flaky connection.
+
+        Refused with 409 when the current state has no session to log out.
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "200":
+          description: Logged out.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/InstanceEnvelope"
+                  - type: object
+                    properties:
+                      logged_out:
+                        type: boolean
+                        const: true
+        "400": { $ref: "#/components/responses/InvalidParams" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/InstanceNotFound" }
+        "409":
+          description: |
+            `instance_conflict` — the instance is in a state with no session to
+            log out.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  # -------------------------------------------------------------------------
+  # Proxy
+  # -------------------------------------------------------------------------
+  /v1/instances/{instanceId}/proxy:
+    put:
+      tags: [Proxy]
+      summary: Set the outbound proxy
+      operationId: setInstanceProxy
+      description: |
+        Stores a proxy for this instance. Username and password are encrypted
+        at rest and are never returned by any endpoint.
+
+        **Binds on the next start**, which is what `applies_on_next_start`
+        reports. A live session's egress is not rewired mid-flight: doing so
+        would change the connection's apparent origin under WhatsApp, which is
+        unreliable and is deliberately not implemented.
+
+        The `proxy` field in the response is a redacted URL — the password is
+        never reflected back into a log, a browser history or an error report.
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProxyRequest"
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyMutationResponse"
+        "400": { $ref: "#/components/responses/InvalidParams" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/InstanceNotFound" }
+        "422": { $ref: "#/components/responses/InvalidBody" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+    delete:
+      tags: [Proxy]
+      summary: Remove the proxy
+      operationId: deleteInstanceProxy
+      description: |
+        Clears the proxy and its stored credentials. The instance connects
+        directly from the next start. Answers 200 with the updated instance,
+        not 204.
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "200":
+          description: Removed. `proxy` is null.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyMutationResponse"
+        "400": { $ref: "#/components/responses/InvalidParams" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/InstanceNotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/instances/{instanceId}/proxy/test:
+    post:
+      tags: [Proxy]
+      summary: Test a proxy
+      operationId: testInstanceProxy
+      description: |
+        Checks a proxy without touching the WhatsApp session.
+
+        **The body is optional.** With one, the supplied configuration is
+        tested — check before you save. Without one, the stored configuration
+        is tested. If there is no body and nothing stored, the answer is 400
+        `proxy_not_configured`.
+
+        A failed test is still **200**: the request succeeded, and `ok` carries
+        the result. The proxy outcome is reported separately from any WhatsApp
+        outcome because "the proxy is unreachable" and "WhatsApp rejected this
+        account" need entirely different responses.
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProxyRequest"
+      responses:
+        "200":
+          description: Test completed. Read `ok` for the result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyTestResult"
+        "400":
+          description: |
+            `invalid_params`, or `proxy_not_configured` when no proxy is stored
+            and none was supplied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/InstanceNotFound" }
+        "422": { $ref: "#/components/responses/InvalidBody" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  # -------------------------------------------------------------------------
+  # Messages
+  # -------------------------------------------------------------------------
+  /v1/messages/text:
+    post:
+      tags: [Messages]
+      summary: Send a text message
+      operationId: sendText
+      description: |
+        See `SendAccepted` for the shared semantics of every send: 202,
+        idempotency, and what the response does and does not promise.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendTextRequest"
+      responses:
+        "202": { $ref: "#/components/responses/SendAccepted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/SendConflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/InvalidBody" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/messages/image:
+    post:
+      tags: [Messages]
+      summary: Send an image
+      operationId: sendImage
+      description: |
+        Supply exactly one of `url` or `base64`. See `SendMediaRequest` for why
+        both is an error rather than a preference, and why `url` is the right
+        choice for anything large.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMediaRequest"
+      responses:
+        "202": { $ref: "#/components/responses/SendAccepted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/SendConflict" }
+        "413": { $ref: "#/components/responses/MediaTooLarge" }
+        "422": { $ref: "#/components/responses/InvalidBody" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/messages/video:
+    post:
+      tags: [Messages]
+      summary: Send a video
+      operationId: sendVideo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMediaRequest"
+      responses:
+        "202": { $ref: "#/components/responses/SendAccepted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/SendConflict" }
+        "413": { $ref: "#/components/responses/MediaTooLarge" }
+        "422": { $ref: "#/components/responses/InvalidBody" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/messages/audio:
+    post:
+      tags: [Messages]
+      summary: Send an audio message
+      operationId: sendAudio
+      description: |
+        WhatsApp needs a mime type to render audio correctly. Set `mime_type`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMediaRequest"
+      responses:
+        "202": { $ref: "#/components/responses/SendAccepted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/SendConflict" }
+        "413": { $ref: "#/components/responses/MediaTooLarge" }
+        "422": { $ref: "#/components/responses/InvalidBody" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/messages/document:
+    post:
+      tags: [Messages]
+      summary: Send a document
+      operationId: sendDocument
+      description: |
+        `file_name` defaults to `document` when omitted. Without a name
+        WhatsApp shows an untitled blob and the recipient has no idea what they
+        have been sent, so set it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMediaRequest"
+      responses:
+        "202": { $ref: "#/components/responses/SendAccepted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/SendConflict" }
+        "413": { $ref: "#/components/responses/MediaTooLarge" }
+        "422": { $ref: "#/components/responses/InvalidBody" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/messages/location:
+    post:
+      tags: [Messages]
+      summary: Send a location
+      operationId: sendLocation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendLocationRequest"
+      responses:
+        "202": { $ref: "#/components/responses/SendAccepted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/SendConflict" }
+        "422": { $ref: "#/components/responses/InvalidBody" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/messages/contact:
+    post:
+      tags: [Messages]
+      summary: Send a contact card
+      operationId: sendContact
+      description: |
+        The gateway builds the vCard. Supply the fields, not a vCard string — a
+        vCard is the only format WhatsApp accepts, and the `waid` parameter
+        that makes the shared card tappable as a WhatsApp contact is derived
+        from `contact_phone_number`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendContactRequest"
+      responses:
+        "202": { $ref: "#/components/responses/SendAccepted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/SendConflict" }
+        "422": { $ref: "#/components/responses/InvalidBody" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/messages/poll:
+    post:
+      tags: [Messages]
+      summary: Send a poll
+      operationId: sendPoll
+      description: |
+        The gateway retains the poll creation payload, because WhatsApp
+        delivers votes as encrypted aggregates that only resolve against the
+        original message. Votes arrive later as `poll.vote_received`,
+        `poll.vote_changed` and `poll.vote_removed` webhooks.
+
+        Options must be **unique**. Votes are resolved back to option names, so
+        two identical options are indistinguishable in the aggregate and
+        Laravel could never tell which was chosen.
+
+        An unknown `instance_id` is 409 `instance_not_sendable`, not 404: the
+        gateway will not reroute a poll to another number.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendPollRequest"
+      responses:
+        "202": { $ref: "#/components/responses/SendAccepted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/SendConflict" }
+        "422": { $ref: "#/components/responses/InvalidBody" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/messages/by-idempotency-key/{key}:
+    get:
+      tags: [Messages]
+      summary: Look up a message by its idempotency key
+      operationId: getMessageByIdempotencyKey
+      description: |
+        The answer to "did my earlier request actually land?".
+
+        This is what Laravel calls after an HTTP timeout instead of resending
+        blindly. A 404 states plainly that nothing was accepted under this key
+        and it is safe to send.
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: The `idempotency_key` from the original send.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+      responses:
+        "200":
+          description: The message record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GatewayMessage"
+        "400": { $ref: "#/components/responses/InvalidParams" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: |
+            `message_not_found` — nothing was accepted under this key, so the
+            send did not reach the gateway and may be retried.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  # -------------------------------------------------------------------------
+  # Webhooks
+  # -------------------------------------------------------------------------
+  /v1/webhooks:
+    get:
+      tags: [Webhooks]
+      summary: List webhook events
+      operationId: listWebhookEvents
+      description: |
+        Newest first, cursor-paginated. The operator view of the outbound
+        queue — use it to find failures and dead letters.
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: |
+            Filter by delivery status. Case-insensitive: `dead_letter` and
+            `DEAD_LETTER` both work.
+          schema:
+            $ref: "#/components/schemas/WebhookStatus"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: cursor
+          in: query
+          required: false
+          description: |
+            The `next_cursor` from the previous page. The row it names is
+            excluded from the new page.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: A page of events.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, next_cursor]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WebhookEventSummary"
+                  next_cursor:
+                    type: [string, "null"]
+                    description: |
+                      Null on the last page. Only a full page can have more
+                      behind it.
+        "400":
+          description: "`invalid_query`, naming the offending parameters."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/webhooks/{eventId}:
+    get:
+      tags: [Webhooks]
+      summary: Read one webhook event
+      operationId: getWebhookEvent
+      description: |
+        The summary fields plus the full `payload` and `metadata` that were, or
+        will be, delivered to Laravel.
+      parameters:
+        - $ref: "#/components/parameters/EventId"
+      responses:
+        "200":
+          description: The event.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEventDetail"
+        "400":
+          description: "`invalid_params`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "`not_found`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/webhooks/{eventId}/replay:
+    post:
+      tags: [Webhooks]
+      summary: Requeue a webhook event
+      operationId: replayWebhookEvent
+      description: |
+        Puts the event back in the queue: status `PENDING`, attempts reset to
+        zero, due immediately, `delivered_at` cleared.
+
+        Attempts are reset because a dead letter has already spent its budget —
+        without the reset the first failure would dead-letter it again and the
+        replay would achieve nothing. `last_error` and `last_status_code` are
+        kept as the record of why it needed replaying.
+
+        Delivery is the worker's job. This endpoint does not deliver inline, so
+        an operator cannot race a worker into a double delivery.
+      parameters:
+        - $ref: "#/components/parameters/EventId"
+      responses:
+        "200":
+          description: Requeued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEventSummary"
+        "400":
+          description: "`invalid_params`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "`not_found`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  # -------------------------------------------------------------------------
+  # Diagnostics
+  # -------------------------------------------------------------------------
+  /v1/diagnostics:
+    get:
+      tags: [Diagnostics]
+      summary: Gateway-wide diagnostics
+      operationId: getDiagnostics
+      description: |
+        The fleet view from this node's perspective.
+
+        Socket counts are **local** (a socket is owned by exactly one node);
+        database counts are **fleet-wide**. Both are reported side by side on
+        purpose: a large gap between "instances the database calls READY" and
+        "sockets this node holds" is the signature of instances stranded on a
+        node that died without releasing its ownership leases.
+
+        The Baileys version is resolved through the adapter loader rather than
+        read from configuration, so the reported version is the build that
+        actually loaded. The two differ precisely when something is wrong, and
+        `load_error` names it.
+
+        Authenticated, deliberately — not exempt like the health probes. This
+        describes a customer's WhatsApp fleet, and that is exactly what an
+        unauthenticated caller should never be able to enumerate.
+      responses:
+        "200":
+          description: Diagnostics.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Diagnostics"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/instances/{instanceId}/diagnostics:
+    get:
+      tags: [Diagnostics]
+      summary: Diagnostics for one instance
+      operationId: getInstanceDiagnostics
+      description: |
+        Everything needed to explain one number's behaviour, in one request.
+
+        `credentials.last_write_at` is the auth write clock and is the single
+        most useful field here. A session whose credentials stopped being
+        persisted looks perfectly healthy right up until it is asked to
+        reconnect.
+
+        `credentials.baileys_package` against `credentials.configured_package`
+        is where a package mismatch becomes visible **before** it becomes a
+        surprise QR re-scan.
+
+        The proxy is reported as host, type and port only. Credentials are
+        encrypted at rest and are never returned, in any form.
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "200":
+          description: Instance diagnostics.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstanceDiagnostics"
+        "400": { $ref: "#/components/responses/InvalidParams" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/InstanceNotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+# ---------------------------------------------------------------------------
+components:
+  securitySchemes:
+    EagletoKey:
+      type: apiKey
+      in: header
+      name: X-Eagleto-Key
+      description: |
+        The shared API key (`LARAVEL_API_KEY`). Compared in constant time.
+
+        All four schemes must be sent together. The key alone proves only that
+        the caller once held a shared string — it survives being logged by a
+        proxy or copied into a bug report. The signature is what binds a
+        request to its own method, path, body, timestamp and nonce.
+
+    EagletoTimestamp:
+      type: apiKey
+      in: header
+      name: X-Eagleto-Timestamp
+      description: |
+        Unix seconds. Must be within `REQUEST_MAX_SKEW_SECONDS` (default 300)
+        of the gateway's clock, in either direction.
+
+        A future timestamp is refused as firmly as an expired one: nonce rows
+        are pruned once they age past the skew, so a request stamped an hour
+        ahead would still verify after its nonce had been swept — an
+        indefinitely replayable request.
+
+        Failures here return `stale_timestamp`, which is specific on purpose:
+        an integrator cannot fix a clock they are not told about.
+
+    EagletoNonce:
+      type: apiKey
+      in: header
+      name: X-Eagleto-Nonce
+      description: |
+        Single-use random token. Pattern `^[A-Za-z0-9_-]{8,128}$`.
+
+        The charset is restricted because the nonce is an attacker-chosen field
+        inside a newline-delimited signature base; a newline in it could shift
+        the remaining fields so two different requests produce the same base.
+
+        A nonce is spent only after the signature verifies, so unsigned traffic
+        cannot burn nonces or fill the table. Presenting one twice is a replay
+        and is refused.
+
+    EagletoSignature:
+      type: apiKey
+      in: header
+      name: X-Eagleto-Signature
+      description: |
+        HMAC-SHA256, lowercase hex, 64 characters. Secret:
+        `LARAVEL_SIGNING_SECRET`.
+
+        Base string — five fields joined by NEWLINE characters, in this exact
+        order (`src/security/request-signature.ts`):
+
+            <timestamp>\n<nonce>\n<METHOD>\n<path>\n<rawBody>
+
+        The separator is a newline, not a dot.
+
+          * `METHOD` is uppercased before signing.
+          * `path` is the request target INCLUDING the query string, so
+            `?limit=1` cannot be rewritten to `?limit=100000` on a captured
+            request.
+          * `rawBody` is the exact bytes sent. Never re-serialise: JSON key
+            order and whitespace do not survive a parse/stringify round trip.
+          * With no body, `rawBody` is the empty string.
+
+        Compared in constant time.
+
+  parameters:
+    InstanceId:
+      name: instanceId
+      in: path
+      required: true
+      description: |
+        The **gateway's own** instance id — the cuid returned as `id` when the
+        instance was created. Not Laravel's `external_instance_id`.
+      schema:
+        type: string
+        pattern: "^[A-Za-z0-9_-]{1,64}$"
+
+    EventId:
+      name: eventId
+      in: path
+      required: true
+      description: The webhook event id (a cuid). Same value as `event_id`.
+      schema:
+        type: string
+        minLength: 1
+
+  responses:
+    Unauthorized:
+      description: |
+        Authentication failed, or replay protection is unavailable.
+
+        Credential failures share one opaque code, `unauthorized`. Telling a
+        caller "the key was right but the signature was wrong" would confirm
+        that a leaked key is still live. The precise reason goes to the gateway
+        log against the request id, returned in `X-Request-Id`.
+
+        Structural failures get a specific code, because they are integration
+        mistakes rather than secrets:
+
+          * `missing_credentials` — one or more of the four headers is absent.
+          * `stale_timestamp` — outside the accepted window. Check both clocks.
+          * `unauthorized` — unknown key, bad signature, or a replayed nonce.
+          * `nonce_store_unavailable` — 503, not 401. Replay protection is
+            down, which is an outage rather than a verdict. Retry shortly.
+          * `invalid_json` — 400. Reported only after authentication passes, so
+            an unauthenticated caller learns nothing about how its body was
+            read.
+          * `ip_not_allowed` — 403. The source is not in `API_ALLOWED_IPS`.
+      headers:
+        X-Request-Id:
+          description: Correlates this response with the gateway's log lines.
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    InvalidParams:
+      description: "`invalid_params` — the path parameter failed validation."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    InvalidBody:
+      description: |
+        `invalid_body` — the body failed validation. The message names each
+        rejected field by path. It never echoes the submitted value, which
+        could be message content.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    InstanceNotFound:
+      description: "`instance_not_found`."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    InstanceConflict:
+      description: |
+        `instance_conflict` — a "not right now" condition: the instance is
+        disabled, the node is shutting down, another node holds the ownership
+        lease, or the requested lifecycle move is not legal from the current
+        state.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    SendConflict:
+      description: |
+        Two distinct refusals, both 409:
+
+          * `idempotency_key_reused` — this key was already used with a
+            **different** payload. Refused rather than silently serving the
+            original, which would hide a caller bug until someone noticed the
+            wrong text had gone out. The same key with the *same* payload is
+            not an error: it returns 202 with `status: "duplicate"`.
+          * `instance_not_sendable` — the instance cannot send: unknown,
+            disabled, not `READY`, or still inside its stabilization window.
+            Never a redirect to another number — which WhatsApp account a
+            message belongs to is Laravel's decision, and rerouting would send
+            a customer a message from a number they have never seen.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    MediaTooLarge:
+      description: |
+        `media_too_large` — inline base64 exceeded `MAX_MEDIA_SIZE_MB`. Send
+        large files by `url` instead; Baileys streams those.
+
+        Note the 2 MB request body limit usually bites first. See
+        `PayloadTooLarge`.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    PayloadTooLarge:
+      description: |
+        `payload_too_large` — the request body exceeded 2 MB.
+
+        The limit is deliberately modest: the body is read and parsed **before**
+        the auth hook can reject a caller, so whatever this number is, an
+        unauthenticated client can make the process buffer it. It is the real
+        ceiling on inline base64 media.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    RateLimited:
+      description: |
+        `rate_limited` — more than 1200 requests per minute from this source.
+
+        A coarse abuse guard, not a business throttle. In normal operation
+        there is exactly one caller, so a tight limit would cap the whole
+        integration rather than stop an attacker. Campaign pacing, daily caps
+        and per-number throttling are Laravel's job.
+
+        In-memory and therefore per node: a fleet of N nodes allows N times
+        this. Health probes are exempt.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    SendAccepted:
+      description: Accepted for delivery. See `SendAccepted`.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SendAccepted"
+
+  schemas:
+    Error:
+      type: object
+      description: The error shape for every failure response.
+      required: [error]
+      additionalProperties: false
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          additionalProperties: false
+          properties:
+            code:
+              type: string
+              description: |
+                Stable and machine-readable. The full set in the current
+                implementation:
+
+                Authentication — `unauthorized`, `missing_credentials`,
+                `stale_timestamp`, `ip_not_allowed`, `nonce_store_unavailable`,
+                `invalid_json`.
+
+                Framework — `not_found`, `internal_error`, `payload_too_large`,
+                `unsupported_media_type`, `invalid_body`, `rate_limited`,
+                `bad_request`.
+
+                Instances — `invalid_params`, `instance_not_found`,
+                `instance_conflict`, `instance_already_exists`,
+                `proxy_not_configured`, `qr_unavailable`.
+
+                Sending — `idempotency_key_reused`, `instance_not_sendable`,
+                `media_too_large`, `invalid_base64`, `message_not_found`.
+
+                Webhooks — `invalid_query`.
+              examples: ["instance_not_found"]
+            message:
+              type: string
+              description: |
+                Human-readable and safe to show an operator. A 5xx message is
+                replaced in production with a request id rather than forwarded:
+                internal error text routinely carries table names, file paths
+                and query fragments, none of it actionable by the caller and
+                all of it useful to an attacker.
+              examples: ["No instance with id clx8k1a2b0000wxyz9876mnop."]
+
+    InstanceState:
+      type: string
+      description: |
+        The instance lifecycle. All sixteen values, matching the
+        `InstanceState` enum in `prisma/schema.prisma` and `INSTANCE_STATES` in
+        `src/types/index.ts`. See docs/STATE_MACHINE.md.
+      enum:
+        - CREATED
+        - STARTING
+        - QR_REQUIRED
+        - PAIRING_CODE_REQUIRED
+        - PAIRING
+        - AUTHENTICATED
+        - SYNCING
+        - READY
+        - DISCONNECTED
+        - RECONNECT_WAIT
+        - PAUSED
+        - LOGGED_OUT
+        - REPLACED
+        - RESTRICTED
+        - ERROR
+        - STOPPED
+
+    MessageStatus:
+      type: string
+      description: Delivery status of one outgoing message.
+      enum: [ACCEPTED, SENT, SERVER_ACK, DELIVERED, READ, PLAYED, FAILED]
+
+    WebhookStatus:
+      type: string
+      description: |
+        Delivery status of one outbound event.
+
+          * `PENDING` — persisted, waiting for a worker.
+          * `DELIVERING` — claimed by a worker right now.
+          * `DELIVERED` — Laravel answered 2xx.
+          * `RETRY_WAIT` — failed, waiting for its backoff to expire.
+          * `DEAD_LETTER` — attempts exhausted. Needs an operator.
+      enum: [PENDING, DELIVERING, DELIVERED, RETRY_WAIT, DEAD_LETTER]
+
+    BaileysPackage:
+      type: string
+      enum: [v6, v7rc, fork]
+
+    Instance:
+      type: object
+      description: |
+        The instance row with `proxyUsernameEnc`, `proxyPasswordEnc` and
+        `webhookSecretEnc` removed.
+
+        **Keys are camelCase here**, unlike the rest of the API — this object
+        is the database row, projected. See the casing note in the API
+        description.
+
+        **It includes `lastQr` and `pairingCode`.** Both are live credentials
+        until used. Do not log this object whole.
+      properties:
+        id:
+          type: string
+          description: The gateway's own id. This is the `{instanceId}` in paths.
+        tenantReference:
+          type: string
+          description: |
+            Opaque tenant identifier supplied by Laravel. The gateway never
+            interprets it; it is echoed back on every webhook.
+        externalInstanceId:
+          type: string
+          description: |
+            Laravel's `whatsapp_instances.instance_name`. Unique — the join key
+            between the two systems.
+        displayName:
+          type: [string, "null"]
+        phoneNumber:
+          type: [string, "null"]
+        state:
+          $ref: "#/components/schemas/InstanceState"
+        authStatus:
+          type: [string, "null"]
+          description: Free-text diagnostic detail. Never parse this.
+        connectionStatus:
+          type: [string, "null"]
+          description: Free-text diagnostic detail. Never parse this.
+        lastConnectedAt:
+          type: [string, "null"]
+          format: date-time
+        lastDisconnectedAt:
+          type: [string, "null"]
+          format: date-time
+        lastQr:
+          type: [string, "null"]
+          description: |
+            The current QR payload. A live credential until scanned. Prefer the
+            QR endpoint, which also renders a PNG.
+        lastQrAt:
+          type: [string, "null"]
+          format: date-time
+        qrExpiresAt:
+          type: [string, "null"]
+          format: date-time
+        pairingCode:
+          type: [string, "null"]
+          description: The current pairing code. A live credential until used.
+        pairingCodeExpiresAt:
+          type: [string, "null"]
+          format: date-time
+        lastErrorCode:
+          type: [string, "null"]
+        lastErrorMessage:
+          type: [string, "null"]
+        reconnectAttempts:
+          type: integer
+        reconnectAfter:
+          type: [string, "null"]
+          format: date-time
+        reconnectWindowStartedAt:
+          type: [string, "null"]
+          format: date-time
+          description: Start of the current attempt window, for the circuit breaker.
+        baileysPackage:
+          type: [string, "null"]
+          description: |
+            Per-instance override of `BAILEYS_PACKAGE`, when one is set.
+        readySince:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            When the instance became `READY`. Sending is permitted only once
+            `INSTANCE_STABILIZATION_SECONDS` have elapsed from this timestamp.
+        proxyEnabled:
+          type: boolean
+        proxyType:
+          type: [string, "null"]
+        proxyHost:
+          type: [string, "null"]
+        proxyPort:
+          type: [integer, "null"]
+        webhookUrl:
+          type: [string, "null"]
+          description: Per-instance override of `LARAVEL_WEBHOOK_URL`.
+        enabled:
+          type: boolean
+          description: |
+            Cleared by `pause`. Blocks sending outright, regardless of state.
+        ownerNodeId:
+          type: [string, "null"]
+          description: |
+            The node believed to hold this socket. Advisory only — the Redis
+            lease is the authority.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    InstanceEnvelope:
+      type: object
+      description: The standard instance response.
+      required: [instance, live]
+      properties:
+        instance:
+          $ref: "#/components/schemas/Instance"
+        live:
+          type: boolean
+          description: |
+            Whether **this node** currently holds the socket. A socket is owned
+            by exactly one node, so `false` does not mean the instance is down
+            — it may be live elsewhere. The fleet view is in diagnostics.
+
+    CreateInstanceRequest:
+      type: object
+      additionalProperties: false
+      required: [tenant_reference, external_instance_id]
+      properties:
+        tenant_reference:
+          type: string
+          minLength: 1
+          maxLength: 128
+        external_instance_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Laravel's `whatsapp_instances.instance_name`. Must be unique.
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        phone_number:
+          type: string
+          minLength: 1
+          maxLength: 32
+          description: |
+            Optional hint. Digits and the usual separators. The authoritative
+            number comes from WhatsApp once linked.
+        baileys_package:
+          $ref: "#/components/schemas/BaileysPackage"
+        webhook_url:
+          type: string
+          format: uri
+          maxLength: 2048
+        enabled:
+          type: boolean
+
+    PairingCodeRequest:
+      type: object
+      additionalProperties: false
+      required: [phone_number]
+      properties:
+        phone_number:
+          type: string
+          minLength: 6
+          maxLength: 32
+          description: |
+            International format. Digits and the usual separators; at least six
+            digits. `+971 50 123 4567` is accepted — separators are stripped
+            before the number reaches Baileys.
+          examples: ["+971 50 123 4567"]
+
+    QrResponse:
+      type: object
+      required: [instance_id, status, qr_data, qr_image_base64, expires_at]
+      properties:
+        instance_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/InstanceState"
+        qr_data:
+          type: [string, "null"]
+          description: |
+            The QR's text content, to render yourself. A live credential until
+            scanned.
+        qr_image_base64:
+          type: [string, "null"]
+          description: |
+            A 512px PNG of `qr_data`, base64-encoded, rendered on demand. Null
+            if rendering failed — `qr_data` is still usable.
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            Reported, not enforced. Between rotations the newest stored code
+            can briefly read as expired.
+
+    ProxyRequest:
+      type: object
+      additionalProperties: false
+      required: [type, host, port]
+      properties:
+        type:
+          type: string
+          enum: [http, https, socks5]
+        host:
+          type: string
+          minLength: 1
+          maxLength: 255
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        username:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Stored encrypted. Never returned.
+        password:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Stored encrypted. Never returned.
+
+    ProxyMutationResponse:
+      allOf:
+        - $ref: "#/components/schemas/InstanceEnvelope"
+        - type: object
+          required: [proxy, applies_on_next_start]
+          properties:
+            proxy:
+              type: [string, "null"]
+              description: |
+                A redacted proxy URL, or null after a delete. The password is
+                never reflected back.
+              examples: ["http://user:***@proxy.example.com:8080"]
+            applies_on_next_start:
+              type: boolean
+              const: true
+              description: |
+                A live session's egress is not rewired mid-flight. Restart the
+                instance to apply the change.
+
+    ProxyTestResult:
+      type: object
+      required: [instance_id, proxy, ok, latency_ms, error]
+      properties:
+        instance_id:
+          type: string
+        proxy:
+          type: string
+          description: Redacted proxy URL.
+        ok:
+          type: boolean
+          description: |
+            The result of the test. A failed test is still HTTP 200 — the
+            request itself succeeded.
+        latency_ms:
+          type: [integer, "null"]
+        error:
+          type: [string, "null"]
+
+    SendAccepted:
+      type: object
+      description: |
+        ## Sending
+
+        A send returns **202 Accepted**. That is a promise that the request was
+        recorded, not that WhatsApp delivered anything. A 200 here would be a
+        claim about WhatsApp the gateway is in no position to make yet.
+
+        Transmission happens on the instance's serial queue, and the outcome
+        arrives at Laravel as a webhook: `message.sent`, `message.server_ack`,
+        `message.delivered`, `message.read`, `message.played` or
+        `message.failed`.
+
+        ## Idempotency
+
+        Every send carries an `idempotency_key` chosen by Laravel. A repeat of
+        the same key never produces a second WhatsApp message — that is what
+        makes an HTTP timeout safe to retry.
+
+          * Same key, same payload — 202 with `status: "duplicate"` and the
+            original `gateway_message_id`. Nothing is sent.
+          * Same key, different payload — 409 `idempotency_key_reused`.
+          * Unsure whether a send landed — call
+            `GET /v1/messages/by-idempotency-key/{key}` before retrying.
+      required: [success, status, gateway_message_id, client_message_id, instance_id]
+      properties:
+        success:
+          type: boolean
+          const: true
+        status:
+          type: string
+          enum: [accepted, duplicate]
+          description: |
+            `accepted` — recorded for the first time and queued.
+            `duplicate` — this key was already accepted. Nothing was sent
+            again.
+        gateway_message_id:
+          type: string
+          description: |
+            The gateway's id for this message. Store it: every status webhook
+            carries it.
+        client_message_id:
+          type: [string, "null"]
+          description: Echoed from the request, or null.
+        instance_id:
+          type: string
+
+    SendBase:
+      type: object
+      description: Fields common to every send.
+      required: [instance_id, recipient, idempotency_key]
+      properties:
+        instance_id:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{1,64}$"
+          description: The gateway instance id that will send this.
+        recipient:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: |
+            A phone number, or a full JID.
+
+            A phone number may contain digits and the separators people type
+            (`+`, spaces, brackets, dots, hyphens) and must contain at least
+            one digit.
+
+            A value containing `@` is treated as a JID and accepted as-is —
+            `1234@s.whatsapp.net`, `1234-567@g.us`, `abc@lid`. Groups,
+            broadcasts and LIDs have no phone number, and rewriting them would
+            silently redirect the message to a different chat.
+          examples: ["+971501234567", "971501234567@s.whatsapp.net"]
+        idempotency_key:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: |
+            Unique per intended message. Reusing it is what makes a retry safe;
+            reusing it with different content is an error.
+        client_message_id:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: |
+            Laravel's own reference. Echoed on the response and on every
+            related webhook.
+        metadata:
+          type: object
+          additionalProperties: true
+          description: |
+            Arbitrary Laravel-owned context, echoed back on every related
+            webhook so an event can be attributed to its campaign and contact
+            without a lookup table. Never interpreted by the gateway.
+          examples:
+            - tenant_id: 42
+              campaign_id: 1180
+              contact_id: 99213
+        reply_to_message_id:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: |
+            WhatsApp id of the message being replied to, when this send is a
+            quote.
+
+    SendTextRequest:
+      allOf:
+        - $ref: "#/components/schemas/SendBase"
+        - type: object
+          required: [text]
+          properties:
+            text:
+              type: string
+              minLength: 1
+              maxLength: 65536
+
+    SendMediaRequest:
+      allOf:
+        - $ref: "#/components/schemas/SendBase"
+        - type: object
+          description: |
+            Supply **exactly one** of `url` or `base64`. Both, or neither, is a
+            422.
+
+            They are mutually exclusive rather than "at least one" because,
+            given both, any choice the gateway made would be a guess about
+            which the caller meant — and the wrong guess sends the wrong file.
+
+            Prefer `url`: Baileys streams it, and the request stays tiny.
+            `base64` must be buffered whole, in memory, before the body is even
+            parsed, and is bounded by the 2 MB request limit well before
+            `MAX_MEDIA_SIZE_MB`.
+          properties:
+            url:
+              type: string
+              format: uri
+              maxLength: 2048
+              description: Must be http or https.
+            base64:
+              type: string
+              minLength: 1
+              description: |
+                Raw base64, or a data URL (`data:image/png;base64,...`) — the
+                prefix and any whitespace are stripped.
+            caption:
+              type: string
+              maxLength: 4096
+            file_name:
+              type: string
+              minLength: 1
+              maxLength: 255
+              description: |
+                For documents this defaults to `document` when omitted. Set it:
+                an unnamed document shows as an untitled blob.
+            mime_type:
+              type: string
+              minLength: 1
+              maxLength: 255
+              description: |
+                Always wins when supplied. WhatsApp needs one for documents and
+                audio to render correctly; for image and video it infers one.
+
+    SendLocationRequest:
+      allOf:
+        - $ref: "#/components/schemas/SendBase"
+        - type: object
+          required: [latitude, longitude]
+          properties:
+            latitude:
+              type: number
+              minimum: -90
+              maximum: 90
+            longitude:
+              type: number
+              minimum: -180
+              maximum: 180
+            name:
+              type: string
+              minLength: 1
+              maxLength: 255
+            address:
+              type: string
+              minLength: 1
+              maxLength: 512
+
+    SendContactRequest:
+      allOf:
+        - $ref: "#/components/schemas/SendBase"
+        - type: object
+          required: [full_name, contact_phone_number]
+          properties:
+            full_name:
+              type: string
+              minLength: 1
+              maxLength: 255
+            contact_phone_number:
+              type: string
+              minLength: 1
+              maxLength: 32
+              description: |
+                Digits and the usual separators, at least one digit. The
+                gateway derives the `waid` from it, which is what makes the
+                shared card tappable as a WhatsApp contact.
+            organization:
+              type: string
+              minLength: 1
+              maxLength: 255
+
+    SendPollRequest:
+      allOf:
+        - $ref: "#/components/schemas/SendBase"
+        - type: object
+          required: [question, options]
+          properties:
+            question:
+              type: string
+              minLength: 1
+              maxLength: 255
+            options:
+              type: array
+              minItems: 2
+              maxItems: 12
+              uniqueItems: true
+              description: |
+                Between 2 and 12, and they must be unique — votes resolve back
+                to option names, so duplicates are indistinguishable in the
+                aggregate.
+              items:
+                type: string
+                minLength: 1
+                maxLength: 100
+            selectable_count:
+              type: integer
+              minimum: 1
+              default: 1
+              description: |
+                How many options a voter may pick. Cannot exceed the number of
+                options.
+
+    GatewayMessage:
+      type: object
+      description: One outgoing message as recorded by the gateway.
+      required:
+        - gateway_message_id
+        - instance_id
+        - idempotency_key
+        - recipient
+        - kind
+        - status
+        - accepted_at
+      properties:
+        gateway_message_id:
+          type: string
+        instance_id:
+          type: string
+        idempotency_key:
+          type: string
+        client_message_id:
+          type: [string, "null"]
+        recipient:
+          type: string
+        kind:
+          type: string
+          enum: [text, image, video, audio, document, location, contact, poll]
+        status:
+          $ref: "#/components/schemas/MessageStatus"
+        whatsapp_message_id:
+          type: [string, "null"]
+        accepted_at:
+          type: string
+          format: date-time
+        sent_at:
+          type: [string, "null"]
+          format: date-time
+        server_ack_at:
+          type: [string, "null"]
+          format: date-time
+        delivered_at:
+          type: [string, "null"]
+          format: date-time
+        read_at:
+          type: [string, "null"]
+          format: date-time
+        failed_at:
+          type: [string, "null"]
+          format: date-time
+        failure_reason:
+          type: [string, "null"]
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Empty object when none was supplied.
+
+    WebhookEventSummary:
+      type: object
+      required:
+        - event_id
+        - instance_id
+        - event_type
+        - event_version
+        - status
+        - attempts
+        - next_attempt_at
+        - delivered_at
+        - last_status_code
+        - last_error
+        - occurred_at
+        - created_at
+        - updated_at
+      properties:
+        event_id:
+          type: string
+        instance_id:
+          type: [string, "null"]
+          description: |
+            Null for gateway-level events, and after an instance is deleted.
+        event_type:
+          type: string
+          description: See docs/LARAVEL_INTEGRATION.md for the full catalogue.
+          examples: ["message.delivered"]
+        event_version:
+          type: string
+          examples: ["1.0"]
+        status:
+          $ref: "#/components/schemas/WebhookStatus"
+        attempts:
+          type: integer
+        next_attempt_at:
+          type: string
+          format: date-time
+        delivered_at:
+          type: [string, "null"]
+          format: date-time
+        last_status_code:
+          type: [integer, "null"]
+          description: HTTP status Laravel returned on the last attempt.
+        last_error:
+          type: [string, "null"]
+          description: Truncated to 500 characters.
+        occurred_at:
+          type: string
+          format: date-time
+          description: |
+            When the event happened, not when it was delivered. Under a backlog
+            these differ by a lot. Events are delivered oldest-first by this
+            field.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WebhookEventDetail:
+      allOf:
+        - $ref: "#/components/schemas/WebhookEventSummary"
+        - type: object
+          required: [payload, metadata]
+          properties:
+            payload:
+              type: object
+              additionalProperties: true
+              description: |
+                The event body. Becomes `data` in the envelope delivered to
+                Laravel.
+            metadata:
+              type: [object, "null"]
+              additionalProperties: true
+
+    HealthLevel:
+      type: string
+      enum: [ok, warning, critical]
+
+    HealthCheck:
+      type: object
+      required: [name, level, detail, value]
+      properties:
+        name:
+          type: string
+          examples: ["database"]
+        level:
+          $ref: "#/components/schemas/HealthLevel"
+        detail:
+          type: [string, "null"]
+        value:
+          type: [number, string, "null"]
+
+    LivenessReport:
+      type: object
+      required: [status, shutting_down]
+      properties:
+        status:
+          type: string
+          enum: [alive, unhealthy]
+        shutting_down:
+          type: boolean
+          description: |
+            One-way. A process that has begun shutting down never becomes ready
+            again.
+
+    ReadinessReport:
+      type: object
+      description: |
+        The readiness answer when a report could be built. Note this merges the
+        report fields at the top level alongside `status` and `ready`.
+      required: [status, ready, level, node_id, checks, checked_at]
+      properties:
+        status:
+          type: string
+          enum: [ready, unready]
+        ready:
+          type: boolean
+        level:
+          $ref: "#/components/schemas/HealthLevel"
+        node_id:
+          type: string
+          description: "`APP_NODE_ID` — which gateway process answered."
+        checks:
+          type: array
+          items:
+            $ref: "#/components/schemas/HealthCheck"
+        checked_at:
+          type: string
+          format: date-time
+
+    ReadinessUnavailable:
+      type: object
+      description: |
+        Returned when the node is draining, or when the health check itself
+        threw — in which case the node cannot determine its own state and must
+        not be given traffic.
+      required: [status, ready, message]
+      properties:
+        status:
+          type: string
+          enum: [shutting_down, unready]
+        ready:
+          type: boolean
+          const: false
+        message:
+          type: string
+
+    Diagnostics:
+      type: object
+      required:
+        - node_id
+        - generated_at
+        - sockets
+        - instances
+        - webhooks
+        - dependencies
+        - baileys
+      properties:
+        node_id:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        sockets:
+          type: object
+          description: Local to this node.
+          required: [live_on_this_node, send_queue_depth]
+          properties:
+            live_on_this_node:
+              type: integer
+            send_queue_depth:
+              type: integer
+              description: Messages waiting on the serial send queues.
+        instances:
+          type: object
+          description: Fleet-wide, from the database.
+          required: [total, ready, enabled]
+          properties:
+            total:
+              type: integer
+            ready:
+              type: integer
+            enabled:
+              type: integer
+        webhooks:
+          type: object
+          required: [pending, retry_wait, delivering, dead_letter]
+          properties:
+            pending:
+              type: integer
+            retry_wait:
+              type: integer
+            delivering:
+              type: integer
+            dead_letter:
+              type: integer
+              description: Needs an operator. See docs/RECOVERY_PLAYBOOK.md.
+        dependencies:
+          type: object
+          required: [database, health, health_error]
+          properties:
+            database:
+              type: string
+              enum: [up, down]
+            health:
+              type: [object, "null"]
+              description: |
+                The full health report, or null if it could not be built.
+                Diagnostics still answer when the health subsystem cannot — a
+                page that fails whole because one probe failed is a page nobody
+                can use during an incident.
+            health_error:
+              type: [string, "null"]
+        baileys:
+          type: object
+          required: [selected_package, version, load_error, package_switch_allowed]
+          properties:
+            selected_package:
+              $ref: "#/components/schemas/BaileysPackage"
+            version:
+              type: [string, "null"]
+              description: |
+                The build that actually loaded, resolved from its own
+                package.json. Null when loading failed.
+              examples: ["@whiskeysockets/baileys@6.7.23"]
+            load_error:
+              type: [string, "null"]
+            package_switch_allowed:
+              type: boolean
+              description: |
+                `BAILEYS_ALLOW_PACKAGE_SWITCH`. True in production means a
+                configuration mistake can silently invalidate live sessions.
+
+    InstanceDiagnostics:
+      type: object
+      required:
+        - instance_id
+        - external_instance_id
+        - tenant_reference
+        - node_id
+        - generated_at
+        - state
+        - enabled
+        - live_on_this_node
+        - reconnect
+        - last_error
+        - credentials
+        - messages
+        - challenges
+        - proxy
+        - recent_events
+      properties:
+        instance_id:
+          type: string
+        external_instance_id:
+          type: string
+        tenant_reference:
+          type: string
+        node_id:
+          type: string
+          description: The node that answered, not necessarily the socket owner.
+        generated_at:
+          type: string
+          format: date-time
+        state:
+          $ref: "#/components/schemas/InstanceState"
+        enabled:
+          type: boolean
+        phone_number:
+          type: [string, "null"]
+        live_on_this_node:
+          type: boolean
+        owner_node_id:
+          type: [string, "null"]
+        ready_since:
+          type: [string, "null"]
+          format: date-time
+        last_connected_at:
+          type: [string, "null"]
+          format: date-time
+        last_disconnected_at:
+          type: [string, "null"]
+          format: date-time
+        reconnect:
+          type: object
+          required: [attempts, next_attempt_at, window_started_at]
+          properties:
+            attempts:
+              type: integer
+            next_attempt_at:
+              type: [string, "null"]
+              format: date-time
+            window_started_at:
+              type: [string, "null"]
+              format: date-time
+        last_error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: [string, "null"]
+            message:
+              type: [string, "null"]
+        credentials:
+          type: object
+          required: [last_write_at, baileys_package, baileys_version, configured_package]
+          properties:
+            last_write_at:
+              type: [string, "null"]
+              format: date-time
+              description: |
+                When auth state was last persisted. **The earliest warning
+                available**: a session whose credentials stopped being written
+                looks healthy right up until it is asked to reconnect.
+            baileys_package:
+              type: [string, "null"]
+              description: Which implementation wrote the stored session.
+            baileys_version:
+              type: [string, "null"]
+            configured_package:
+              type: string
+              description: |
+                What is selected now. Differing from `baileys_package` is a
+                package mismatch — the session will not open until they agree
+                or the number is re-linked.
+        send_queue_depth:
+          type: integer
+        messages:
+          type: object
+          required: [awaiting_transmission, failed]
+          properties:
+            awaiting_transmission:
+              type: integer
+              description: Accepted but not yet handed to WhatsApp.
+            failed:
+              type: integer
+        challenges:
+          type: object
+          required: [qr_expires_at, pairing_code_expires_at]
+          properties:
+            qr_expires_at:
+              type: [string, "null"]
+              format: date-time
+            pairing_code_expires_at:
+              type: [string, "null"]
+              format: date-time
+        proxy:
+          type: [object, "null"]
+          description: Host, type and port only. Credentials are never returned.
+          properties:
+            type:
+              type: [string, "null"]
+            host:
+              type: [string, "null"]
+            port:
+              type: [integer, "null"]
+        recent_events:
+          type: array
+          description: The 20 most recent state transitions, newest first.
+          items:
+            type: object
+            required: [id, type, from_state, to_state, reason, detail, created_at]
+            properties:
+              id:
+                type: string
+              type:
+                type: string
+              from_state:
+                type: [string, "null"]
+              to_state:
+                type: [string, "null"]
+              reason:
+                type: [string, "null"]
+              detail:
+                type: [object, "null"]
+                additionalProperties: true
+              created_at:
+                type: string
+                format: date-time

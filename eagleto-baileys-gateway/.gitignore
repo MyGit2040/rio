@@ -1,0 +1,21 @@
+node_modules/
+dist/
+
+# Real secrets. Only .env.example belongs in the repository — it holds the
+# variable names, never their values.
+.env
+.env.*
+!.env.example
+
+# Downloaded inbound media and local runtime state.
+media/
+*.log
+logs/
+
+# Generated Prisma client
+prisma/generated/
+
+coverage/
+.vitest/
+*.tsbuildinfo
+.DS_Store

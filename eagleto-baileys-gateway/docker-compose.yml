@@ -1,0 +1,208 @@
+# Eagleto Baileys Gateway — single-host deployment
+#
+# Read this before changing it:
+#
+#  * Only the gateway port is published, and it is bound to 127.0.0.1. The
+#    service is reached through a reverse proxy on the same host, never
+#    directly from the internet. Postgres and Redis are NOT published at all —
+#    they are reachable only from inside the `gateway-net` network.
+#  * Every secret comes from .env. Nothing sensitive is written in this file.
+#  * The gateway waits for Postgres and Redis to report healthy, not merely to
+#    have started, because it validates its environment and connects at boot.
+#
+# Compose reads .env from this directory automatically for ${...} interpolation.
+
+services:
+  baileys-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: eagleto-baileys-gateway:latest
+    container_name: eagleto-baileys-gateway
+    restart: unless-stopped
+
+    # Loads the whole gateway environment. See .env.example for the full list.
+    env_file:
+      - .env
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    # Host-only. Put a reverse proxy (nginx, Caddy, Traefik) in front of this
+    # and terminate TLS there. Publishing 0.0.0.0 would expose an API that
+    # controls live WhatsApp sessions.
+    ports:
+      - "127.0.0.1:${PORT:-3090}:${PORT:-3090}"
+
+    volumes:
+      # Inbound media the gateway has stored for Laravel to download. Must match
+      # MEDIA_STORAGE_PATH in .env.
+      - gateway-media:/var/lib/eagleto-gateway/media
+
+    networks:
+      - gateway-net
+
+    # Signal handling comes from tini inside the image (see Dockerfile), so a
+    # `docker compose stop` reaches the process and shutdown is graceful.
+    stop_grace_period: 30s
+
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:'+(process.env.PORT||3090)+'/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # One-off migration runner.
+  #
+  # The runtime image deliberately carries production dependencies only, so it
+  # has no Prisma CLI — `npx prisma` inside it would try to download the CLI at
+  # runtime and fail on a locked-down host. This service reuses the `build`
+  # stage, which already has the full toolchain, and exits when it is done.
+  #
+  # Run it with:  docker compose run --rm migrate
+  # It never starts as part of `docker compose up` (see profiles).
+  migrate:
+    profiles:
+      - tools
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: build
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - gateway-net
+    command: ["npx", "prisma", "migrate", "deploy"]
+    restart: "no"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: eagleto-gateway-postgres
+    restart: unless-stopped
+
+    # These three are used ONLY to initialise the database on first boot. They
+    # are not read by the gateway — the gateway uses DATABASE_URL. If you change
+    # one, change DATABASE_URL to match or the gateway will not authenticate.
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-eagleto}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-baileys_gateway}
+      # Deterministic collation, so an index built on one host behaves the same
+      # on another.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
+
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+    # Deliberately no `ports:`. The database is reachable only from the internal
+    # network. To inspect it, exec into the container (see README).
+    networks:
+      - gateway-net
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "pg_isready -U ${POSTGRES_USER:-eagleto} -d ${POSTGRES_DB:-baileys_gateway}"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.25"
+          memory: 512M
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    container_name: eagleto-gateway-redis
+    restart: unless-stopped
+
+    # Redis holds the instance ownership leases. appendonly keeps a lease across
+    # a restart; losing them is not fatal (they expire and are re-taken) but a
+    # clean restart is calmer.
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - noeviction
+
+    volumes:
+      - redis-data:/data
+
+    # Deliberately no `ports:`.
+    networks:
+      - gateway-net
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 384M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  gateway-media:
+    driver: local
+
+networks:
+  gateway-net:
+    driver: bridge
