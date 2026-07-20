@@ -9,6 +9,7 @@ use App\Models\Message;
 use App\Models\Suppression;
 use App\Models\WhatsappInstance;
 use App\Services\PlanLimit;
+use App\Services\DeviceHealthService;
 use App\Support\SendingWindow;
 use App\Support\Tenancy;
 use App\Support\Whatsapp;
@@ -149,7 +150,7 @@ class SendCampaignMessage implements ShouldQueue
             // A poll is deliberately sent beneath its explanatory text/image.
             // Do not send a detached poll when its required first step failed.
             if (! $prelude['ok']) {
-                $this->markFailed($recipient, $campaign, 'Poll prelude failed: '.($prelude['error'] ?? 'unknown error'));
+                $this->markFailed($recipient, $campaign, 'Poll prelude failed: '.($prelude['error'] ?? 'unknown error'), $instance);
                 $this->finaliseIfDone($campaign);
 
                 return;
@@ -217,8 +218,9 @@ class SendCampaignMessage implements ShouldQueue
                 'status'               => 'sent',
                 'message_id'           => $result['message_id'],
             ]);
+            app(DeviceHealthService::class)->recordSuccess($instance, $campaign);
         } else {
-            $this->markFailed($recipient, $campaign, $result['error'] ?? 'Unknown error');
+            $this->markFailed($recipient, $campaign, $result['error'] ?? 'Unknown error', $instance);
         }
 
         $this->finaliseIfDone($campaign);
@@ -264,8 +266,12 @@ class SendCampaignMessage implements ShouldQueue
         return WhatsappInstance::find($deviceId);
     }
 
-    private function markFailed(CampaignRecipient $recipient, Campaign $campaign, string $error): void
+    private function markFailed(CampaignRecipient $recipient, Campaign $campaign, string $error, ?WhatsappInstance $instance = null): void
     {
+        $instance ??= $recipient->instance ?: $campaign->instance;
+        if ($instance) {
+            app(DeviceHealthService::class)->recordFailure($instance, $campaign, $error);
+        }
         $recipient->increment('attempts');
 
         // Retry transient failures up to the campaign's max_retries (with backoff).

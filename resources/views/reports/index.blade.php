@@ -1,19 +1,35 @@
 <x-app-layout>
     <x-slot name="header">Reports</x-slot>
 
-    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-10 gap-4 mb-6">
         @foreach ([
             ['Campaigns', $totals['campaigns'], 'text-gray-800'],
             ['Messages sent', $totals['sent'], 'text-green-600'],
+            ['Delivered', $totals['delivered'], 'text-teal-600'],
+            ['Read', $totals['read'], 'text-blue-600'],
             ['Failed', $totals['failed'], 'text-red-500'],
             ['Link clicks', $totals['clicks'], 'text-brand'],
             ['Replies', $totals['replies'], 'text-brand'],
             ['Poll answers', $totals['poll_answers'], 'text-green-600'],
             ['Button clicks', $totals['button_clicks'], 'text-blue-600'],
+            ['Opt-outs', $totals['opt_outs'], 'text-orange-600'],
         ] as [$label, $value, $color])
             <x-card><p class="text-2xl font-bold {{ $color }}">{{ number_format($value) }}</p><p class="text-xs text-gray-500 mt-1">{{ $label }}</p></x-card>
         @endforeach
     </div>
+
+    <x-card flush class="mb-6">
+        <div class="px-5 py-4 border-b border-gray-100"><h2 class="font-semibold text-gray-800">Results by sending number</h2><p class="text-xs text-gray-500 mt-1">Campaign delivery outcomes and health failures for each connected number.</p></div>
+        <div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-gray-50 text-gray-500 text-left"><tr>
+            <th class="px-5 py-3 font-medium">Number</th><th class="px-5 py-3 font-medium">Status</th><th class="px-5 py-3 font-medium">Sent</th><th class="px-5 py-3 font-medium">Delivered</th><th class="px-5 py-3 font-medium">Read</th><th class="px-5 py-3 font-medium">Failed</th><th class="px-5 py-3 font-medium">Health failures (7d)</th>
+        </tr></thead><tbody class="divide-y divide-gray-100">
+            @forelse ($deviceResults as $device)
+                <tr class="hover:bg-gray-50"><td class="px-5 py-3 font-medium text-gray-800">{{ $device->name }}<div class="text-xs font-normal text-gray-500">{{ $device->phone_number ? '+'.$device->phone_number : 'No phone detected' }}</div></td><td class="px-5 py-3"><x-badge :color="$device->status === 'open' ? 'green' : ($device->status === 'paused' ? 'red' : 'yellow')">{{ $device->status === 'open' ? 'Connected' : ucfirst($device->status) }}</x-badge></td><td class="px-5 py-3">{{ $device->sent }}</td><td class="px-5 py-3">{{ $device->delivered }}</td><td class="px-5 py-3">{{ $device->read }}</td><td class="px-5 py-3 text-red-600">{{ $device->failed }}</td><td class="px-5 py-3 {{ $device->recent_failures ? 'text-orange-600 font-semibold' : 'text-gray-500' }}">{{ $device->recent_failures }}</td></tr>
+            @empty
+                <tr><td colspan="7" class="px-5 py-10 text-center text-gray-500">No sending numbers yet.</td></tr>
+            @endforelse
+        </tbody></table></div>
+    </x-card>
 
     <x-card flush class="mb-6">
         <div class="px-5 py-4 border-b border-gray-100"><h2 class="font-semibold text-gray-800">Campaign performance</h2></div>

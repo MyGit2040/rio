@@ -38,6 +38,12 @@
                     <div><p class="text-lg font-bold {{ $row['failure_rate'] >= 20 ? 'text-red-500' : 'text-gray-800' }}">{{ $row['failure_rate'] }}%</p><p class="text-[11px] text-gray-500">Fail rate</p></div>
                 </div>
 
+                @if ($d->status === 'paused')
+                    <p class="mt-3 text-xs text-red-700 bg-red-50 rounded-lg px-3 py-2">This number was paused after repeated send failures. Reconnect it before resuming campaigns.</p>
+                @elseif ($row['recent_failures'] > 0)
+                    <p class="mt-3 text-xs text-orange-700 bg-orange-50 rounded-lg px-3 py-2">{{ $row['recent_failures'] }} recent send {{ \Illuminate\Support\Str::plural('failure', $row['recent_failures']) }}. This number pauses automatically after 3 failures in 15 minutes.</p>
+                @endif
+
                 @if ($d->warmup_enabled)
                     <p class="mt-3 text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2">🌱 Warm-up on — today's ceiling {{ $row['cap'] }}.</p>
                 @endif
