@@ -1,6 +1,8 @@
 <x-app-layout>
     <x-slot name="header">{{ $campaign->name }}</x-slot>
 
+    <div x-data="{ tab: 'overview' }">
+
     @if ($campaign->total === 0 && in_array($campaign->status, ['draft', 'scheduled'], true))
         <div class="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
             <strong>This campaign has no eligible recipients.</strong> Use the Contacts page to verify the selected numbers on WhatsApp, and make sure they are not opted out. Then create a new campaign for that audience.
@@ -52,7 +54,13 @@
         <x-btn type="submit" variant="secondary">Send test</x-btn>
     </form>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+    <nav class="mb-6 flex gap-1 overflow-x-auto border-b border-gray-200" aria-label="Campaign sections">
+        @foreach (['overview' => 'Overview', 'recipients' => 'Recipients', 'numbers' => 'Sending numbers', 'responses' => 'Responses', 'performance' => 'Performance'] as $key => $label)
+            <button type="button" @click="tab = '{{ $key }}'" class="shrink-0 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors" :class="tab === '{{ $key }}' ? 'border-brand text-brand' : 'border-transparent text-gray-500 hover:text-gray-800'">{{ $label }}</button>
+        @endforeach
+    </nav>
+
+    <div x-show="tab === 'overview'" x-cloak class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         <div class="lg:col-span-2">
             <x-card title="Progress">
                 <div data-progress>
@@ -105,7 +113,7 @@
     </div>
 
     {{-- Sending numbers: which WhatsApp accounts are assigned + live status --}}
-    <x-card title="Sending numbers" class="mb-6">
+    <x-card x-show="tab === 'numbers'" x-cloak title="Sending numbers" class="mb-6">
         <div class="flex flex-wrap items-center gap-2 mb-4">
             <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-gray-100 text-gray-700">
                 <span class="font-semibold">{{ $deviceSummary['assigned'] }}</span> assigned
@@ -232,7 +240,7 @@
             ]),
         ];
     @endphp
-    <x-card title="Responses" class="mb-6"
+    <x-card x-show="tab === 'responses'" x-cloak title="Responses" class="mb-6"
             x-data="campaignResponses({{ $campaign->id }}, {{ \Illuminate\Support\Js::from($responsesInitial) }})"
             x-init="startPolling()">
         <div class="grid grid-cols-3 gap-4 mb-4">
@@ -284,7 +292,7 @@
     </x-card>
 
     @if (!empty($variantStats))
-        <x-card title="A/B variant performance" class="mb-6">
+        <x-card x-show="tab === 'performance'" x-cloak title="A/B variant performance" class="mb-6">
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
                     <thead class="text-gray-500 text-left">
@@ -318,7 +326,7 @@
     @endif
 
     @if ($trackedLinks->isNotEmpty())
-        <x-card title="Link clicks" class="mb-6">
+        <x-card x-show="tab === 'performance'" x-cloak title="Link clicks" class="mb-6">
             <ul class="divide-y divide-gray-100">
                 @foreach ($trackedLinks as $link)
                     <li class="flex items-center gap-3 py-2">
@@ -342,7 +350,7 @@
         $hasFilters = collect($filters)->only(['status','variant','device','q','from','to'])->filter(fn ($v) => $v !== '' && $v !== null)->isNotEmpty();
     @endphp
 
-    <x-card flush>
+    <x-card x-show="tab === 'recipients'" x-cloak flush>
       <div x-data="{ dash: {{ $hasFilters ? 'true' : 'false' }} }">
         <div class="px-5 py-4 border-b border-gray-100 flex items-center gap-3 flex-wrap">
             <h2 class="font-semibold text-gray-800">Recipients</h2>
@@ -531,6 +539,8 @@
         </div>
       </div>
     </x-card>
+
+    </div>
 
     @push('scripts')
     <script>
