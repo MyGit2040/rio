@@ -254,6 +254,23 @@ export class SocketManager {
 
     const classification = live.adapter.classifyDisconnect(update.lastDisconnect?.error)
 
+    // Logged for EVERY disconnect, not only the fatal ones. A recoverable drop
+    // used to be silent, so a socket failing to reach WhatsApp at all looked
+    // identical to a QR that never rendered: the retry loop was visible but its
+    // cause was not. The underlying error is included verbatim because an
+    // unclassified transport failure (DNS, egress blocked, TLS) carries no
+    // status code to classify.
+    log.warn(
+      {
+        classification: classification.class,
+        code: classification.code ?? null,
+        reason: classification.reason ?? null,
+        recoverable: classification.recoverable,
+        cause: (update.lastDisconnect?.error as Error | undefined)?.message ?? null,
+      },
+      'WhatsApp socket closed',
+    )
+
     await this.instances.markDisconnected(instanceId, classification)
 
     await enqueueWebhook({
