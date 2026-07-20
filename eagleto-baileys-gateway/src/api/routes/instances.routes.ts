@@ -14,6 +14,7 @@ import {
   type ProxyConfig,
   type ProxyType,
 } from '../../instances/proxy.js'
+import { findInstance } from '../../instances/resolve.js'
 import type { InstanceState } from '../../types/index.js'
 import { requestLogger } from '../middleware/request-context.js'
 import {
@@ -85,8 +86,16 @@ function instanceBody(instance: Instance): Record<string, unknown> {
   }
 }
 
+/**
+ * Resolve `:instanceId` by EITHER identity, or answer 404.
+ *
+ * The path parameter is whatever Laravel holds, which is the name it generated
+ * (`externalInstanceId`) — it never learns the gateway's cuid. Every caller here
+ * must therefore work from the RETURNED row's `id`, not from the parameter, or
+ * the lookup succeeds and the socket call that follows it addresses nothing.
+ */
 async function findOr404(reply: FastifyReply, instanceId: string): Promise<Instance | null> {
-  const instance = await instances.findById(instanceId)
+  const instance = await findInstance(instanceId)
 
   if (!instance) {
     await fail(reply, 404, CODES.notFound, `No instance with id ${instanceId}.`)
@@ -161,12 +170,14 @@ export async function instanceRoutes(app: FastifyInstance): Promise<void> {
       return reply
     }
 
-    if (!(await findOr404(reply, instanceId))) {
+    const instance = await findOr404(reply, instanceId)
+
+    if (!instance) {
       return reply
     }
 
     try {
-      await socketManager.start(instanceId)
+      await socketManager.start(instance.id)
     } catch (error) {
       // Every refusal from start() is a "not right now" condition: disabled,
       // shutting down, or owned by another node holding the Redis lease. None
@@ -174,7 +185,7 @@ export async function instanceRoutes(app: FastifyInstance): Promise<void> {
       return fail(reply, 409, CODES.conflict, describeError(error))
     }
 
-    const refreshed = await instances.findById(instanceId)
+    const refreshed = await instances.findById(instance.id)
 
     // 202: the socket is opening. READY still has to be earned through the
     // handshake and the stabilization window, and arrives as a webhook.
@@ -198,10 +209,7 @@ export async function instanceRoutes(app: FastifyInstance): Promise<void> {
       return reply
     }
 
-    const instance = await prisma.instance.findUnique({
-      where: { id: instanceId },
-      select: { id: true, state: true, lastQr: true, qrExpiresAt: true },
-    })
+    const instance = await findInstance(instanceId)
 
     if (!instance) {
       return fail(reply, 404, CODES.notFound, `No instance with id ${instanceId}.`)
@@ -254,7 +262,7 @@ export async function instanceRoutes(app: FastifyInstance): Promise<void> {
       return reply
     }
 
-    const socket = socketManager.getSocket(instanceId)
+    const socket = socketManager.getSocket(instance.id)
 
     if (!socket) {
       // Pairing codes are issued by the live connection, not by the database.
@@ -287,7 +295,7 @@ export async function instanceRoutes(app: FastifyInstance): Promise<void> {
       return fail(reply, 409, CODES.conflict, `WhatsApp refused the pairing-code request: ${describeError(error)}`)
     }
 
-    const updated = await instances.recordPairingCode(instanceId, code, expiresAt)
+    const updated = await instances.recordPairingCode(instance.id, code, expiresAt)
 
     return reply.status(200).send({
       ...instanceBody(updated),
@@ -333,11 +341,11 @@ export async function instanceRoutes(app: FastifyInstance): Promise<void> {
       return reply
     }
 
-    await socketManager.stop(instanceId, 'restart')
+    await socketManager.stop(instance.id, 'restart')
 
     try {
-      await instances.transitionTo(instanceId, 'STOPPED', { reason: 'Restart requested' })
-      await socketManager.start(instanceId)
+      await instances.transitionTo(instance.id, 'STOPPED', { reason: 'Restart requested' })
+      await socketManager.start(instance.id)
     } catch (error) {
       if (error instanceof InstanceNotFoundError) {
         return fail(reply, 404, CODES.notFound, error.message)
@@ -346,7 +354,7 @@ export async function instanceRoutes(app: FastifyInstance): Promise<void> {
       return fail(reply, 409, CODES.conflict, describeError(error))
     }
 
-    const refreshed = await instances.findById(instanceId)
+    const refreshed = await instances.findById(instance.id)
 
     return reply.status(202).send(refreshed ? instanceBody(refreshed) : { restarted: true })
   })
@@ -373,18 +381,18 @@ export async function instanceRoutes(app: FastifyInstance): Promise<void> {
       return reply
     }
 
-    await socketManager.stop(instanceId, 'paused')
+    await socketManager.stop(instance.id, 'paused')
 
     let updated: Instance
 
     if (canTransition(instance.state as InstanceState, 'PAUSED')) {
-      updated = await instances.setEnabled(instanceId, false)
+      updated = await instances.setEnabled(instance.id, false)
     } else {
       // Already terminal (logged out, replaced, restricted): there is no live
       // session to pause, but the operator's intent — do not bring this back —
       // is still recorded, and it is what keeps boot-time resume from picking
       // the instance up later.
-      updated = await prisma.instance.update({ where: { id: instanceId }, data: { enabled: false } })
+      updated = await prisma.instance.update({ where: { id: instance.id }, data: { enabled: false } })
     }
 
     return reply.status(200).send(instanceBody(updated))
@@ -397,19 +405,21 @@ export async function instanceRoutes(app: FastifyInstance): Promise<void> {
       return reply
     }
 
-    if (!(await findOr404(reply, instanceId))) {
+    const instance = await findOr404(reply, instanceId)
+
+    if (!instance) {
       return reply
     }
 
-    await instances.setEnabled(instanceId, true)
+    await instances.setEnabled(instance.id, true)
 
     try {
-      await socketManager.start(instanceId)
+      await socketManager.start(instance.id)
     } catch (error) {
       return fail(reply, 409, CODES.conflict, describeError(error))
     }
 
-    const refreshed = await instances.findById(instanceId)
+    const refreshed = await instances.findById(instance.id)
 
     return reply.status(202).send(refreshed ? instanceBody(refreshed) : { resumed: true })
   })
@@ -440,9 +450,9 @@ export async function instanceRoutes(app: FastifyInstance): Promise<void> {
       )
     }
 
-    await socketManager.logout(instanceId)
+    await socketManager.logout(instance.id)
 
-    const refreshed = await instances.findById(instanceId)
+    const refreshed = await instances.findById(instance.id)
 
     return reply.status(200).send(refreshed ? instanceBody(refreshed) : { logged_out: true })
   })
@@ -466,8 +476,8 @@ export async function instanceRoutes(app: FastifyInstance): Promise<void> {
       return reply
     }
 
-    await socketManager.stop(instanceId, 'deleted')
-    await instances.delete(instanceId)
+    await socketManager.stop(instance.id, 'deleted')
+    await instances.delete(instance.id)
 
     // The pre-delete projection: the caller gets to see exactly what went.
     return reply.status(200).send({ ...instanceBody(instance), deleted: true, live: false })
@@ -496,7 +506,9 @@ export async function instanceRoutes(app: FastifyInstance): Promise<void> {
       return fail(reply, 422, CODES.invalidBody, describeZodError(body.error))
     }
 
-    if (!(await findOr404(reply, instanceId))) {
+    const instance = await findOr404(reply, instanceId)
+
+    if (!instance) {
       return reply
     }
 
@@ -506,7 +518,7 @@ export async function instanceRoutes(app: FastifyInstance): Promise<void> {
     })
 
     const updated = await prisma.instance.update({
-      where: { id: instanceId },
+      where: { id: instance.id },
       data: {
         proxyEnabled: true,
         proxyType: body.data.type,
@@ -536,12 +548,14 @@ export async function instanceRoutes(app: FastifyInstance): Promise<void> {
       return reply
     }
 
-    if (!(await findOr404(reply, instanceId))) {
+    const instance = await findOr404(reply, instanceId)
+
+    if (!instance) {
       return reply
     }
 
     const updated = await prisma.instance.update({
-      where: { id: instanceId },
+      where: { id: instance.id },
       data: {
         proxyEnabled: false,
         proxyType: null,
@@ -608,7 +622,9 @@ export async function instanceRoutes(app: FastifyInstance): Promise<void> {
     const result = await testProxy(config)
 
     return reply.status(200).send({
-      instance_id: instanceId,
+      // The gateway's own id, as every other endpoint reports it — the caller
+      // may have addressed this instance by its external name.
+      instance_id: instance.id,
       // Redacted: the password was supplied by the caller and must not be
       // reflected back into a log, a browser history or an error report.
       proxy: redactedProxyUrl(config),

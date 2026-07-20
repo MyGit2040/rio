@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 
 import { contextLogger } from '../config/logger.js'
 import { prisma } from '../database/client.js'
+import { findInstance } from '../instances/resolve.js'
 import { serialQueues } from '../instances/serial-queue.js'
 import type { MessageMetadata, OutgoingMessageKind, SendAcceptance } from '../types/index.js'
 import { enqueueWebhook } from '../webhooks/webhook-dispatcher.js'
@@ -84,20 +85,42 @@ function hashPayload(request: SendRequest): string {
  * Fast path: record intent and return. Never performs WhatsApp I/O.
  */
 export async function acceptSend(request: SendRequest): Promise<SendAcceptance> {
+  /**
+   * Normalise the identifier before anything else touches it.
+   *
+   * Laravel addresses an instance by the name it generated, so `instanceId` may
+   * arrive here as either identity. Everything downstream is keyed on the
+   * gateway's internal id — the GatewayMessage and WebhookEvent foreign keys,
+   * the serial queue, the socket manager — so resolving late would mean an FK
+   * insert against a name no row has.
+   *
+   * It also has to happen BEFORE the payload hash, which includes the instance
+   * id: a retry that names the same instance the other way round must hash the
+   * same, or an honest retry would be refused as a key reused with different
+   * content.
+   *
+   * When nothing resolves, the original value is carried through unchanged so
+   * that an unknown instance still fails exactly where it did before — at the
+   * sendability check, as InstanceNotSendableError — rather than turning a
+   * duplicate replay for a since-deleted instance into a different error.
+   */
+  const instance = await findInstance(request.instanceId)
+  const send: SendRequest = instance ? { ...request, instanceId: instance.id } : request
+
   const log = contextLogger({
-    instanceId: request.instanceId,
-    clientMessageId: request.clientMessageId,
+    instanceId: send.instanceId,
+    clientMessageId: send.clientMessageId,
   })
 
-  const payloadHash = hashPayload(request)
+  const payloadHash = hashPayload(send)
 
   const existing = await prisma.gatewayMessage.findUnique({
-    where: { idempotencyKey: request.idempotencyKey },
+    where: { idempotencyKey: send.idempotencyKey },
   })
 
   if (existing) {
     if (existing.payloadHash !== payloadHash) {
-      throw new DuplicatePayloadError(request.idempotencyKey)
+      throw new DuplicatePayloadError(send.idempotencyKey)
     }
 
     // A genuine retry (Laravel timed out and asked again). Hand back the
@@ -115,46 +138,41 @@ export async function acceptSend(request: SendRequest): Promise<SendAcceptance> 
     }
   }
 
-  const instance = await prisma.instance.findUnique({
-    where: { id: request.instanceId },
-    select: { id: true, state: true, enabled: true },
-  })
-
   if (!instance) {
-    throw new InstanceNotSendableError(request.instanceId, 'UNKNOWN')
+    throw new InstanceNotSendableError(send.instanceId, 'UNKNOWN')
   }
 
   if (!instance.enabled) {
-    throw new InstanceNotSendableError(request.instanceId, 'DISABLED')
+    throw new InstanceNotSendableError(send.instanceId, 'DISABLED')
   }
 
   const record = await prisma.gatewayMessage.create({
     data: {
-      instanceId: request.instanceId,
-      idempotencyKey: request.idempotencyKey,
-      clientMessageId: request.clientMessageId ?? null,
-      recipient: request.recipient,
-      kind: request.kind,
+      instanceId: send.instanceId,
+      idempotencyKey: send.idempotencyKey,
+      clientMessageId: send.clientMessageId ?? null,
+      recipient: send.recipient,
+      kind: send.kind,
       payloadHash,
       status: 'ACCEPTED',
-      metadata: (request.metadata ?? {}) as never,
+      metadata: (send.metadata ?? {}) as never,
     },
   })
 
   await enqueueWebhook({
     eventType: 'message.accepted',
-    instanceId: request.instanceId,
+    instanceId: send.instanceId,
     data: {
       gateway_message_id: record.id,
       client_message_id: record.clientMessageId,
       recipient: record.recipient,
       kind: record.kind,
     },
-    metadata: request.metadata ?? {},
+    metadata: send.metadata ?? {},
   })
 
   // Transmission is deliberately not awaited: the caller gets its 202 now.
-  void dispatch(record.id, request).catch((error: unknown) => {
+  void dispatch(record.id, send).catch((error: unknown) => {
     log.error({ err: error, gatewayMessageId: record.id }, 'Unhandled failure while dispatching a message')
   })
 
@@ -168,6 +186,10 @@ export async function acceptSend(request: SendRequest): Promise<SendAcceptance> 
 
 /**
  * Slow path: runs on the instance's serial queue, one message at a time.
+ *
+ * `request.instanceId` is the internal id — `acceptSend` normalises it before
+ * this is reached, which is what lets the queue key and the socket lookup agree
+ * with the row the message was written against.
  */
 async function dispatch(gatewayMessageId: string, request: SendRequest): Promise<void> {
   const log = contextLogger({ instanceId: request.instanceId, gatewayMessageId })

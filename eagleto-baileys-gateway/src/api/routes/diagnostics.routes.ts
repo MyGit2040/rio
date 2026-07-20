@@ -4,6 +4,7 @@ import { loadAdapter } from '../../baileys/adapter/index.js'
 import { socketManager } from '../../baileys/socket-manager.js'
 import { env } from '../../config/env.js'
 import { databaseHealthy, prisma } from '../../database/client.js'
+import { resolveInstanceId } from '../../instances/resolve.js'
 import { serialQueues } from '../../instances/serial-queue.js'
 import { buildHealthReport } from '../../monitoring/health.js'
 import type { HealthReport } from '../../types/index.js'
@@ -151,8 +152,17 @@ export async function diagnosticsRoutes(app: FastifyInstance): Promise<void> {
 
     const { instanceId } = params.data
 
+    // Laravel holds the name it generated, never the gateway's cuid, so the
+    // parameter is resolved to the internal id before it keys anything — the
+    // credential, event and message lookups below are all foreign keys on it.
+    const resolvedId = await resolveInstanceId(instanceId)
+
+    if (resolvedId === null) {
+      return fail(reply, 404, CODES.notFound, `No instance with id ${instanceId}.`)
+    }
+
     const instance = await prisma.instance.findUnique({
-      where: { id: instanceId },
+      where: { id: resolvedId },
       select: {
         id: true,
         externalInstanceId: true,
@@ -188,11 +198,11 @@ export async function diagnosticsRoutes(app: FastifyInstance): Promise<void> {
       // persisted looks perfectly healthy right up until it is asked to
       // reconnect, so this is the earliest warning available.
       prisma.authCredential.findUnique({
-        where: { instanceId },
+        where: { instanceId: resolvedId },
         select: { lastWriteAt: true, baileysPackage: true, baileysVersion: true },
       }),
       prisma.instanceEvent.findMany({
-        where: { instanceId },
+        where: { instanceId: resolvedId },
         orderBy: { createdAt: 'desc' },
         take: RECENT_EVENT_LIMIT,
         select: {
@@ -205,8 +215,8 @@ export async function diagnosticsRoutes(app: FastifyInstance): Promise<void> {
           createdAt: true,
         },
       }),
-      prisma.gatewayMessage.count({ where: { instanceId, status: 'ACCEPTED' } }),
-      prisma.gatewayMessage.count({ where: { instanceId, status: 'FAILED' } }),
+      prisma.gatewayMessage.count({ where: { instanceId: resolvedId, status: 'ACCEPTED' } }),
+      prisma.gatewayMessage.count({ where: { instanceId: resolvedId, status: 'FAILED' } }),
     ])
 
     return reply.status(200).send({

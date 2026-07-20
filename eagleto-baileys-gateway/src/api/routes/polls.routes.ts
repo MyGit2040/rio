@@ -5,6 +5,7 @@ import { acceptSend } from '../../baileys/message-sender.js'
 import { recordPollCreation } from '../../baileys/poll-handler.js'
 import { BAILEYS_PACKAGES, env, type BaileysPackageId } from '../../config/env.js'
 import { prisma } from '../../database/client.js'
+import { findInstance } from '../../instances/resolve.js'
 import type { MessageMetadata } from '../../types/index.js'
 import { describeZodError, sendPollSchema } from '../schemas/index.js'
 import { SEND_ERROR_CODES, baseSendRequest, fail, sendErrorResponse } from './messages.routes.js'
@@ -38,10 +39,10 @@ export async function pollRoutes(app: FastifyInstance): Promise<void> {
 
     const body = parsed.data
 
-    const instance = await prisma.instance.findUnique({
-      where: { id: body.instance_id },
-      select: { id: true, baileysPackage: true },
-    })
+    // `instance_id` is whatever Laravel holds, which is the name it generated
+    // rather than the gateway's cuid. The Poll row's foreign key is the internal
+    // id, so the identifier is resolved here before anything is written.
+    const instance = await findInstance(body.instance_id)
 
     if (!instance) {
       return fail(
@@ -81,7 +82,13 @@ export async function pollRoutes(app: FastifyInstance): Promise<void> {
     })
 
     try {
-      const acceptance = await acceptSend({ ...baseSendRequest(body, 'poll', content), pollId })
+      const acceptance = await acceptSend({
+        ...baseSendRequest(body, 'poll', content),
+        // Already resolved above; passing it on saves acceptSend repeating the
+        // lookup and keeps the Poll row and the message row on the same id.
+        instanceId: instance.id,
+        pollId,
+      })
 
       /**
        * A duplicate is an idempotent replay of a poll that was already sent.
