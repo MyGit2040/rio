@@ -161,12 +161,46 @@ class BaileysGatewayDriver implements WhatsappGateway
         return ['ok' => true, 'message' => 'The Baileys gateway posts to a single configured webhook endpoint.'];
     }
 
+    /** How long to wait for WhatsApp to issue a QR before giving up this round. */
+    protected const QR_WAIT_ATTEMPTS = 6;
+
+    protected const QR_WAIT_SECONDS = 1;
+
     public function connect(string $instanceName, ?string $number = null): array
     {
+        // Starting is idempotent: the gateway reuses a live socket rather than
+        // opening a second one, so the browser's refresh loop cannot churn
+        // sessions by calling this repeatedly.
         $this->request('POST', "/v1/instances/{$instanceName}/start")->throw();
 
-        $qr = $this->request('GET', "/v1/instances/{$instanceName}/qr");
-        $payload = $qr->successful() ? ($qr->json() ?? []) : [];
+        $payload = [];
+
+        // WhatsApp does not issue a QR the instant a socket opens — it arrives
+        // a second or two later on a connection event. Reading once returned
+        // an empty QR every time, which surfaced as "QR generation is taking
+        // longer than expected" even though the socket was healthy.
+        for ($attempt = 0; $attempt < self::QR_WAIT_ATTEMPTS; $attempt++) {
+            $response = $this->request('GET', "/v1/instances/{$instanceName}/qr");
+
+            if ($response->successful()) {
+                $payload = $response->json() ?? [];
+
+                // Stop as soon as there is something to show, or the number
+                // turns out to be connected already (a warm restore issues no
+                // QR at all).
+                if (data_get($payload, 'qr_image_base64') || data_get($payload, 'qr_data')) {
+                    break;
+                }
+
+                if ($this->stateFor(data_get($payload, 'status') ?? data_get($payload, 'state')) === 'open') {
+                    break;
+                }
+            }
+
+            if ($attempt < self::QR_WAIT_ATTEMPTS - 1) {
+                sleep(self::QR_WAIT_SECONDS);
+            }
+        }
 
         return [
             'qrcode' => [
@@ -175,7 +209,9 @@ class BaileysGatewayDriver implements WhatsappGateway
                 'base64' => data_get($payload, 'qr_image_base64') ?: data_get($payload, 'qr_data'),
                 'pairingCode' => null,
             ],
-            'instance' => ['state' => $this->stateFor(data_get($payload, 'status'))],
+            'instance' => [
+                'state' => $this->stateFor(data_get($payload, 'status') ?? data_get($payload, 'state')),
+            ],
         ];
     }
 

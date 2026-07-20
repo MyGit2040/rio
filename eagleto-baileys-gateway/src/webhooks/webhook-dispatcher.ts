@@ -182,7 +182,7 @@ export async function deliverWebhook(eventId: string): Promise<DeliveryResult> {
   const event = await prisma.webhookEvent.findUnique({
     where: { id: eventId },
     include: {
-      instance: { select: { webhookUrl: true, webhookSecretEnc: true } },
+      instance: { select: { webhookUrl: true, webhookSecretEnc: true, externalInstanceId: true } },
     },
   })
 
@@ -201,8 +201,16 @@ export async function deliverWebhook(eventId: string): Promise<DeliveryResult> {
     event_type: event.eventType as WebhookEventType,
     event_version: event.eventVersion,
     occurred_at: event.occurredAt.toISOString(),
-    instance_id: event.instanceId,
-    data: (event.payload ?? {}) as Record<string, unknown>,
+    // The EXTERNAL id — the name Laravel generated and stores as
+    // whatsapp_instances.instance_name. Laravel has never seen the gateway's
+    // internal cuid, so sending that made every event unmatchable and silently
+    // discarded: statuses never advanced and devices never reported ready.
+    // The internal id still travels as gateway_instance_id for support.
+    instance_id: event.instance?.externalInstanceId ?? event.instanceId,
+    data: {
+      ...((event.payload ?? {}) as Record<string, unknown>),
+      gateway_instance_id: event.instanceId,
+    },
     metadata: (event.metadata ?? {}) as MessageMetadata,
   }
 

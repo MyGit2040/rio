@@ -69,6 +69,58 @@ function assertSurface(mod: BaileysModule, packageId: BaileysPackageId, moduleNa
   }
 }
 
+/**
+ * WhatsApp Web protocol version, fetched at runtime.
+ *
+ * Every Baileys build bakes in the protocol version that was current when it
+ * was published. WhatsApp rejects outdated versions with HTTP 405 during the
+ * handshake, so a package that worked on release stops connecting once that
+ * version ages out — which is a time bomb in any pinned dependency, not a
+ * defect in a particular release. Fetching the live version defuses it for
+ * every implementation at once.
+ *
+ * Cached because it is needed on every socket create and changes rarely; a
+ * failed fetch falls back to the baked-in version rather than blocking a
+ * connection that might still succeed.
+ */
+const VERSION_CACHE_MS = 60 * 60 * 1000
+let cachedWaVersion: { version: number[]; fetchedAt: number } | null = null
+
+async function whatsappVersion(mod: BaileysModule): Promise<number[] | undefined> {
+  const now = Date.now()
+
+  if (cachedWaVersion && now - cachedWaVersion.fetchedAt < VERSION_CACHE_MS) {
+    return cachedWaVersion.version
+  }
+
+  try {
+    const { version, isLatest } = (await mod.fetchLatestBaileysVersion()) as {
+      version: number[]
+      isLatest: boolean
+    }
+
+    cachedWaVersion = { version, fetchedAt: now }
+    logger().info({ waVersion: version.join('.'), isLatest }, 'Resolved WhatsApp Web version')
+
+    return version
+  } catch (error) {
+    // Reported at error level: production runs LOG_LEVEL=error, and falling
+    // back to a stale baked-in version is exactly the condition that produces
+    // an unexplained 405 later.
+    logger().error(
+      { err: (error as Error).message },
+      'Could not fetch the current WhatsApp Web version; falling back to the version baked into this Baileys build. ' +
+        'If connections fail with HTTP 405, this is why.',
+    )
+
+    return cachedWaVersion?.version
+  }
+}
+
+export function clearVersionCacheForTesting(): void {
+  cachedWaVersion = null
+}
+
 function resolveVersion(moduleName: string): string {
   try {
     const pkg = require(`${moduleName}/package.json`) as { name?: string; version?: string }
@@ -245,8 +297,12 @@ async function build(packageId: BaileysPackageId): Promise<BaileysAdapter> {
 
     async createSocket(options: CreateSocketOptions): Promise<BaileysSocketHandle> {
       const socketLogger = logger().child({ instanceId: options.instanceId, baileys: packageId })
+      const version = await whatsappVersion(mod)
 
       const sock = makeSocket({
+        // Omitted entirely when unresolved, so Baileys uses its own default
+        // rather than receiving `undefined` as an explicit value.
+        ...(version ? { version } : {}),
         auth: {
           creds: options.auth.creds,
           // The cacheable wrapper cuts repeated Signal key reads, which matters
