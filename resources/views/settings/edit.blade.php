@@ -44,6 +44,7 @@
                         ['Audit log', route('audit.index'), 'doc'],
                         ['Backup & restore', route('backup.index'), 'doc'],
                         ['Two-factor (2FA)', route('security.edit'), 'shield'],
+                        ['Google contacts', route('settings.google-contacts'), 'users'],
                     ] as [$wLabel, $wHref, $wIcon])
                         <a href="{{ $wHref }}"
                            class="flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm whitespace-nowrap transition text-gray-600 hover:bg-gray-100">

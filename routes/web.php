@@ -223,6 +223,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/settings/restart-workers', [SettingsController::class, 'restartWorkers'])->name('settings.restart-workers');
     Route::post('/settings/retry-failed-jobs', [SettingsController::class, 'retryFailedJobs'])->name('settings.retry-failed-jobs');
     Route::post('/settings/flush-failed-jobs', [SettingsController::class, 'flushFailedJobs'])->name('settings.flush-failed-jobs');
+    Route::get('/settings/google-contacts', [SettingsController::class, 'googleContacts'])->name('settings.google-contacts');
+    Route::patch('/settings/google-contacts/{device}', [SettingsController::class, 'updateGoogleContacts'])->name('settings.google-contacts.update');
 
     // Profile (Breeze)
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

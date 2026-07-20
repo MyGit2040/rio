@@ -14,6 +14,7 @@ class WhatsappInstance extends Model
         'tenant_id', 'name', 'instance_name', 'driver', 'token', 'status', 'daily_limit',
         'warmup_enabled', 'warmup_start', 'warmup_per_day', 'warmup_started_at',
         'phone_number', 'profile_name', 'qr_code', 'pairing_code', 'connected_at',
+        'google_contacts_email',
     ];
 
     protected $casts = [

@@ -143,6 +143,30 @@ class SettingsController extends Controller
     }
 
     /**
+     * A clear per-number record of which Google account is used on the phone.
+     * Native WhatsApp backups remain controlled by WhatsApp/Android; no Google
+     * credentials are ever collected by Eagle on this screen.
+     */
+    public function googleContacts(): View
+    {
+        return view('settings.google-contacts', [
+            'devices' => WhatsappInstance::orderBy('name')->get(),
+            'callbackUrl' => rtrim((string) config('app.url'), '/').'/settings/google/callback',
+        ]);
+    }
+
+    public function updateGoogleContacts(Request $request, WhatsappInstance $device): RedirectResponse
+    {
+        $data = $request->validate([
+            'google_contacts_email' => ['nullable', 'email:rfc,dns', 'max:255'],
+        ]);
+
+        $device->update(['google_contacts_email' => $data['google_contacts_email'] ?? null]);
+
+        return back()->with('success', "Google account saved for {$device->name}.");
+    }
+
+    /**
      * Send a test email using the workspace's saved SMTP settings.
      */
     public function testEmail(): JsonResponse
