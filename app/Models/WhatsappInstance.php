@@ -14,13 +14,14 @@ class WhatsappInstance extends Model
         'tenant_id', 'name', 'instance_name', 'driver', 'token', 'status', 'daily_limit',
         'warmup_enabled', 'warmup_start', 'warmup_per_day', 'warmup_started_at',
         'phone_number', 'profile_name', 'qr_code', 'pairing_code', 'connected_at',
-        'google_contacts_email',
+        'google_contacts_email', 'google_contacts_token', 'google_contacts_connected_at',
     ];
 
     protected $casts = [
         'connected_at'      => 'datetime',
         'warmup_enabled'    => 'boolean',
         'warmup_started_at' => 'date',
+        'google_contacts_connected_at' => 'datetime',
     ];
 
     public function sentToday(): int

@@ -225,6 +225,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/settings/flush-failed-jobs', [SettingsController::class, 'flushFailedJobs'])->name('settings.flush-failed-jobs');
     Route::get('/settings/google-contacts', [SettingsController::class, 'googleContacts'])->name('settings.google-contacts');
     Route::patch('/settings/google-contacts/{device}', [SettingsController::class, 'updateGoogleContacts'])->name('settings.google-contacts.update');
+    Route::post('/settings/google-contacts/credentials', [SettingsController::class, 'saveGoogleContactsCredentials'])->name('settings.google-contacts.credentials');
+    Route::get('/settings/google-contacts/{device}/connect', [SettingsController::class, 'connectGoogleContacts'])->name('settings.google-contacts.connect');
+    Route::get('/settings/google/callback', [SettingsController::class, 'googleContactsCallback'])->name('settings.google-contacts.callback');
+    Route::post('/settings/google-contacts/sync', [SettingsController::class, 'syncGoogleContacts'])->name('settings.google-contacts.sync');
 
     // Profile (Breeze)
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

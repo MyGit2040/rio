@@ -8,6 +8,16 @@
             </div>
         </x-card>
 
+        <x-card title="1. Connect Google securely" subtitle="Enter the OAuth details from Google Cloud once. They are encrypted before storage and never shown again.">
+            <form method="POST" action="{{ route('settings.google-contacts.credentials') }}" class="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end">
+                @csrf
+                <div><x-input-label for="google_contacts_client_id" value="Google OAuth Client ID" /><x-text-input id="google_contacts_client_id" name="google_contacts_client_id" class="block mt-1 w-full" placeholder="…apps.googleusercontent.com" :value="data_get(auth()->user()->tenant->settings, 'google_contacts_client_id')" required /></div>
+                <div><x-input-label for="google_contacts_client_secret" value="Google OAuth Client Secret" /><x-password-input id="google_contacts_client_secret" name="google_contacts_client_secret" placeholder="{{ $oauthReady ? 'Saved securely — leave blank to keep it' : '' }}" /></div>
+                <x-btn type="submit" variant="secondary">Save Google details</x-btn>
+            </form>
+            <p class="mt-3 text-xs {{ $oauthReady ? 'text-green-700' : 'text-amber-700' }}">{{ $oauthReady ? 'Google OAuth is ready. Connect the Gmail account for each number below.' : 'Create a Web application OAuth client in Google Cloud, enable Google People API, then paste its details here.' }}</p>
+        </x-card>
+
         <x-card flush>
             <div class="px-5 py-4 border-b border-gray-100"><h2 class="font-semibold text-gray-800">Your WhatsApp numbers</h2><p class="text-xs text-gray-500 mt-1">Enter the dedicated Gmail used on each physical phone. This is a secure reference for your team.</p></div>
             <div class="divide-y divide-gray-100">
@@ -16,12 +26,25 @@
                         @csrf @method('PATCH')
                         <div><p class="font-medium text-gray-800">{{ $device->name }}</p><p class="text-xs text-gray-500">{{ $device->phone_number ? '+'.$device->phone_number : $device->instance_name }}</p></div>
                         <div><x-input-label :for="'google-'.$device->id" value="Dedicated Gmail on this phone" /><x-text-input :id="'google-'.$device->id" name="google_contacts_email" type="email" class="block mt-1 w-full" placeholder="number1@yourcompany.com" :value="$device->google_contacts_email" /></div>
-                        <x-btn type="submit" variant="secondary">Save</x-btn>
+                        <div class="flex gap-2"><x-btn type="submit" variant="secondary">Save</x-btn>@if ($oauthReady)<a href="{{ route('settings.google-contacts.connect', $device) }}" class="inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium {{ $device->google_contacts_connected_at ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-brand text-white' }}">{{ $device->google_contacts_connected_at ? 'Reconnect Google' : 'Connect Google' }}</a>@endif</div>
                     </form>
                 @empty
                     <p class="px-5 py-10 text-center text-gray-500">Add a WhatsApp number first.</p>
                 @endforelse
             </div>
+        </x-card>
+
+        <x-card title="2. One-click contact sync" subtitle="Upload your Excel (.xlsx) or CSV list, select the Gmail accounts, then sync. Existing synced contacts are skipped so repeat uploads do not duplicate them.">
+            @if (! $oauthReady)
+                <p class="text-sm text-amber-700 bg-amber-50 rounded-lg p-3">Save Google OAuth details and connect at least one Gmail account before syncing.</p>
+            @else
+                <form method="POST" action="{{ route('settings.google-contacts.sync') }}" enctype="multipart/form-data" class="space-y-4">
+                    @csrf
+                    <div><x-input-label for="contacts_file" value="Contact list (.xlsx or CSV)" /><input id="contacts_file" name="contacts_file" type="file" accept=".xlsx,.csv,.txt" required class="mt-1 block w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-brand file:text-white"><p class="text-xs text-gray-500 mt-1">Columns required: <strong>name</strong> and <strong>phone</strong> (or number/mobile), including country code.</p></div>
+                    <div><p class="text-sm font-medium text-gray-800 mb-2">Sync to these Gmail accounts</p><div class="grid grid-cols-1 md:grid-cols-2 gap-2">@foreach ($devices->whereNotNull('google_contacts_connected_at') as $device)<label class="flex items-center gap-2 rounded-lg border border-gray-200 p-3 text-sm"><input type="checkbox" name="device_ids[]" value="{{ $device->id }}" checked class="rounded border-gray-300 text-brand focus:ring-brand"><span>{{ $device->name }} <span class="text-gray-500">— {{ $device->google_contacts_email }}</span></span></label>@endforeach</div></div>
+                    <x-btn type="submit" variant="primary">Sync contacts to selected Gmail accounts</x-btn>
+                </form>
+            @endif
         </x-card>
 
         <x-card title="Set up every phone" subtitle="Do this directly on each Android phone. It takes about two minutes per number.">
@@ -37,7 +60,7 @@
         <x-card title="Future CRM contact sync" subtitle="Optional — this is separate from the phone’s native WhatsApp backup.">
             <p class="text-sm text-gray-600">When you create Google OAuth credentials, Eagle can be connected to Google People API to import and sync contacts directly. The required callback URL will be:</p>
             <code class="mt-3 block rounded-lg bg-gray-900 text-gray-100 p-3 text-xs break-all">{{ $callbackUrl }}</code>
-            <p class="mt-3 text-xs text-gray-500">Do not enter Gmail passwords into Eagle. Google OAuth is the safe connection method and will be added only after you provide a Google Client ID and Client Secret.</p>
+            <p class="mt-3 text-xs text-gray-500">Do not enter Gmail passwords into Eagle. Google OAuth is the safe connection method used by the Connect Google button above.</p>
         </x-card>
     </div>
 </x-app-layout>

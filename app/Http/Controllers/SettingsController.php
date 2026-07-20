@@ -3,7 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\WhatsappInstance;
+use App\Models\Contact;
 use App\Services\AiService;
+use App\Services\GoogleContactsService;
+use App\Support\ContactCsv;
+use App\Support\ContactSpreadsheet;
 use App\Support\CronHealth;
 use App\Support\MailConfig;
 use App\Support\Whatsapp;
@@ -13,6 +17,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class SettingsController extends Controller
@@ -152,7 +158,60 @@ class SettingsController extends Controller
         return view('settings.google-contacts', [
             'devices' => WhatsappInstance::orderBy('name')->get(),
             'callbackUrl' => rtrim((string) config('app.url'), '/').'/settings/google/callback',
+            'oauthReady' => filled(data_get(auth()->user()->tenant->settings, 'google_contacts_client_id'))
+                && filled(data_get(auth()->user()->tenant->settings, 'google_contacts_client_secret')),
         ]);
+    }
+
+    public function saveGoogleContactsCredentials(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'google_contacts_client_id' => ['required', 'string', 'max:255'],
+            'google_contacts_client_secret' => ['nullable', 'string', 'max:255'],
+        ]);
+        $tenant = auth()->user()->tenant;
+        $settings = $tenant->settings ?? [];
+        $settings['google_contacts_client_id'] = trim($data['google_contacts_client_id']);
+        if (! empty($data['google_contacts_client_secret'])) {
+            $settings['google_contacts_client_secret'] = \Crypt::encryptString($data['google_contacts_client_secret']);
+        }
+        $tenant->update(['settings' => $settings]);
+
+        return back()->with('success', 'Google OAuth details saved securely. You can now connect each Gmail account.');
+    }
+
+    public function connectGoogleContacts(WhatsappInstance $device, GoogleContactsService $google): RedirectResponse
+    {
+        $state = Str::random(48);
+        Cache::put('google-contacts-oauth:'.$state, [
+            'tenant_id' => auth()->user()->tenant_id, 'device_id' => $device->id, 'user_id' => auth()->id(),
+        ], now()->addMinutes(10));
+
+        try {
+            return redirect()->away($google->authorizationUrl(auth()->user()->tenant, $state, $this->googleCallbackUrl()));
+        } catch (\Throwable $e) {
+            return back()->with('error', $e->getMessage());
+        }
+    }
+
+    public function googleContactsCallback(Request $request, GoogleContactsService $google): RedirectResponse
+    {
+        $state = (string) $request->query('state');
+        $pending = $state ? Cache::pull('google-contacts-oauth:'.$state) : null;
+        if (! $pending || $pending['user_id'] !== auth()->id() || $request->filled('error')) {
+            return redirect()->route('settings.google-contacts')->with('error', 'Google connection was cancelled or expired. Please try again.');
+        }
+        $device = WhatsappInstance::find($pending['device_id']);
+        if (! $device || $device->tenant_id !== $pending['tenant_id']) {
+            abort(404);
+        }
+        try {
+            $result = $google->connect(auth()->user()->tenant, $device, (string) $request->query('code'), $this->googleCallbackUrl());
+            return redirect()->route('settings.google-contacts')->with('success', 'Google Contacts connected'.($result['email'] ? ' for '.$result['email'] : '').'.');
+        } catch (\Throwable $e) {
+            report($e);
+            return redirect()->route('settings.google-contacts')->with('error', 'Google connection failed: '.$e->getMessage());
+        }
     }
 
     public function updateGoogleContacts(Request $request, WhatsappInstance $device): RedirectResponse
@@ -164,6 +223,55 @@ class SettingsController extends Controller
         $device->update(['google_contacts_email' => $data['google_contacts_email'] ?? null]);
 
         return back()->with('success', "Google account saved for {$device->name}.");
+    }
+
+    public function syncGoogleContacts(Request $request, GoogleContactsService $google): RedirectResponse
+    {
+        $data = $request->validate([
+            'contacts_file' => ['required', 'file', 'max:10240', 'mimes:csv,txt,xlsx'],
+            'device_ids' => ['required', 'array', 'min:1'],
+            'device_ids.*' => ['integer'],
+        ]);
+        if (strtolower($request->file('contacts_file')->getClientOriginalExtension()) === 'xls') {
+            return back()->with('error', 'Please save the old .xls file as .xlsx or CSV, then upload it again.');
+        }
+        try {
+            $rows = ContactSpreadsheet::rows($request->file('contacts_file')->getRealPath());
+        } catch (\Throwable $e) {
+            return back()->with('error', $e->getMessage());
+        }
+        $contacts = [];
+        foreach ($rows as $row) {
+            $phone = ContactCsv::phone($row);
+            if ($phone === '') {
+                continue;
+            }
+            $contact = Contact::firstOrNew(['phone' => $phone]);
+            $contact->name = $row['name'] ?? $row['full_name'] ?? $contact->name;
+            $contact->email = $row['email'] ?? $contact->email;
+            $contact->save();
+            $contacts[$contact->id] = $contact;
+        }
+        if (! $contacts) {
+            return back()->with('error', 'No valid contacts found. Your file needs a name and a number/phone column with country codes.');
+        }
+        $devices = WhatsappInstance::whereIn('id', $data['device_ids'])->get();
+        $created = $skipped = $failed = 0;
+        foreach ($devices as $device) {
+            try {
+                $result = $google->sync($device, array_values($contacts));
+                $created += $result['created']; $skipped += $result['skipped']; $failed += $result['failed'];
+            } catch (\Throwable $e) {
+                report($e);
+                $failed += count($contacts);
+            }
+        }
+        return back()->with($failed ? 'error' : 'success', "Google sync complete: {$created} created, {$skipped} already synced, {$failed} failed across {$devices->count()} account(s).");
+    }
+
+    private function googleCallbackUrl(): string
+    {
+        return rtrim((string) config('app.url'), '/').'/settings/google/callback';
     }
 
     /**
