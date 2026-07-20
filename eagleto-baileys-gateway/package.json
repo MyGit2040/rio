@@ -1,0 +1,44 @@
+{
+  "name": "eagleto-baileys-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WhatsApp connection and delivery service for Eagleto. Owns sockets, sessions and transport only — all business logic stays in Laravel.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:migrate:dev": "prisma migrate dev",
+    "use:baileys:fork": "npm install --no-save baileys-fork@npm:@itsukichan/baileys@7.3.2"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.1.0",
+    "baileys-v6": "npm:@whiskeysockets/baileys@6.7.23",
+    "baileys-v7rc": "npm:@whiskeysockets/baileys@7.0.0-rc13",
+    "fastify": "^5.2.0",
+    "@fastify/rate-limit": "^10.2.0",
+    "https-proxy-agent": "^7.0.6",
+    "ioredis": "^5.4.2",
+    "pino": "^9.6.0",
+    "qrcode": "^1.5.4",
+    "socks-proxy-agent": "^8.0.5",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/qrcode": "^1.5.5",
+    "pino-pretty": "^13.0.0",
+    "prisma": "^6.1.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}

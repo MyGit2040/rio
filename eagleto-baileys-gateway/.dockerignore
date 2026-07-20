@@ -1,0 +1,47 @@
+# Keep the build context small and keep secrets out of the image.
+#
+# Anything listed here is invisible to `docker build`. The .env exclusion is the
+# important one: a copied .env would bake live secrets into an image layer,
+# where they survive every later deletion and travel with the image.
+
+# Dependencies — reinstalled inside the image from package-lock.json.
+node_modules
+**/node_modules
+
+# Build output — rebuilt inside the image.
+dist
+*.tsbuildinfo
+
+# Secrets. Never copy these into an image.
+.env
+.env.*
+!.env.example
+
+# Tests are not shipped to production (tsconfig excludes them from the build).
+tests
+coverage
+vitest.config.*
+
+# Version control and CI.
+.git
+.gitignore
+.github
+.gitattributes
+
+# Documentation.
+*.md
+docs
+openapi.yaml
+
+# Editor and OS noise.
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+*.swp
+
+# Local runtime artefacts.
+logs
+*.log
+tmp
+media

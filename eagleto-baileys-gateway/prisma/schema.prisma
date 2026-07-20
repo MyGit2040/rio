@@ -1,0 +1,361 @@
+// Eagleto Baileys Gateway — data model
+//
+// Scope note: this database holds CONNECTION and TRANSPORT state only.
+// Contacts, campaigns, templates, limits and reporting live in Laravel and are
+// never duplicated here. Anything in this schema exists because a WhatsApp
+// socket needs it to survive a restart.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Instance lifecycle
+// ---------------------------------------------------------------------------
+
+/// The gateway's view of a single WhatsApp account. Exactly one live Baileys
+/// socket may exist per row, enforced by a Redis ownership lease.
+enum InstanceState {
+  CREATED
+  STARTING
+  QR_REQUIRED
+  PAIRING_CODE_REQUIRED
+  PAIRING
+  AUTHENTICATED
+  SYNCING
+  READY
+  DISCONNECTED
+  RECONNECT_WAIT
+  PAUSED
+  LOGGED_OUT
+  REPLACED
+  RESTRICTED
+  ERROR
+  STOPPED
+}
+
+model Instance {
+  id String @id @default(cuid())
+
+  /// Opaque tenant identifier supplied by Laravel. The gateway never
+  /// interprets it; it is echoed back on every webhook so Laravel can scope.
+  tenantReference String
+
+  /// Laravel's whatsapp_instances.instance_name. This is the join key between
+  /// the two systems and must stay unique.
+  externalInstanceId String  @unique
+  displayName        String?
+  phoneNumber        String?
+
+  state InstanceState @default(CREATED)
+
+  /// Free-text detail behind the state, for diagnostics only. Never parsed.
+  authStatus       String?
+  connectionStatus String?
+
+  lastConnectedAt    DateTime?
+  lastDisconnectedAt DateTime?
+
+  /// Most recent QR payload plus its expiry. Laravel polls this rather than
+  /// triggering a new socket, so QR polling can never churn sessions.
+  lastQr      String?
+  lastQrAt    DateTime?
+  qrExpiresAt DateTime?
+
+  pairingCode          String?
+  pairingCodeExpiresAt DateTime?
+
+  lastErrorCode    String?
+  lastErrorMessage String?
+
+  reconnectAttempts Int       @default(0)
+  reconnectAfter    DateTime?
+  /// Start of the current reconnect-attempt window, for the circuit breaker.
+  reconnectWindowStartedAt DateTime?
+
+  /// Optional per-instance override of BAILEYS_PACKAGE, so one number can be
+  /// trialled on a different implementation without moving the whole fleet.
+  baileysPackage String?
+
+  /// Marks the socket as ready for sends. READY alone is not enough: the
+  /// stabilization window must also have elapsed.
+  readySince DateTime?
+
+  proxyEnabled     Boolean @default(false)
+  proxyType        String?
+  proxyHost        String?
+  proxyPort        Int?
+  proxyUsernameEnc String?
+  proxyPasswordEnc String?
+
+  /// Per-instance webhook override. Falls back to LARAVEL_WEBHOOK_URL.
+  webhookUrl       String?
+  webhookSecretEnc String?
+
+  enabled Boolean @default(true)
+
+  /// Node id currently believed to own this instance's socket. Advisory only —
+  /// the Redis lease is the authority.
+  ownerNodeId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  credential AuthCredential?
+  keys       AuthKey[]
+  messages   GatewayMessage[]
+  polls      Poll[]
+  events     InstanceEvent[]
+  webhooks   WebhookEvent[]
+
+  @@index([state])
+  @@index([tenantReference])
+  @@map("instances")
+}
+
+/// Diagnostic trail of state transitions and notable socket events.
+model InstanceEvent {
+  id         String   @id @default(cuid())
+  instanceId String
+  instance   Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  type      String
+  fromState String?
+  toState   String?
+  reason    String?
+  detail    Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([instanceId, createdAt])
+  @@map("instance_events")
+}
+
+// ---------------------------------------------------------------------------
+// Authentication state
+//
+// Baileys mutates credentials and Signal keys continuously during normal
+// send/receive. Every write here is encrypted and transactional; losing or
+// corrupting these rows means the number must be re-linked by QR.
+// ---------------------------------------------------------------------------
+
+model AuthCredential {
+  id         String   @id @default(cuid())
+  instanceId String   @unique
+  instance   Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  /// AES-256-GCM envelope of the serialised Baileys creds object.
+  credentialsEnc String
+
+  /// Which implementation wrote this state. A socket will not open when the
+  /// selected package differs, because auth formats are not guaranteed
+  /// portable across Baileys lines — switching silently would invalidate the
+  /// session and force a surprise QR re-scan.
+  baileysPackage String
+  baileysVersion String
+
+  /// Set when the credentials were last successfully persisted, surfaced on
+  /// the health endpoint as an early warning of auth-write failure.
+  lastWriteAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("auth_credentials")
+}
+
+/// One row per Signal key. Categories are whatever the installed Baileys
+/// version asks for (pre-key, session, sender-key, app-state-sync-key,
+/// app-state-sync-version, sender-key-memory, LID mappings, ...). The category
+/// is deliberately an open string so a Baileys upgrade that introduces a new
+/// key type keeps working without a migration.
+model AuthKey {
+  id         String   @id @default(cuid())
+  instanceId String
+  instance   Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  category String
+  keyId    String
+
+  /// AES-256-GCM envelope of the serialised key value.
+  valueEnc String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([instanceId, category, keyId])
+  @@index([instanceId, category])
+  @@map("auth_keys")
+}
+
+// ---------------------------------------------------------------------------
+// Outgoing messages and idempotency
+// ---------------------------------------------------------------------------
+
+enum MessageStatus {
+  ACCEPTED
+  SENT
+  SERVER_ACK
+  DELIVERED
+  READ
+  PLAYED
+  FAILED
+}
+
+/// The idempotency ledger. Laravel supplies idempotencyKey; a repeat of the
+/// same key never produces a second WhatsApp message, which is what makes a
+/// Laravel HTTP timeout safe to retry.
+model GatewayMessage {
+  id         String   @id @default(cuid())
+  instanceId String
+  instance   Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  idempotencyKey  String  @unique
+  clientMessageId String?
+
+  recipient String
+  kind      String
+
+  /// Hash of the request payload. A repeat of the same idempotency key with a
+  /// different payload is rejected rather than silently serving the original.
+  payloadHash String
+
+  status            MessageStatus @default(ACCEPTED)
+  whatsappMessageId String?
+
+  acceptedAt     DateTime  @default(now())
+  sentAt         DateTime?
+  serverAckAt    DateTime?
+  deliveredAt    DateTime?
+  readAt         DateTime?
+  failedAt       DateTime?
+  failureReason  String?
+
+  /// Echoed back on every status webhook so Laravel can attribute the event
+  /// to its campaign/contact without a lookup table.
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([instanceId, status])
+  @@index([whatsappMessageId])
+  @@map("gateway_messages")
+}
+
+// ---------------------------------------------------------------------------
+// Polls
+// ---------------------------------------------------------------------------
+
+/// Poll updates arrive as encrypted aggregates referencing the original poll
+/// message, so the creation payload must be retained to resolve a vote back to
+/// readable option names.
+model Poll {
+  id         String   @id @default(cuid())
+  instanceId String
+  instance   Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  whatsappPollMessageId String? @unique
+  clientMessageId       String?
+
+  recipient       String
+  question        String
+  options         Json
+  selectableCount Int    @default(1)
+
+  /// Retained Baileys message payload needed to decrypt/aggregate votes.
+  encPayload String?
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  votes PollVote[]
+
+  @@index([instanceId])
+  @@map("polls")
+}
+
+model PollVote {
+  id     String @id @default(cuid())
+  pollId String
+  poll   Poll   @relation(fields: [pollId], references: [id], onDelete: Cascade)
+
+  voterJid String
+
+  selectedOptionIndexes Json
+  selectedOptions       Json
+
+  /// Distinguishes a first vote from a change or a withdrawal, so Laravel can
+  /// react to "changed their mind" differently from "voted".
+  changeType String @default("received")
+
+  /// Hash of the resolved selection, used to drop duplicate aggregate
+  /// deliveries of a vote that has not actually changed.
+  fingerprint String
+
+  createdAt DateTime @default(now())
+
+  @@unique([pollId, voterJid, fingerprint])
+  @@index([pollId])
+  @@map("poll_votes")
+}
+
+// ---------------------------------------------------------------------------
+// Outbound webhooks to Laravel
+// ---------------------------------------------------------------------------
+
+enum WebhookStatus {
+  PENDING
+  DELIVERING
+  DELIVERED
+  RETRY_WAIT
+  DEAD_LETTER
+}
+
+/// Every event is persisted BEFORE delivery is attempted, so a Laravel outage
+/// delays events rather than losing them.
+model WebhookEvent {
+  id         String    @id @default(cuid())
+  instanceId String?
+  instance   Instance? @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+
+  eventType    String
+  eventVersion String @default("1.0")
+
+  payload  Json
+  metadata Json?
+
+  status   WebhookStatus @default(PENDING)
+  attempts Int           @default(0)
+
+  nextAttemptAt DateTime  @default(now())
+  deliveredAt   DateTime?
+
+  lastStatusCode Int?
+  lastError      String?
+
+  occurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([instanceId, eventType])
+  @@map("webhook_events")
+}
+
+/// Replay protection for inbound Laravel requests. A nonce may be presented
+/// once; rows older than the accepted clock skew are pruned.
+model RequestNonce {
+  nonce     String   @id
+  seenAt    DateTime @default(now())
+
+  @@index([seenAt])
+  @@map("request_nonces")
+}
