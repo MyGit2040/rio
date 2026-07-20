@@ -172,6 +172,30 @@ class WebhookController extends Controller
             // Attribute the response to the campaign we last messaged this contact from.
             $campaignId = $fromMe ? null : $this->recentCampaignId($contact);
 
+            // Native WhatsApp poll votes arrive from a privacy @lid identifier,
+            // not the recipient's phone. The gateway's vote id deliberately
+            // carries the parent poll's WhatsApp id before `:vote:`. Resolve it
+            // to our outbound record so the response is shown in the right
+            // campaign dashboard and uses the original contact's identity.
+            if (! $fromMe && $kind === 'poll_response' && $messageId && str_contains($messageId, ':vote:')) {
+                $parentMessageId = strstr($messageId, ':vote:', true);
+                $parent = $parentMessageId
+                    ? Message::where('whatsapp_instance_id', $instance->id)
+                        ->where('direction', 'out')
+                        ->where('message_id', $parentMessageId)
+                        ->first()
+                    : null;
+
+                if ($parent) {
+                    $campaignId = $parent->campaign_id ?: $campaignId;
+
+                    if ($parent->contact) {
+                        $contact = $parent->contact;
+                        $phone = $contact->phone;
+                    }
+                }
+            }
+
             Message::create([
                 'whatsapp_instance_id' => $instance->id,
                 'contact_id'           => $contact->id,
