@@ -118,7 +118,7 @@
                                 @if($campaign->failed)<span class="text-xs text-red-500">{{ $campaign->failed }} failed</span>@endif
                             </td>
                             <td class="px-5 py-3"><x-campaign-status :status="$campaign->status" /></td>
-                            <td class="px-5 py-3 text-gray-500 whitespace-nowrap">{{ $campaign->created_at->format('M j, Y') }}</td>
+                            <td class="px-5 py-3 text-gray-500 whitespace-nowrap">@lt($campaign->created_at, 'M j, Y')</td>
                             <td class="px-5 py-3 text-right">
                                 <div class="relative inline-block text-left" x-data="{ open: false }" @click.outside="open = false">
                                     <button type="button" @click="open = !open" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800" aria-label="Campaign actions" title="Campaign actions">

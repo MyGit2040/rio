@@ -15,7 +15,7 @@
                         {{ $msg->direction === 'out' ? 'bg-green-600 text-white rounded-br-sm' : 'bg-white text-gray-800 rounded-bl-sm border border-gray-100' }}">
                         <p class="whitespace-pre-line break-words">{{ $msg->body ?: '['.$msg->type.']' }}</p>
                         <p class="text-[10px] mt-1 {{ $msg->direction === 'out' ? 'text-green-100' : 'text-gray-400' }}">
-                            {{ $msg->created_at?->format('M j, g:i A') }}
+                            @lt($msg->created_at, 'M j, g:i A')
                         </p>
                     </div>
                 </div>

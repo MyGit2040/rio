@@ -14,7 +14,7 @@
             <x-badge color="green">Online</x-badge>
         </span>
         <div class="ml-auto flex items-center gap-4 text-gray-500">
-            <span>Last updated: {{ now()->format('g:i A') }}</span>
+            <span>Last updated: @lt(now(), 'g:i A')</span>
             <a href="{{ route('dashboard') }}" class="text-brand font-medium">Refresh data</a>
         </div>
     </div>

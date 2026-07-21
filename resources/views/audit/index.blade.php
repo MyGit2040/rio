@@ -26,7 +26,7 @@
                 <tbody class="divide-y divide-gray-100">
                     @forelse ($logs as $log)
                         <tr class="hover:bg-gray-50">
-                            <td class="px-5 py-3 text-gray-500 whitespace-nowrap">{{ $log->created_at?->format('M j, g:i A') }}</td>
+                            <td class="px-5 py-3 text-gray-500 whitespace-nowrap">@lt($log->created_at, 'M j, g:i A')</td>
                             <td class="px-5 py-3 text-gray-700 whitespace-nowrap">{{ $log->user->name ?? 'System' }}</td>
                             <td class="px-5 py-3"><x-badge color="blue">{{ $log->action }}</x-badge></td>
                             <td class="px-5 py-3 text-gray-600">

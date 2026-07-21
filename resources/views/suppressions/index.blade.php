@@ -36,7 +36,7 @@
                                     <td class="px-5 py-3 font-medium text-gray-800 whitespace-nowrap">+{{ $s->phone }}</td>
                                     <td class="px-5 py-3 text-gray-600">{{ $s->reason ?? '—' }}</td>
                                     <td class="px-5 py-3"><x-badge :color="$s->source === 'opt_out' ? 'yellow' : 'gray'">{{ str_replace('_', ' ', $s->source) }}</x-badge></td>
-                                    <td class="px-5 py-3 text-gray-500 whitespace-nowrap">{{ $s->created_at->format('M j, Y') }}</td>
+                                    <td class="px-5 py-3 text-gray-500 whitespace-nowrap">@lt($s->created_at, 'M j, Y')</td>
                                     <td class="px-5 py-3 text-right">
                                         <form method="POST" action="{{ route('suppressions.destroy', $s) }}" onsubmit="return confirm('Remove +{{ $s->phone }} from the block list?')">
                                             @csrf @method('DELETE')

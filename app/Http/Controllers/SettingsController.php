@@ -57,6 +57,8 @@ class SettingsController extends Controller
             'ai_enabled'         => ['sometimes', 'boolean'],
             'brand_name'         => ['nullable', 'string', 'max:60'],
             'accent_color'       => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            // Workspace timezone — every date/time in the app is displayed in it.
+            'timezone'           => ['nullable', 'timezone'],
             'logo'               => ['nullable', 'image', 'mimes:png,jpg,jpeg,svg,webp', 'max:2048'],
             'favicon'            => ['nullable', 'file', 'mimes:png,jpg,jpeg,svg,webp,ico', 'max:1024'],
             // Bulk-messaging safety (compliant rate-limiting only).
@@ -94,6 +96,9 @@ class SettingsController extends Controller
         $settings['ai_enabled']   = $request->boolean('ai_enabled');
         $settings['brand_name']   = ($data['brand_name'] ?? null) ?: null;
         $settings['accent_color'] = ($data['accent_color'] ?? null) ?: ($settings['accent_color'] ?? null);
+        // Workspace display timezone (falls back to the previously-stored value,
+        // then UTC). Used everywhere timestamps are shown.
+        $settings['timezone']     = ($data['timezone'] ?? null) ?: ($settings['timezone'] ?? config('app.timezone', 'UTC'));
 
         // Bulk-messaging safety settings.
         $settings['bulk_delay_min']     = (int) ($data['bulk_delay_min'] ?? 40);
@@ -111,7 +116,8 @@ class SettingsController extends Controller
         $settings['quiet_end']           = $data['quiet_end'] ?? '08:00';
         // Local timezone the quiet window is measured in — without this the guard
         // runs in UTC and defers sends at the wrong wall-clock time (Dubai bug).
-        $settings['quiet_timezone']      = ($data['quiet_timezone'] ?? null) ?: config('app.timezone', 'UTC');
+        // Quiet hours default to the workspace timezone unless overridden here.
+        $settings['quiet_timezone']      = ($data['quiet_timezone'] ?? null) ?: ($settings['timezone'] ?? config('app.timezone', 'UTC'));
 
         // Opt-out handling.
         $settings['optout_keywords'] = ($data['optout_keywords'] ?? null) ?: 'STOP,UNSUBSCRIBE,CANCEL,END,QUIT';

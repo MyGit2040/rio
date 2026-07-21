@@ -105,6 +105,18 @@
                         <input id="accent_color" name="accent_color" type="color" value="{{ old('accent_color', data_get($s, 'accent_color', '#8b5cf6')) }}"
                                class="mt-1 block h-10 w-20 rounded-lg border border-gray-300 cursor-pointer">
                     </div>
+                    <div>
+                        @php $tz = old('timezone', data_get($s, 'timezone', data_get($s, 'quiet_timezone', config('app.timezone', 'UTC')))); @endphp
+                        <x-input-label for="timezone" value="Timezone" />
+                        <select id="timezone" name="timezone"
+                                class="mt-1 block w-full rounded-lg border-gray-300 focus:border-brand focus:ring-brand">
+                            @foreach (DateTimeZone::listIdentifiers() as $id)
+                                <option value="{{ $id }}" @selected($tz === $id)>{{ $id }}</option>
+                            @endforeach
+                        </select>
+                        <span class="block mt-1 text-xs text-gray-500">All dates and times across the app are shown in this timezone. Set it to your local time (e.g. Asia/Dubai).</span>
+                        @error('timezone')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
                 </div>
             </div>
         </x-card>

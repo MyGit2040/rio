@@ -14,7 +14,7 @@
                     <div class="flex justify-between gap-3"><dt class="text-gray-500">Status</dt><dd><x-badge :color="$statusColor">{{ $statusLabel }}</x-badge></dd></div>
                     <div class="flex justify-between gap-3"><dt class="text-gray-500">Instance</dt><dd class="text-gray-800 truncate">{{ $device->instance_name }}</dd></div>
                     @if ($device->phone_number)<div class="flex justify-between gap-3"><dt class="text-gray-500">Number</dt><dd class="text-gray-800">+{{ $device->phone_number }}</dd></div>@endif
-                    @if ($device->connected_at)<div class="flex justify-between gap-3"><dt class="text-gray-500">Linked</dt><dd class="text-gray-800">{{ $device->connected_at->format('M j, Y') }}</dd></div>@endif
+                    @if ($device->connected_at)<div class="flex justify-between gap-3"><dt class="text-gray-500">Linked</dt><dd class="text-gray-800">@lt($device->connected_at, 'M j, Y')</dd></div>@endif
                 </dl>
             </x-card>
 

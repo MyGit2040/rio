@@ -90,7 +90,7 @@
                         <div class="flex justify-between gap-3"><dt class="text-gray-500">Poll prelude gap</dt><dd class="text-gray-800">Random {{ $campaign->min_delay }}–{{ $campaign->max_delay }}s</dd></div>
                     @endif
                     @if ($campaign->scheduled_at)
-                        <div class="flex justify-between gap-3"><dt class="text-gray-500">Scheduled</dt><dd class="text-gray-800">{{ $campaign->scheduled_at->format('M j, g:i A') }}</dd></div>
+                        <div class="flex justify-between gap-3"><dt class="text-gray-500">Scheduled</dt><dd class="text-gray-800">@lt($campaign->scheduled_at, 'M j, g:i A')</dd></div>
                     @endif
                 </dl>
                 @if ($campaign->type !== 'poll' && $campaign->body)
@@ -236,7 +236,7 @@
                 'sender_name' => $r->instance?->name ?: 'Unknown device',
                 'sender_phone' => $r->instance?->phone_number ? '+'.$r->instance->phone_number : '—',
                 'type' => $r->type,
-                'received_label' => $r->created_at?->format('d M Y, h:i A'),
+                'received_label' => \App\Support\LocalTime::format($r->created_at, 'd M Y, h:i A'),
             ]),
         ];
     @endphp
@@ -516,7 +516,7 @@
                             <td class="px-5 py-3 text-gray-600 whitespace-nowrap">{{ $r->instance->name ?? ($campaign->instance->name ?? '—') }}</td>
                             <td class="px-5 py-3 text-gray-600 whitespace-nowrap">{{ $variantLabel }}</td>
                             <td class="px-5 py-3"><x-badge :color="$rc">{{ ucfirst($r->status) }}</x-badge></td>
-                            <td class="px-5 py-3 text-gray-500 whitespace-nowrap">{{ $r->sent_at?->format('M j, g:i:s A') ?? '—' }}</td>
+                            <td class="px-5 py-3 text-gray-500 whitespace-nowrap">@lt($r->sent_at, 'M j, g:i:s A')</td>
                             <td class="px-5 py-3 text-red-500 text-xs max-w-xs truncate">{{ $r->error }}</td>
                         </tr>
                     @empty

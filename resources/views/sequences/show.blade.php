@@ -48,7 +48,7 @@
                                 <tr class="hover:bg-gray-50">
                                     <td class="px-5 py-3 text-gray-800 whitespace-nowrap">{{ $e->contact->name ?? '+'.($e->contact->phone ?? '') }}</td>
                                     <td class="px-5 py-3 text-gray-600">{{ $e->current_step + 1 }}</td>
-                                    <td class="px-5 py-3 text-gray-500 whitespace-nowrap">{{ $e->next_run_at?->format('M j, g:i A') ?? '—' }}</td>
+                                    <td class="px-5 py-3 text-gray-500 whitespace-nowrap">@lt($e->next_run_at, 'M j, g:i A')</td>
                                     <td class="px-5 py-3"><x-badge :color="$e->status === 'active' ? 'green' : ($e->status === 'completed' ? 'blue' : 'gray')">{{ ucfirst($e->status) }}</x-badge></td>
                                 </tr>
                             @empty

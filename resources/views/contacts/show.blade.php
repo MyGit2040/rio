@@ -64,7 +64,7 @@
                                 <p class="text-xs text-gray-400 mt-0.5">
                                     {{ $msg->direction === 'in' ? 'Received' : 'Sent' }}
                                     @if ($msg->instance) · {{ $msg->instance->name }} @endif
-                                    · {{ $msg->created_at?->format('M j, Y g:i A') }}
+                                    · @lt($msg->created_at, 'M j, Y g:i A')
                                 </p>
                             </div>
                         </li>
