@@ -160,9 +160,16 @@ class DeviceController extends Controller
         $phone = preg_replace('/\D+/', '', (string) data_get($response, 'instance.phone')) ?: null;
         $profileName = data_get($response, 'instance.profile_name');
 
+        // Some engines (Baileys) can hand back the current QR on a status read.
+        // Storing it here means the device page's poll fills the QR box as soon
+        // as the socket emits one, instead of depending on the create call to
+        // have caught it inside its own short window.
+        $polledQr = $state === 'open' ? null : (data_get($response, 'instance.qr') ?: $device->qr_code);
+        $qrArrived = ! $device->qr_code && $polledQr;
+
         $device->update([
             'status'       => $state,
-            'qr_code'      => $state === 'open' ? null : $device->qr_code,
+            'qr_code'      => $polledQr,
             'pairing_code' => $state === 'open' ? null : $device->pairing_code,
             'connected_at' => $state === 'open' ? ($device->connected_at ?? now()) : $device->connected_at,
             'phone_number' => $state === 'open' ? ($phone ?: $device->phone_number) : $device->phone_number,
@@ -170,8 +177,11 @@ class DeviceController extends Controller
         ]);
 
         return response()->json([
-            'ok'     => true,
-            'status' => $state,
+            'ok'        => true,
+            'status'    => $state,
+            // The page reloads once when a QR first appears, so an empty card
+            // becomes a scannable one without the operator doing anything.
+            'qr_arrived' => (bool) $qrArrived,
         ]);
     }
 

@@ -154,10 +154,20 @@
             const badge = card.querySelector('[data-device-status]');
             if (!badge || badge.textContent.trim() !== 'Waiting for scan') return;
             const id = card.dataset.deviceId;
+            // Whether this card is currently showing a QR. An empty box that
+            // later receives one triggers a single reload to render it.
+            const hasQr = !!card.querySelector('[data-openwa-qr], img[alt="WhatsApp QR code"]');
             const timer = setInterval(() => {
                 fetch(`/devices/${id}/state`, { headers: { 'Accept': 'application/json' } })
                     .then(r => r.json())
-                    .then(d => { if (d.status === 'open') { clearInterval(timer); location.reload(); } })
+                    .then(d => {
+                        // Connected — swap the card to its linked state.
+                        if (d.status === 'open') { clearInterval(timer); location.reload(); return; }
+                        // A QR just became available for a card that had none.
+                        // Reload once to draw it; after that hasQr is true so
+                        // this cannot loop.
+                        if (d.qr_arrived && !hasQr) { clearInterval(timer); location.reload(); }
+                    })
                     .catch(() => {});
             // A completed QR/pairing login is time-sensitive in the UI. Poll at
             // one second so the card switches to Connected almost immediately,

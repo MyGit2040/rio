@@ -204,9 +204,12 @@ class BaileysGatewayDriver implements WhatsappGateway
 
         return [
             'qrcode' => [
-                // The device view accepts either a data URL or a raw payload;
-                // the PNG is preferred because it renders without JS.
-                'base64' => data_get($payload, 'qr_image_base64') ?: data_get($payload, 'qr_data'),
+                // The RAW payload, which the device view renders to a QR via
+                // its canvas path. The gateway's qr_image_base64 is bare PNG
+                // base64 with no data: prefix, so it would take the same canvas
+                // path and be mis-encoded as if the PNG bytes were QR text —
+                // hence the empty box. The payload is the correct input.
+                'base64' => data_get($payload, 'qr_data') ?: null,
                 'pairingCode' => null,
             ],
             'instance' => [
@@ -242,12 +245,21 @@ class BaileysGatewayDriver implements WhatsappGateway
             return ['instance' => ['state' => 'close']];
         }
 
-        $payload = $response->json() ?? [];
+        // The gateway wraps the row under `instance` and uses the model's own
+        // camelCase column names (state, phoneNumber, displayName, lastQr).
+        // Reading them flat/snake — as this did — always yielded null, so the
+        // device was stuck reporting "connecting" no matter what really
+        // happened, and the QR sitting in the same response was thrown away.
+        $instance = data_get($response->json() ?? [], 'instance', []);
 
         return ['instance' => [
-            'state' => $this->stateFor(data_get($payload, 'state')),
-            'phone' => data_get($payload, 'phone_number'),
-            'profile_name' => data_get($payload, 'display_name'),
+            'state' => $this->stateFor(data_get($instance, 'state')),
+            'phone' => data_get($instance, 'phoneNumber'),
+            'profile_name' => data_get($instance, 'displayName'),
+            // The raw QR payload (not a PNG). Carried up so the device page's
+            // status poll can display it without waiting on the create call to
+            // have caught it in its own window.
+            'qr' => data_get($instance, 'lastQr'),
         ]];
     }
 
