@@ -3,8 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\CampaignRecipient;
+use App\Models\Message;
 use App\Models\WhatsappInstance;
-use App\Services\ChatbotService;
+use App\Services\InboundMessageRecorder;
 use App\Support\Tenancy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,7 +26,7 @@ use Illuminate\Support\Facades\Log;
  */
 class BaileysWebhookController extends Controller
 {
-    public function __construct(private readonly ChatbotService $chatbot)
+    public function __construct(private readonly InboundMessageRecorder $recorder)
     {
     }
 
@@ -184,6 +185,14 @@ class BaileysWebhookController extends Controller
             CampaignRecipient::where('message_id', $messageId)
                 ->whereIn('status', ['sent', 'delivered'])
                 ->update(['status' => $status]);
+
+            // Mirror the tick onto the chat thread's own row (sent → delivered →
+            // read; a late 'delivered' must never downgrade an already-read row).
+            Message::where('whatsapp_instance_id', $instance->id)
+                ->where('direction', 'out')
+                ->where('message_id', $messageId)
+                ->whereIn('status', ['sent', 'delivered'])
+                ->update(['status' => $status]);
         }
 
         if ($eventType === 'message.received') {
@@ -194,23 +203,28 @@ class BaileysWebhookController extends Controller
     private function onInboundMessage(WhatsappInstance $instance, array $data): void
     {
         $phone = (string) ($data['phone'] ?? '');
-        $text = (string) ($data['text'] ?? '');
 
         if ($phone === '') {
             return;
         }
 
-        // Inbound handling (contact upsert, opt-out keywords, chatbot replies,
-        // hook forwarding) already exists for the OpenWA engine. Rather than
-        // duplicate that logic here — which would guarantee the two copies
-        // drift — the normalised payload is handed to the same service.
-        $this->chatbot->handleInbound(
-            $instance,
-            \App\Models\Contact::firstOrCreate(
-                ['phone' => $phone],
-                ['name' => $data['push_name'] ?? $phone],
-            ),
-            $text,
-        );
+        // The whole inbound pipeline (idempotency, contact upsert, the Message
+        // row, campaign attribution, opt-out keywords, chatbot replies, hook
+        // forwarding, outbound webhook) is shared with the OpenWA engine —
+        // one copy, so the two endpoints can never drift. Before this, the
+        // Baileys endpoint only called the chatbot: inbound replies were never
+        // stored, so the Inbox, campaign Responses, contact-graph protection
+        // and STOP opt-outs were all silently dead on Baileys devices.
+        $kind = (string) ($data['kind'] ?? 'text');
+
+        $this->recorder->record($instance, [
+            'message_id' => $data['whatsapp_message_id'] ?? null,
+            'remote_jid' => $data['chat_jid'] ?? null,
+            'phone'      => preg_replace('/\D+/', '', $phone),
+            'from_me'    => false, // the gateway deliberately skips own echoes
+            'kind'       => $kind !== '' ? $kind : 'text',
+            'detail'     => (string) ($data['text'] ?? ''),
+            'push_name'  => $data['push_name'] ?? null,
+        ]);
     }
 }

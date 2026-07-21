@@ -10,7 +10,7 @@ return [
      */
 
     'devices'     => ['label' => 'Devices',          'desc' => 'Connect & manage WhatsApp numbers',        'routes' => ['devices.*']],
-    'inbox'       => ['label' => 'Inbox',            'desc' => 'Two-way chat with contacts',               'routes' => ['inbox.*']],
+    'inbox'       => ['label' => 'Inbox',            'desc' => 'Two-way chat with contacts',               'routes' => ['inbox.*', 'chats.*']],
     'templates'   => ['label' => 'Templates',        'desc' => 'Reusable message templates',               'routes' => ['templates.*']],
     'media'       => ['label' => 'Media library',    'desc' => 'Store & reuse images/files',               'routes' => ['media.*']],
     'contacts'    => ['label' => 'Contacts',         'desc' => 'Import, verify & tag contacts',            'routes' => ['contacts.*']],

@@ -9,6 +9,7 @@ use App\Http\Controllers\BackupController;
 use App\Http\Controllers\BaileysWebhookController;
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\CampaignController;
+use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ChatbotRuleController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactImportController;
@@ -128,6 +129,12 @@ Route::middleware('auth')->group(function () {
     Route::get('/inbox', [InboxController::class, 'index'])->name('inbox.index');
     Route::get('/inbox/{contact}', [InboxController::class, 'show'])->name('inbox.show');
     Route::post('/inbox/{contact}/reply', [InboxController::class, 'reply'])->name('inbox.reply');
+
+    // Multi-account chat workspace (one browser-style tab per linked number)
+    Route::get('/chats', [ChatController::class, 'index'])->name('chats.index');
+    Route::get('/chats/{device}/conversations', [ChatController::class, 'conversations'])->name('chats.conversations');
+    Route::get('/chats/{device}/thread', [ChatController::class, 'thread'])->name('chats.thread');
+    Route::post('/chats/{device}/send', [ChatController::class, 'send'])->name('chats.send');
 
     // Drip / follow-up sequences
     Route::post('/sequences/bulk', [SequenceController::class, 'bulk'])->name('sequences.bulk');

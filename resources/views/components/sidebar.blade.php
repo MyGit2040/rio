@@ -27,6 +27,7 @@
         <x-nav-item :active="request()->routeIs('dashboard')" href="{{ route('dashboard') }}" icon="grid">Dashboard</x-nav-item>
         @if ($can('devices'))<x-nav-item :active="request()->routeIs('devices.*')" href="{{ route('devices.index') }}" icon="device">Devices</x-nav-item>@endif
         @if ($can('devices'))<x-nav-item :active="request()->routeIs('warmup-plans.*')" href="{{ route('warmup-plans.index') }}" icon="pulse">Warm-up plans</x-nav-item>@endif
+        @if ($can('inbox'))<x-nav-item :active="request()->routeIs('chats.*')" href="{{ route('chats.index') }}" icon="chat">Chats</x-nav-item>@endif
         @if ($can('inbox'))<x-nav-item :active="request()->routeIs('inbox.*')" href="{{ route('inbox.index') }}" icon="inbox">Inbox</x-nav-item>@endif
         @if ($can('templates'))<x-nav-item :active="request()->routeIs('templates.*')" href="{{ route('templates.index') }}" icon="doc">Templates</x-nav-item>@endif
         @if ($can('media'))<x-nav-item :active="request()->routeIs('media.*')" href="{{ route('media.index') }}" icon="image">Media library</x-nav-item>@endif

@@ -2,25 +2,20 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\DispatchWebhook;
-use App\Models\Campaign;
 use App\Models\CampaignRecipient;
 use App\Models\Contact;
-use App\Models\Alert;
 use App\Models\Message;
-use App\Models\Suppression;
 use App\Models\WhatsappInstance;
-use App\Services\ChatbotService;
+use App\Services\InboundMessageRecorder;
 use App\Services\WhatsappGatewayService;
 use App\Support\Tenancy;
-use App\Support\Whatsapp;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
 class WebhookController extends Controller
 {
-    public function __construct(private readonly ChatbotService $chatbot)
+    public function __construct(private readonly InboundMessageRecorder $recorder)
     {
     }
 
@@ -76,7 +71,7 @@ class WebhookController extends Controller
                 'connection.update', 'session.status', 'session.state.changed' => $this->onConnectionUpdate($instance, $data),
                 'qrcode.updated'    => $this->onQrUpdated($instance, $data),
                 'messages.upsert', 'message.received' => $this->onMessages($instance, $data),
-                'messages.update'   => $this->onMessageStatus($data),
+                'messages.update'   => $this->onMessageStatus($instance, $data),
                 default             => null,
             };
         });
@@ -153,16 +148,7 @@ class WebhookController extends Controller
                 continue; // media / reaction / status update — nothing actionable
             }
 
-            // Idempotency: the engine re-delivers the same messages.upsert event
-            // (OpenWA and upstream transport retries can re-post). Without this guard we
-            // recorded a duplicate AND re-forwarded the reply to the hook number on
-            // every delivery — the "same reply every minute" bug. If we've already
-            // seen this exact WhatsApp message id on this number, skip it entirely.
             $messageId = $key['id'] ?? null;
-            if ($messageId && Message::where('whatsapp_instance_id', $instance->id)
-                ->where('message_id', $messageId)->exists()) {
-                continue;
-            }
 
             $contact = Contact::firstOrCreate(
                 ['phone' => $phone],
@@ -196,60 +182,20 @@ class WebhookController extends Controller
                 }
             }
 
-            Message::create([
-                'whatsapp_instance_id' => $instance->id,
-                'contact_id'           => $contact->id,
-                'campaign_id'          => $campaignId,
-                'direction'            => $fromMe ? 'out' : 'in',
-                'remote_jid'           => $remoteJid,
-                'phone'                => $phone,
-                'type'                 => $kind === 'text' ? 'text' : $kind,
-                'body'                 => $detail,
-                'status'               => 'received',
-                'message_id'           => $messageId,
+            // Persist + side effects (opt-out, chatbot, hook forward, poll alert,
+            // outbound webhook). Deduplication also lives there — the engine
+            // re-delivers the same messages.upsert, and a repeat must be a no-op.
+            $this->recorder->record($instance, [
+                'message_id'  => $messageId,
+                'remote_jid'  => $remoteJid,
+                'phone'       => $phone,
+                'from_me'     => $fromMe,
+                'kind'        => $kind,
+                'detail'      => $detail,
+                'push_name'   => $item['pushName'] ?? null,
+                'contact'     => $contact,
+                'campaign_id' => $campaignId,
             ]);
-
-            if (! $fromMe) {
-                // A text reply can be an opt-out or trigger the auto-reply bot.
-                if ($kind === 'text') {
-                    if ($this->handleOptOut($instance, $contact, $detail)) {
-                        DispatchWebhook::fire($instance->tenant_id, 'contact.opted_out', [
-                            'contact_id' => $contact->id, 'phone' => $phone, 'keyword' => trim($detail),
-                        ]);
-                    } else {
-                        $this->chatbot->handleInbound($instance, $contact, $detail);
-                    }
-                }
-
-                // Forward the full detail (who, what kind, which answer, which campaign) to the hook number.
-                $this->forwardToHook($instance, $contact, $phone, $kind, $detail, $campaignId);
-
-                if ($kind === 'poll_response') {
-                    $campaignName = $campaignId ? Campaign::whereKey($campaignId)->value('name') : null;
-                    $who = $contact->name ?: '+'.$phone;
-
-                    Alert::create([
-                        'level'   => 'info',
-                        'title'   => 'New poll vote'.($campaignName ? " · {$campaignName}" : ''),
-                        'body'    => "{$who} chose: {$detail}",
-                        'context' => [
-                            'campaign_id' => $campaignId,
-                            'contact_id'  => $contact->id,
-                            'phone'       => $phone,
-                            'answer'      => $detail,
-                        ],
-                    ]);
-                }
-
-                DispatchWebhook::fire($instance->tenant_id, 'message.received', [
-                    'contact_id'  => $contact->id,
-                    'name'        => $contact->name,
-                    'phone'       => $phone,
-                    'kind'        => $kind,      // text | button_response | poll_response
-                    'text'        => $detail,
-                    'campaign_id' => $campaignId,
-                ]);
-            }
         }
     }
 
@@ -318,86 +264,6 @@ class WebhookController extends Controller
             ->value('campaign_id');
     }
 
-    /**
-     * If the inbound text is one of the tenant's opt-out keywords, unsubscribe the
-     * contact, add them to the suppression list, and send a confirmation reply.
-     */
-    private function handleOptOut(WhatsappInstance $instance, Contact $contact, string $text): bool
-    {
-        $raw = data_get($instance->tenant?->settings, 'optout_keywords');
-        $keywords = collect(preg_split('/[,\n]+/', (string) ($raw ?: 'STOP,UNSUBSCRIBE,CANCEL,END,QUIT')))
-            ->map(fn ($k) => strtoupper(trim($k)))
-            ->filter()
-            ->all();
-
-        $normalized = strtoupper(trim(preg_replace('/[^\p{L}\p{N}\s]/u', '', $text)));
-
-        // Opt out on an exact keyword ("STOP") OR the keyword appearing as a whole
-        // word anywhere in the reply ("please unsubscribe me") — never miss an opt-out.
-        $matched = in_array($normalized, $keywords, true)
-            || collect($keywords)->contains(fn ($k) => preg_match('/\b'.preg_quote($k, '/').'\b/', $normalized) === 1);
-
-        if (! $matched) {
-            return false;
-        }
-
-        $contact->update(['opted_out' => true]);
-
-        Suppression::updateOrCreate(
-            ['tenant_id' => $instance->tenant_id, 'phone' => $contact->phone],
-            ['reason' => 'Replied "'.trim($text).'"', 'source' => 'opt_out'],
-        );
-
-        $reply = data_get($instance->tenant?->settings, 'optout_reply')
-            ?: "You've been unsubscribed and won't receive further messages. Reply START to opt back in.";
-
-        Whatsapp::forInstance($instance)->sendText($instance->instance_name, $contact->phone, $reply);
-
-        return true;
-    }
-
-    /**
-     * Forward a detailed inbound event to the tenant's configured "hook" number.
-     * Says WHO, WHAT they did (reply / poll answer / button click), the exact answer,
-     * and WHICH campaign it belongs to.
-     */
-    private function forwardToHook(WhatsappInstance $instance, Contact $contact, string $phone, string $kind, string $detail, ?int $campaignId): void
-    {
-        $hook = preg_replace('/\D+/', '', (string) data_get($instance->tenant?->settings, 'bulk_hook_number', ''));
-
-        if (! $hook || $hook === $phone) {
-            return;
-        }
-
-        $who = $contact->name ?: $phone;
-        $campaignName = $campaignId ? Campaign::where('id', $campaignId)->value('name') : null;
-        $ctx = $campaignName ? "\n📣 Campaign: {$campaignName}" : '';
-
-        $body = match ($kind) {
-            'poll_response'   => "📊 Poll answer from {$who} (+{$phone}):\n👉 {$detail}{$ctx}",
-            'button_response' => "🔘 Button click from {$who} (+{$phone}):\n👉 {$detail}{$ctx}",
-            default           => "📩 Reply from {$who} (+{$phone}):\n{$detail}{$ctx}",
-        };
-
-        $result = Whatsapp::forInstance($instance)->sendText($instance->instance_name, $hook, $body);
-
-        // Do not silently claim a hook notification worked when the engine rejected
-        // it. The activity panel remains useful and the server log has diagnostics.
-        if (! ($result['ok'] ?? false)) {
-            \Log::warning('Hook notification failed', [
-                'instance_id' => $instance->id,
-                'kind' => $kind,
-                'error' => $result['error'] ?? 'unknown error',
-            ]);
-            Alert::create([
-                'level' => 'warning',
-                'title' => 'Hook notification could not be sent',
-                'body' => 'The incoming '.str_replace('_', ' ', $kind).' was saved, but forwarding it to the hook number failed. Reconnect this sending number and try again.',
-                'context' => ['instance_id' => $instance->id, 'contact_id' => $contact->id, 'kind' => $kind],
-            ]);
-        }
-    }
-
     /** Convert OpenWA's current public message schema to the internal message shape. */
     private function normaliseOpenWaMessage(array $message): array
     {
@@ -418,7 +284,7 @@ class WebhookController extends Controller
             || isset($message['poll'], $message['pollVote'], $message['selectedOptions'], $message['answer']);
     }
 
-    private function onMessageStatus(array $data): void
+    private function onMessageStatus(WhatsappInstance $instance, array $data): void
     {
         $messageId = data_get($data, 'key.id') ?? ($data['keyId'] ?? null);
         $status = strtolower((string) ($data['status'] ?? ''));
@@ -439,6 +305,14 @@ class WebhookController extends Controller
         }
 
         CampaignRecipient::where('message_id', $messageId)
+            ->whereIn('status', ['sent', 'delivered'])
+            ->update(['status' => $mapped]);
+
+        // Mirror the tick onto the chat thread's own row (sent → delivered → read;
+        // never downgrade a read back to delivered when receipts arrive late).
+        Message::where('whatsapp_instance_id', $instance->id)
+            ->where('direction', 'out')
+            ->where('message_id', $messageId)
             ->whereIn('status', ['sent', 'delivered'])
             ->update(['status' => $mapped]);
     }
