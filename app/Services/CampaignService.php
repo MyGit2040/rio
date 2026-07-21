@@ -8,6 +8,7 @@ use App\Models\Contact;
 use App\Models\Suppression;
 use App\Models\Template;
 use App\Models\WhatsappInstance;
+use App\Support\Jitter;
 use App\Support\LocalTime;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -128,7 +129,10 @@ class CampaignService
                         ->delay(now()->addSeconds($cumulative));
 
                     $count++;
-                    $cumulative += random_int($min, $max);
+                    // Gaussian jitter: gaps cluster around the midpoint of the
+                    // [min, max] band with rare longer/shorter tails, so the send
+                    // cadence looks organic rather than uniformly spaced.
+                    $cumulative += Jitter::seconds($min, $max);
 
                     if ($sleepAfter > 0 && $count % $sleepAfter === 0) {
                         $cumulative += $sleepSeconds;

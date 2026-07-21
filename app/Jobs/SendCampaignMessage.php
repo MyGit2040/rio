@@ -9,6 +9,7 @@ use App\Models\Message;
 use App\Models\Suppression;
 use App\Models\WhatsappInstance;
 use App\Services\PlanLimit;
+use App\Services\DeliveryRatioGuard;
 use App\Services\DeviceHealthService;
 use App\Support\SendingWindow;
 use App\Support\Tenancy;
@@ -79,6 +80,17 @@ class SendCampaignMessage implements ShouldQueue
             return;
         }
 
+        // Delivery-ratio guard (opt-in): if this number is in a double-tick
+        // cool-down (its recent delivery rate collapsed — likely soft-ban), defer
+        // this contact until the cool-down lifts. Stays pending, nothing lost.
+        $deliveryGuard = app(DeliveryRatioGuard::class);
+        if ($deliveryGuard->enabled($campaign->tenant?->settings) && $deliveryGuard->inCooldown($instance->id)) {
+            $until = $deliveryGuard->cooldownUntil($instance->id) ?? now()->addHour();
+            self::dispatch($recipient->id)->delay($until->addSeconds(random_int(1, 300)));
+
+            return;
+        }
+
         // Plan monthly-message cap: pause the campaign cleanly when the limit is hit.
         // Remaining recipients stay pending — resumable next month or after an upgrade.
         if ($campaign->tenant && PlanLimit::for($campaign->tenant)->reached('monthly_messages')) {
@@ -94,6 +106,21 @@ class SendCampaignMessage implements ShouldQueue
         // Do-not-contact list: never message a suppressed number.
         if (Suppression::has($number)) {
             $recipient->update(['status' => 'failed', 'error' => 'On suppression list (do-not-contact)']);
+            $campaign->increment('failed');
+            $this->finaliseIfDone($campaign);
+
+            return;
+        }
+
+        // Contact-graph protection (opt-in, off by default): only message contacts
+        // who have an existing two-way thread with this workspace within a rolling
+        // window (default 48h). WhatsApp treats a number that mostly messages
+        // strangers as spam, so restricting cold outbound to recently-engaged
+        // contacts keeps the graph "warm". Skipped contacts are marked failed with
+        // a clear reason rather than sent.
+        if ((bool) data_get($campaign->tenant?->settings, 'bulk_contact_graph', false)
+            && ! $this->hasPriorConversation($recipient, (int) data_get($campaign->tenant?->settings, 'bulk_contact_graph_hours', 48))) {
+            $recipient->update(['status' => 'failed', 'error' => 'Skipped: no recent conversation (contact-graph protection)']);
             $campaign->increment('failed');
             $this->finaliseIfDone($campaign);
 
@@ -219,6 +246,12 @@ class SendCampaignMessage implements ShouldQueue
                 'message_id'           => $result['message_id'],
             ]);
             app(DeviceHealthService::class)->recordSuccess($instance, $campaign);
+
+            // Re-check the number's rolling double-tick ratio; a collapsed
+            // delivery rate trips a cool-down that defers its next messages.
+            if ($deliveryGuard->enabled($campaign->tenant?->settings)) {
+                $deliveryGuard->evaluate($instance, $campaign->tenant?->settings);
+            }
         } else {
             $this->markFailed($recipient, $campaign, $result['error'] ?? 'Unknown error', $instance);
         }
@@ -297,13 +330,35 @@ class SendCampaignMessage implements ShouldQueue
         $this->finaliseIfDone($campaign);
     }
 
+    /**
+     * True when this recipient's contact has sent us an inbound message within
+     * the rolling window (hours; 0 = any time) — the signal that a two-way
+     * conversation thread already exists. Runs inside the campaign's tenant
+     * context (see handle()), so the Message query is scoped to this workspace.
+     */
+    private function hasPriorConversation(CampaignRecipient $recipient, int $windowHours = 48): bool
+    {
+        if (! $recipient->contact_id) {
+            return false;
+        }
+
+        $query = Message::where('contact_id', $recipient->contact_id)
+            ->where('direction', 'in');
+
+        if ($windowHours > 0) {
+            $query->where('created_at', '>=', now()->subHours($windowHours));
+        }
+
+        return $query->exists();
+    }
+
     /** Use the campaign's normal min/max pacing for its poll's second message. */
     private function pollPreludeDelay(Campaign $campaign): int
     {
         $min = max(1, (int) $campaign->min_delay);
         $max = max($min, (int) $campaign->max_delay);
 
-        return random_int($min, $max);
+        return \App\Support\Jitter::seconds($min, $max);
     }
 
     /**
@@ -485,7 +540,7 @@ class SendCampaignMessage implements ShouldQueue
         // 3) Custom merge fields: {{anything}} resolved from the contact's own attributes.
         $attributes = (array) ($contact?->attributes ?? []);
 
-        return preg_replace_callback('/\{\{\s*([a-z0-9_]+)\s*\}\}/i', function ($m) use ($attributes) {
+        $text = preg_replace_callback('/\{\{\s*([a-z0-9_]+)\s*\}\}/i', function ($m) use ($attributes) {
             $key = strtolower($m[1]);
             foreach ($attributes as $k => $v) {
                 if (strtolower((string) $k) === $key && ! is_array($v)) {
@@ -495,6 +550,16 @@ class SendCampaignMessage implements ShouldQueue
 
             return ''; // unknown field → blank, never a leftover {{token}}
         }, $text);
+
+        // 4) Anti-fingerprint variation (opt-in): invisible structural changes so
+        // two sends of the same copy are not byte-identical. Runs last — after all
+        // {{tokens}} and link wrapping are resolved — and only touches word gaps,
+        // so no URL or number is ever broken. Off by default.
+        if ((bool) data_get($this->activeTenantSettings, 'bulk_antifingerprint', false)) {
+            $text = \App\Support\ContentVariator::vary($text);
+        }
+
+        return $text;
     }
 
     /**

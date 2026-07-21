@@ -4,8 +4,13 @@ import { prisma } from '../database/client.js'
 import { InstanceLock, createRedis } from '../instances/instance-lock.js'
 import { InstanceService } from '../instances/instance-service.js'
 import { isSendable } from '../instances/instance-state-machine.js'
+import { entropyLoop } from '../instances/entropy-loop.js'
+import { groupActionThrottle } from '../instances/group-throttle.js'
+import { reconnectPacer } from '../instances/reconnect-pacer.js'
+import { sendCooldowns } from '../instances/send-cooldown.js'
 import { serialQueues } from '../instances/serial-queue.js'
 import { proxyAgentFor } from '../instances/proxy.js'
+import { healthWarningWebhook, sessionHealth } from '../monitoring/session-health.js'
 import { enqueueWebhook } from '../webhooks/webhook-dispatcher.js'
 
 import { loadAdapter } from './adapter/index.js'
@@ -233,6 +238,21 @@ export class SocketManager {
         }
 
         await this.instances.markReady(live.instanceId)
+
+        // Open the post-reconnect ramp as the number becomes sendable: the first
+        // minute of sends after a recovery is eased in rather than blasted. This
+        // is anchored on READY (not the raw socket-open) because no send is
+        // permitted until then, so a window measured from open would already be
+        // spent.
+        reconnectPacer.begin(
+          live.instanceId,
+          env().RECONNECT_RAMP_SECONDS * 1000,
+          env().RECONNECT_RAMP_MAX_EXTRA_MS,
+        )
+
+        // Start the "real phone" background activity loop for this number.
+        entropyLoop.start(live.instanceId, live.socket)
+
         await enqueueWebhook({ eventType: 'instance.ready', instanceId: live.instanceId, data: {} })
         contextLogger({ instanceId: live.instanceId }).info(
           { stabilizationSeconds: seconds },
@@ -251,8 +271,31 @@ export class SocketManager {
     clearTimeout(live.stabilizationTimer)
     this.sockets.delete(instanceId)
     serialQueues.close(instanceId, 'Socket disconnected.')
+    reconnectPacer.clear(instanceId)
+    entropyLoop.stop(instanceId)
+    groupActionThrottle.clear(instanceId)
 
     const classification = live.adapter.classifyDisconnect(update.lastDisconnect?.error)
+
+    // Fold the disconnect into the session-health risk score. A forbidden (403)
+    // or replaced (440) close weighs far more than a routine dropped connection,
+    // and an escalation into a warning band is reported so Laravel can pause the
+    // number's queue before WhatsApp escalates further. A move into the CRITICAL
+    // band trips the circuit breaker: outbound is halted for a cooldown so a
+    // degrading session (a burst of bad closes / decrypt failures) is not fed
+    // more traffic.
+    const health = sessionHealth.recordDisconnect(instanceId, classification.code)
+    if (health.escalated) {
+      await enqueueWebhook(healthWarningWebhook(instanceId, health))
+
+      if (health.band === 'critical') {
+        sendCooldowns.set(
+          instanceId,
+          env().SESSION_HEALTH_CRITICAL_COOLDOWN_MINUTES * 60_000,
+          `session health critical (score ${health.score}, ${health.reason})`,
+        )
+      }
+    }
 
     // Logged for EVERY disconnect, not only the fatal ones. A recoverable drop
     // used to be silent, so a socket failing to reach WhatsApp at all looked
@@ -368,6 +411,18 @@ export class SocketManager {
       )
     }
 
+    // Circuit breaker: refuse sends while a health cooldown is in effect. The
+    // socket is deliberately left open (so receipts and inbound still flow) —
+    // only outbound is halted, and the cooldown expires on its own.
+    const cooldown = sendCooldowns.active(instanceId)
+    if (cooldown) {
+      const secondsLeft = Math.ceil((cooldown.until - Date.now()) / 1000)
+      throw new Error(
+        `Instance ${instanceId} is in a send cooldown for ${secondsLeft}s (${cooldown.reason}). ` +
+          `Outbound is halted to protect the number; it resumes automatically.`,
+      )
+    }
+
     return live.socket
   }
 
@@ -376,6 +431,11 @@ export class SocketManager {
 
     this.reconnects.cancel(instanceId)
     serialQueues.close(instanceId, `Socket stopped (${reason}).`)
+    reconnectPacer.clear(instanceId)
+    sessionHealth.clear(instanceId)
+    groupActionThrottle.clear(instanceId)
+    sendCooldowns.clear(instanceId)
+    entropyLoop.stop(instanceId)
 
     if (live) {
       live.closing = true

@@ -212,6 +212,40 @@
                     </span>
                 </label>
 
+                <label class="flex items-start gap-3">
+                    <input type="hidden" name="bulk_antifingerprint" value="0">
+                    <input type="checkbox" name="bulk_antifingerprint" value="1" @checked(data_get($s, 'bulk_antifingerprint', false)) class="mt-1 rounded border-gray-300 text-brand focus:ring-brand">
+                    <span>
+                        <span class="text-sm font-medium text-gray-800">Anti-fingerprint variation</span>
+                        <span class="block text-xs text-gray-500">Invisibly vary each message's structure (zero-width characters at word gaps, occasional greeting synonyms) so identical copy isn't sent byte-for-byte to everyone. The reader sees no difference; links and numbers are never altered.</span>
+                    </span>
+                </label>
+
+                <label class="flex items-start gap-3">
+                    <input type="hidden" name="bulk_contact_graph" value="0">
+                    <input type="checkbox" name="bulk_contact_graph" value="1" @checked(data_get($s, 'bulk_contact_graph', false)) class="mt-1 rounded border-gray-300 text-brand focus:ring-brand">
+                    <span>
+                        <span class="text-sm font-medium text-gray-800">Contact-graph protection</span>
+                        <span class="block text-xs text-gray-500">Only send to contacts who have replied to you within the window below (an existing two-way thread). Contacts with no recent conversation are skipped and marked in the campaign report. <strong>Off by default</strong> — turning this on will stop cold outreach to brand-new contacts.</span>
+                        <span class="mt-2 flex items-center gap-2">
+                            <span class="text-xs text-gray-600">Reply window</span>
+                            <input type="number" name="bulk_contact_graph_hours" min="0" max="8760"
+                                   value="{{ old('bulk_contact_graph_hours', data_get($s, 'bulk_contact_graph_hours', 48)) }}"
+                                   class="w-24 rounded-lg border-gray-300 text-sm focus:border-brand focus:ring-brand">
+                            <span class="text-xs text-gray-400">hours (0 = any time)</span>
+                        </span>
+                    </span>
+                </label>
+
+                <label class="flex items-start gap-3">
+                    <input type="hidden" name="bulk_delivery_guard" value="0">
+                    <input type="checkbox" name="bulk_delivery_guard" value="1" @checked(data_get($s, 'bulk_delivery_guard', false)) class="mt-1 rounded border-gray-300 text-brand focus:ring-brand">
+                    <span>
+                        <span class="text-sm font-medium text-gray-800">Delivery-ratio guard</span>
+                        <span class="block text-xs text-gray-500">Watch the double-tick (delivered) rate of the last 50 messages per number. If it drops below 60% — the signature of a soft-ban or heavy blocking — that number is automatically paused for 24 hours. Pending messages are safe and resume when the cool-down lifts. <strong>Off by default.</strong></span>
+                    </span>
+                </label>
+
                 <div>
                     <x-input-label value="Default delivery delay (seconds)" />
                     <div class="grid grid-cols-2 gap-4 mt-1">

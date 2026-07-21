@@ -67,6 +67,53 @@ const schema = z.object({
   RECONNECT_WINDOW_MINUTES: int(30),
   MAX_RECONNECT_DELAY_SECONDS: int(300),
 
+  // --- Human-like send behaviour (anti-ban) -------------------------------
+  // A "typing…" indicator is shown before each text send: a think pause of
+  // [THINK_MIN, THINK_MAX] ms, then a compose window of ~MS_PER_CHAR per
+  // character, clamped to [MIN_TYPING, MAX_TYPING] ms. Disable to send with no
+  // presence at all.
+  PRESENCE_SIMULATION_ENABLED: bool.default('true'),
+  PRESENCE_MS_PER_CHAR: int(30),
+  PRESENCE_MIN_TYPING_MS: int(900),
+  PRESENCE_MAX_TYPING_MS: int(6000),
+  PRESENCE_THINK_MIN_MS: int(500),
+  PRESENCE_THINK_MAX_MS: int(1500),
+
+  // Delayed read receipts: an inbound message is marked read after a randomised
+  // 2–7 s (Gaussian) pause instead of instantly, so blue ticks don't appear at
+  // machine speed. OFF by default — enabling it means the account sends read
+  // receipts it currently sends none of.
+  READ_RECEIPT_SIMULATION_ENABLED: bool.default('false'),
+  READ_RECEIPT_MIN_MS: int(2000),
+  READ_RECEIPT_MAX_MS: int(7000),
+
+  // Group-action brake: minimum gap between actions targeting a group chat on
+  // one number, so group sends can never fire back-to-back.
+  GROUP_ACTION_COOLDOWN_MS: int(15_000),
+
+  // Background entropy loop: every ENTROPY_MIN..MAX hours a live number performs
+  // one harmless "I'm a real phone" action (a presence blip / own-profile
+  // fetch) with NO outbound message. OFF by default.
+  ENTROPY_ENABLED: bool.default('false'),
+  ENTROPY_MIN_HOURS: int(2),
+  ENTROPY_MAX_HOURS: int(6),
+
+  // Post-reconnect send ramp: for RECONNECT_RAMP_SECONDS after a number becomes
+  // sendable again, each send is held by an extra pause that starts near
+  // RECONNECT_RAMP_MAX_EXTRA_MS and decays to zero — so a recovered number eases
+  // back to full rate instead of blasting a queued batch the instant it returns.
+  RECONNECT_RAMP_SECONDS: int(60),
+  RECONNECT_RAMP_MAX_EXTRA_MS: int(4000),
+
+  // Session-health risk score (0 = healthy … 100 = critical). A gateway
+  // health_warning webhook fires when a number crosses WARN, and again at
+  // CRITICAL, so Laravel can pause its queue before WhatsApp acts. Crossing
+  // CRITICAL also halts this number's sends for CRITICAL_COOLDOWN_MINUTES
+  // (circuit breaker) rather than fighting a degrading session.
+  SESSION_HEALTH_WARN_SCORE: int(50),
+  SESSION_HEALTH_CRITICAL_SCORE: int(80),
+  SESSION_HEALTH_CRITICAL_COOLDOWN_MINUTES: int(60),
+
   INSTANCE_LOCK_TTL_SECONDS: int(60),
   INSTANCE_LOCK_RENEW_SECONDS: int(20),
 

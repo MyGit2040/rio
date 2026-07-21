@@ -2,12 +2,39 @@ import { env } from '../config/env.js'
 import { contextLogger } from '../config/logger.js'
 import { prisma } from '../database/client.js'
 import type { InboundMessageKind, MessageStatus, NormalisedInboundMessage } from '../types/index.js'
+import { gaussianBetween } from '../util/timing.js'
 import { enqueueWebhook } from '../webhooks/webhook-dispatcher.js'
 
-import type { BaileysAdapter, BaileysSocketHandle } from './adapter/types.js'
+import type { BaileysAdapter, BaileysSocketHandle, MessageKey } from './adapter/types.js'
 import { isBroadcastJid, isGroupJid, normaliseJid, phoneFromJid } from './jid-utils.js'
 import { MediaHandler } from './media-handler.js'
 import { handlePollUpdate } from './poll-handler.js'
+
+/**
+ * Mark an inbound message read after a humanised delay, without blocking the
+ * upsert handler.
+ *
+ * A read receipt that lands the instant a message arrives is a machine tell — a
+ * person takes a beat to notice and open a chat. The delay is a Gaussian draw in
+ * [READ_RECEIPT_MIN_MS, READ_RECEIPT_MAX_MS], so most reads happen a few seconds
+ * later with rare quicker/slower ones. Best-effort: a socket that has since
+ * closed simply rejects, and that is swallowed — a missed blue tick is
+ * immaterial, and it must never disturb inbound processing.
+ */
+function scheduleDelayedRead(socket: BaileysSocketHandle, key: MessageKey, log: ReturnType<typeof contextLogger>): void {
+  if (!env().READ_RECEIPT_SIMULATION_ENABLED) {
+    return
+  }
+
+  const delayMs = gaussianBetween(env().READ_RECEIPT_MIN_MS, env().READ_RECEIPT_MAX_MS)
+
+  // Unref so a pending read never holds the process open at shutdown.
+  setTimeout(() => {
+    void socket.readMessages([key]).catch((error: unknown) => {
+      log.debug({ err: error, whatsappMessageId: key.id }, 'Delayed read receipt could not be sent')
+    })
+  }, delayMs).unref()
+}
 
 /**
  * Translates raw Baileys events into gateway webhooks.
@@ -221,6 +248,14 @@ async function handleUpsert(
         timestamp: normalised.timestamp,
       },
     })
+
+    // Blue-tick the message a few seconds later (opt-in), so read receipts don't
+    // appear at machine speed. Non-blocking.
+    scheduleDelayedRead(
+      socket,
+      { remoteJid: key.remoteJid, id: key.id, participant: message.participant as string | undefined, fromMe: false },
+      log,
+    )
   }
 }
 

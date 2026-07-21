@@ -80,6 +80,13 @@ Both directions are covered in `docs/LARAVEL_INTEGRATION.md`.
 - PostgreSQL 16.
 - Redis 7.
 
+> **Run this on Node.js, not Bun.** The gateway is verified only on the standard
+> Node.js runtime, and the Docker image is built `FROM node:22`. Baileys keeps a
+> long-lived WhatsApp WebSocket whose timing and edge behaviour differ under
+> alternative runtimes; on Bun those differences have been observed to trigger
+> spurious disconnect/reconnect loops that look like a ban signal to WhatsApp.
+> Use Node.js in production.
+
 **Network:**
 
 - Outbound HTTPS to WhatsApp servers.

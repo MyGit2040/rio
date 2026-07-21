@@ -83,6 +83,31 @@ export interface BaileysSocketHandle {
   onCall(handler: (payload: unknown) => void | Promise<void>): void
 
   sendMessage(jid: string, content: unknown, options?: unknown): Promise<SentMessageHandle>
+
+  /**
+   * Broadcast a presence state to a chat — used to show a human-like "typing…"
+   * indicator before a send.
+   *
+   * Best-effort by contract: presence is decoration, so a caller must be free to
+   * ignore a rejection here and still deliver the message it was dressing up.
+   * The gateway is otherwise silent on presence (markOnlineOnConnect is false),
+   * so this is the only place it deliberately appears online, and only for the
+   * moment around a send.
+   */
+  sendPresenceUpdate(state: PresenceState, jid?: string): Promise<void>
+
+  /**
+   * Mark one or more messages read (blue ticks). Used for humanised, delayed
+   * read receipts; best-effort, so a failure never propagates.
+   */
+  readMessages(keys: MessageKey[]): Promise<void>
+
+  /**
+   * Fetch a profile-picture URL — used only as a harmless "real phone" activity
+   * by the background entropy loop. Returns undefined when there is none.
+   */
+  fetchProfilePicture(jid: string): Promise<string | undefined>
+
   requestPairingCode(phoneNumber: string): Promise<string>
   logout(): Promise<void>
   end(error?: Error): void
@@ -104,6 +129,21 @@ export interface SentMessageHandle {
   /** WhatsApp's message id, when the implementation returns one. */
   messageId: string | undefined
   raw: unknown
+}
+
+/**
+ * Presence states WhatsApp understands. `composing` is the "typing…" indicator
+ * and `recording` its voice-note equivalent; `paused` clears them. The set is
+ * identical across the 6.x and 7.x Baileys lines.
+ */
+export type PresenceState = 'unavailable' | 'available' | 'composing' | 'recording' | 'paused'
+
+/** The minimal WhatsApp message key needed to acknowledge a message as read. */
+export interface MessageKey {
+  remoteJid: string
+  id: string
+  participant?: string | undefined
+  fromMe?: boolean | undefined
 }
 
 export interface ConnectionUpdate {

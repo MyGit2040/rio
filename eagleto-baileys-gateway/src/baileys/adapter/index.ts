@@ -10,7 +10,9 @@ import {
   type BaileysSocketHandle,
   type ConnectionUpdate,
   type CreateSocketOptions,
+  type MessageKey,
   type PollVoteResolutionInput,
+  type PresenceState,
   type ResolvedPollVote,
   type SentMessageHandle,
 } from './types.js'
@@ -225,6 +227,22 @@ function wrapSocket(mod: BaileysModule, sock: any): BaileysSocketHandle {
       const sent = await sock.sendMessage(jid, content, options ?? {})
 
       return { messageId: sent?.key?.id ?? undefined, raw: sent }
+    },
+
+    async sendPresenceUpdate(state: PresenceState, jid?: string): Promise<void> {
+      // The 6.x and 7.x signatures agree: sendPresenceUpdate(type, toJid?).
+      await sock.sendPresenceUpdate(state, jid)
+    },
+
+    async readMessages(keys: MessageKey[]): Promise<void> {
+      // readMessages(keys) is identical across the supported Baileys lines.
+      await sock.readMessages(keys)
+    },
+
+    async fetchProfilePicture(jid: string): Promise<string | undefined> {
+      // Baileys throws (not returns null) when a picture is absent/private, so
+      // the caller treats any failure as "no picture".
+      return (await sock.profilePictureUrl(jid, 'image')) ?? undefined
     },
 
     async requestPairingCode(phoneNumber: string): Promise<string> {

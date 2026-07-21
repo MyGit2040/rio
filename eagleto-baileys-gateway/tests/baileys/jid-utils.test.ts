@@ -89,6 +89,31 @@ describe('jidsEqual', () => {
   })
 })
 
+describe('stable thread keys across phone JIDs and LIDs', () => {
+  // A "thread key" must be stable for one conversation however WhatsApp happens
+  // to address it — same phone number across linked devices is one thread; a
+  // phone JID and a LID are DIFFERENT namespaces and must stay distinct so a
+  // migration to @lid never silently merges or splits a conversation.
+  const threadKey = (jid: string): string => normaliseJid(jid)
+
+  it('collapses every device of one phone number to a single thread key', () => {
+    expect(threadKey('971501234567@s.whatsapp.net')).toBe(threadKey('971501234567:5@s.whatsapp.net'))
+    expect(threadKey('971501234567:9@s.whatsapp.net')).toBe(threadKey('971501234567:12@s.whatsapp.net'))
+  })
+
+  it('keeps a @lid thread key distinct from a phone-number thread key', () => {
+    expect(threadKey('185724920943@lid')).not.toBe(threadKey('185724920943@s.whatsapp.net'))
+    // …and a LID is stable across its own device suffixes.
+    expect(threadKey('185724920943:3@lid')).toBe(threadKey('185724920943@lid'))
+  })
+
+  it('never derives a phone number from a LID thread', () => {
+    // A LID carries no phone number, so callers must get an unambiguous "none".
+    expect(phoneFromJid('185724920943@lid')).toBe('')
+    expect(phoneFromJid('185724920943:3@lid')).toBe('')
+  })
+})
+
 describe('phoneFromJid', () => {
   it('returns the digits of a user JID', () => {
     expect(phoneFromJid(USER)).toBe('971501234567')

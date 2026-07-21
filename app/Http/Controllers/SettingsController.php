@@ -70,6 +70,11 @@ class SettingsController extends Controller
             'bulk_random_prefix' => ['nullable', 'string', 'max:32'],
             'bulk_spintax'       => ['sometimes', 'boolean'],
             'bulk_device_failover' => ['sometimes', 'boolean'],
+            // Anti-ban hardening (all opt-in, off by default).
+            'bulk_antifingerprint'      => ['sometimes', 'boolean'],
+            'bulk_contact_graph'        => ['sometimes', 'boolean'],
+            'bulk_contact_graph_hours'  => ['nullable', 'integer', 'min:0', 'max:8760'],
+            'bulk_delivery_guard'       => ['sometimes', 'boolean'],
             // Quiet hours (compliant courtesy — delays sends, never alters content).
             'quiet_hours_enabled' => ['sometimes', 'boolean'],
             'quiet_start'         => ['nullable', 'date_format:H:i'],
@@ -109,6 +114,12 @@ class SettingsController extends Controller
         $settings['bulk_random_prefix'] = trim((string) ($data['bulk_random_prefix'] ?? '')) ?: null;
         $settings['bulk_spintax']       = $request->boolean('bulk_spintax');
         $settings['bulk_device_failover'] = $request->boolean('bulk_device_failover');
+        // Anti-ban hardening (opt-in): invisible content variation, contact-graph
+        // gate + its window, and the double-tick delivery-ratio guard.
+        $settings['bulk_antifingerprint']     = $request->boolean('bulk_antifingerprint');
+        $settings['bulk_contact_graph']       = $request->boolean('bulk_contact_graph');
+        $settings['bulk_contact_graph_hours'] = (int) ($data['bulk_contact_graph_hours'] ?? 48);
+        $settings['bulk_delivery_guard']      = $request->boolean('bulk_delivery_guard');
 
         // Quiet hours.
         $settings['quiet_hours_enabled'] = $request->boolean('quiet_hours_enabled');

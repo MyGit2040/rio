@@ -1,14 +1,89 @@
 import { createHash } from 'node:crypto'
 
+import { env } from '../config/env.js'
 import { contextLogger } from '../config/logger.js'
 import { prisma } from '../database/client.js'
+import { groupActionThrottle } from '../instances/group-throttle.js'
+import { reconnectPacer } from '../instances/reconnect-pacer.js'
+import { sendCooldowns } from '../instances/send-cooldown.js'
 import { findInstance } from '../instances/resolve.js'
 import { serialQueues } from '../instances/serial-queue.js'
+import { healthWarningWebhook, sessionHealth } from '../monitoring/session-health.js'
 import type { MessageMetadata, OutgoingMessageKind, SendAcceptance } from '../types/index.js'
 import { enqueueWebhook } from '../webhooks/webhook-dispatcher.js'
 
-import { toJid } from './jid-utils.js'
+import type { BaileysSocketHandle } from './adapter/types.js'
+import { isGroupJid, toJid } from './jid-utils.js'
+import { planTyping } from './presence-choreographer.js'
 import { socketManager } from './socket-manager.js'
+
+/** Local sleep. Deliberately not Baileys' `delay`: this module stays free of any Baileys import. */
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * The text a human would have "typed" for this message, for presence timing.
+ * Text sends carry `text`; media sends carry a `caption`. Everything else
+ * (polls, location, contacts, captionless media) has no typed text, so presence
+ * simulation is skipped for it.
+ */
+function typedTextOf(content: Record<string, unknown>): string {
+  if (typeof content.text === 'string') {
+    return content.text
+  }
+
+  if (typeof content.caption === 'string') {
+    return content.caption
+  }
+
+  return ''
+}
+
+/**
+ * Show a human-like "typing…" indicator before a text send.
+ *
+ * Best-effort by design: presence is decoration, so any failure here is logged
+ * and swallowed rather than allowed to abort the message it was dressing up.
+ * Runs inside the instance's serial queue, so the compose pause also naturally
+ * spaces successive sends on the same number.
+ */
+async function simulateTyping(
+  socket: BaileysSocketHandle,
+  jid: string,
+  content: Record<string, unknown>,
+  log: ReturnType<typeof contextLogger>,
+): Promise<void> {
+  const cfg = env()
+
+  if (!cfg.PRESENCE_SIMULATION_ENABLED) {
+    return
+  }
+
+  const text = typedTextOf(content)
+
+  if (text === '') {
+    return
+  }
+
+  const plan = planTyping(text.length, {
+    msPerChar: cfg.PRESENCE_MS_PER_CHAR,
+    minTypeMs: cfg.PRESENCE_MIN_TYPING_MS,
+    maxTypeMs: cfg.PRESENCE_MAX_TYPING_MS,
+    thinkMinMs: cfg.PRESENCE_THINK_MIN_MS,
+    thinkMaxMs: cfg.PRESENCE_THINK_MAX_MS,
+  })
+
+  try {
+    if (plan.thinkMs > 0) {
+      await sleep(plan.thinkMs)
+    }
+
+    await socket.sendPresenceUpdate('composing', jid)
+    await sleep(plan.typeMs)
+    await socket.sendPresenceUpdate('paused', jid)
+  } catch (error) {
+    log.warn({ err: error }, 'Presence simulation failed; sending without it')
+  }
+}
 
 /**
  * The single send coordinator.
@@ -200,8 +275,31 @@ async function dispatch(gatewayMessageId: string, request: SendRequest): Promise
       // API call and the message reaching the front of the queue.
       const socket = await socketManager.requireSendableSocket(request.instanceId)
 
+      const jid = toJid(request.recipient)
+
+      // Group-action brake: never let two group sends fire back-to-back on one
+      // number. One-to-one sends skip this entirely.
+      if (isGroupJid(jid)) {
+        const groupWaitMs = groupActionThrottle.waitMs(request.instanceId, env().GROUP_ACTION_COOLDOWN_MS)
+        if (groupWaitMs > 0) {
+          await sleep(groupWaitMs)
+        }
+        groupActionThrottle.mark(request.instanceId)
+      }
+
+      // Ease a freshly-recovered number back to full rate: for the ramp window
+      // after it became sendable again, hold each send by a shrinking extra
+      // pause instead of blasting the queued batch at once.
+      const extraDelayMs = reconnectPacer.extraDelayMs(request.instanceId)
+      if (extraDelayMs > 0) {
+        await sleep(extraDelayMs)
+      }
+
+      // Human-like "typing…" beat before a text/caption send.
+      await simulateTyping(socket, jid, request.content, log)
+
       const sent = await socket.sendMessage(
-        toJid(request.recipient),
+        jid,
         request.content,
         request.replyToMessageId ? { quoted: { key: { id: request.replyToMessageId } } } : undefined,
       )
@@ -214,6 +312,9 @@ async function dispatch(gatewayMessageId: string, request: SendRequest): Promise
           sentAt: new Date(),
         },
       })
+
+      // A clean send is recovery evidence — it nudges the risk score down.
+      sessionHealth.recordSendSuccess(request.instanceId)
 
       if (request.pollId) {
         // Votes arrive as encrypted aggregates that are only interpretable
@@ -245,6 +346,23 @@ async function dispatch(gatewayMessageId: string, request: SendRequest): Promise
       log.info({ whatsappMessageId: sent.messageId }, 'Message sent')
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
+
+      // Repeated send failures raise the session-health risk score; an
+      // escalation into a warning band is reported so Laravel can pause the
+      // number before WhatsApp does, and a move into CRITICAL trips the circuit
+      // breaker (halts outbound for a cooldown).
+      const health = sessionHealth.recordSendFailure(request.instanceId)
+      if (health.escalated) {
+        await enqueueWebhook(healthWarningWebhook(request.instanceId, health))
+
+        if (health.band === 'critical') {
+          sendCooldowns.set(
+            request.instanceId,
+            env().SESSION_HEALTH_CRITICAL_COOLDOWN_MINUTES * 60_000,
+            `session health critical (score ${health.score}, ${health.reason})`,
+          )
+        }
+      }
 
       await prisma.gatewayMessage.update({
         where: { id: gatewayMessageId },

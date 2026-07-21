@@ -7,6 +7,7 @@ import { databaseHealthy, prisma } from '../../database/client.js'
 import { resolveInstanceId } from '../../instances/resolve.js'
 import { serialQueues } from '../../instances/serial-queue.js'
 import { buildHealthReport } from '../../monitoring/health.js'
+import { sessionHealth } from '../../monitoring/session-health.js'
 import type { HealthReport } from '../../types/index.js'
 import { describeZodError, instanceParamsSchema } from '../schemas/index.js'
 
@@ -260,6 +261,12 @@ export async function diagnosticsRoutes(app: FastifyInstance): Promise<void> {
       },
 
       send_queue_depth: serialQueues.depth(instance.id),
+
+      // Live anti-ban signals for this number on this node.
+      session_health: {
+        risk_score: sessionHealth.score(instance.id),
+        band: sessionHealth.band(instance.id),
+      },
 
       messages: {
         awaiting_transmission: acceptedMessages,
