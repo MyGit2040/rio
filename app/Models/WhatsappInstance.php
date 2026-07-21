@@ -70,4 +70,38 @@ class WhatsappInstance extends Model
     {
         return $this->status === 'open';
     }
+
+    /**
+     * The QR as an <img> source when the stored value is already a rendered
+     * image, so the device view shows it natively instead of asking the browser
+     * to encode it. Returns null for a raw WhatsApp payload (which the view
+     * draws onto a canvas) or when there is no QR.
+     *
+     * Two image shapes are accepted:
+     *  - a full data: URL (how the OpenWA webhook stores it), used verbatim;
+     *  - a bare base64 PNG (the Baileys gateway's qr_image_base64, whose base64
+     *    always begins with the PNG signature "iVBOR"), wrapped into a data: URL.
+     *    Without this a bare PNG fell through to the canvas path and was encoded
+     *    as if its ~9 KB of PNG bytes were QR *text* — far past QR capacity, so
+     *    the encoder threw and the box rendered empty. That was the "QR not
+     *    showing" bug.
+     */
+    public function qrImageSrc(): ?string
+    {
+        $qr = trim((string) $this->qr_code);
+
+        if ($qr === '') {
+            return null;
+        }
+
+        if (str_starts_with($qr, 'data:image/')) {
+            return $qr;
+        }
+
+        if (str_starts_with($qr, 'iVBOR')) {
+            return 'data:image/png;base64,'.$qr;
+        }
+
+        return null;
+    }
 }

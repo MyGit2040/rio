@@ -204,18 +204,38 @@ class BaileysGatewayDriver implements WhatsappGateway
 
         return [
             'qrcode' => [
-                // The RAW payload, which the device view renders to a QR via
-                // its canvas path. The gateway's qr_image_base64 is bare PNG
-                // base64 with no data: prefix, so it would take the same canvas
-                // path and be mis-encoded as if the PNG bytes were QR text —
-                // hence the empty box. The payload is the correct input.
-                'base64' => data_get($payload, 'qr_data') ?: null,
+                'base64' => $this->qrForDisplay($payload),
                 'pairingCode' => null,
             ],
             'instance' => [
                 'state' => $this->stateFor(data_get($payload, 'status') ?? data_get($payload, 'state')),
             ],
         ];
+    }
+
+    /**
+     * Turn a gateway QR response into a value the device view can render with a
+     * plain <img>.
+     *
+     * The gateway returns a rendered PNG (`qr_image_base64`, bare base64)
+     * alongside the raw text (`qr_data`). We wrap the PNG in a data: URL so the
+     * browser draws it natively. This deliberately avoids the client-side canvas
+     * encoder: that code lives in the Vite bundle, which loads as a deferred
+     * `type="module"`, so the page's classic inline script called it before it
+     * existed — the call threw and the QR box rendered empty. The raw payload is
+     * only a last-resort fallback for when no image came back.
+     */
+    protected function qrForDisplay(array $payload): ?string
+    {
+        $image = data_get($payload, 'qr_image_base64');
+
+        if (is_string($image) && $image !== '') {
+            return 'data:image/png;base64,'.$image;
+        }
+
+        $raw = data_get($payload, 'qr_data');
+
+        return is_string($raw) && $raw !== '' ? $raw : null;
     }
 
     public function requestPairingCode(string $instanceName, string $phoneNumber): array
@@ -251,16 +271,46 @@ class BaileysGatewayDriver implements WhatsappGateway
         // device was stuck reporting "connecting" no matter what really
         // happened, and the QR sitting in the same response was thrown away.
         $instance = data_get($response->json() ?? [], 'instance', []);
+        $state = $this->stateFor(data_get($instance, 'state'));
 
         return ['instance' => [
-            'state' => $this->stateFor(data_get($instance, 'state')),
+            'state' => $state,
+            // The gateway's own fine-grained state (READY, AUTHENTICATED,
+            // SYNCING, QR_REQUIRED…). The three-state `state` collapses the
+            // post-scan window (AUTHENTICATED→READY, gated by the 60s
+            // stabilization) into 'connecting', which the UI would otherwise
+            // label "Waiting for scan" even though the scan already succeeded.
+            // Carried up so the poll can show "Connecting…" instead.
+            'raw_state' => data_get($instance, 'state'),
             'phone' => data_get($instance, 'phoneNumber'),
             'profile_name' => data_get($instance, 'displayName'),
-            // The raw QR payload (not a PNG). Carried up so the device page's
-            // status poll can display it without waiting on the create call to
-            // have caught it in its own window.
-            'qr' => data_get($instance, 'lastQr'),
+            // A display-ready QR (a PNG data: URL) so the device page's poll can
+            // refresh the <img> in place. Only fetched while still waiting to
+            // link; /qr is a pure read on the gateway, meant to be polled. The
+            // status row's raw lastQr is the fallback if the image can't be got.
+            'qr' => $state === 'open' ? null : $this->fetchQrForDisplay($instanceName, data_get($instance, 'lastQr')),
         ]];
+    }
+
+    /** Pull the gateway's rendered QR image and return it as a renderable value. */
+    protected function fetchQrForDisplay(string $instanceName, ?string $fallbackPayload = null): ?string
+    {
+        try {
+            $response = $this->request('GET', "/v1/instances/{$instanceName}/qr");
+
+            if ($response->successful()) {
+                $display = $this->qrForDisplay($response->json() ?? []);
+
+                if ($display !== null) {
+                    return $display;
+                }
+            }
+        } catch (\Throwable $e) {
+            // A failed image fetch must never break status polling — fall back
+            // to the raw payload carried on the status row.
+        }
+
+        return is_string($fallbackPayload) && $fallbackPayload !== '' ? $fallbackPayload : null;
     }
 
     /**

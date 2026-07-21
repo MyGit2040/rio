@@ -160,6 +160,12 @@ class DeviceController extends Controller
         $phone = preg_replace('/\D+/', '', (string) data_get($response, 'instance.phone')) ?: null;
         $profileName = data_get($response, 'instance.profile_name');
 
+        // The scan has already succeeded once the socket authenticates; the
+        // engine just holds it in a stabilization window before it reports the
+        // final 'open'. Flag that window so the page shows "Connecting…" rather
+        // than telling the operator to scan a code they have already scanned.
+        $linking = in_array(strtoupper((string) data_get($response, 'instance.raw_state')), ['AUTHENTICATED', 'SYNCING'], true);
+
         // Some engines (Baileys) can hand back the current QR on a status read.
         // Storing it here means the device page's poll fills the QR box as soon
         // as the socket emits one, instead of depending on the create call to
@@ -179,8 +185,14 @@ class DeviceController extends Controller
         return response()->json([
             'ok'        => true,
             'status'    => $state,
-            // The page reloads once when a QR first appears, so an empty card
-            // becomes a scannable one without the operator doing anything.
+            // True once the scan has landed and the engine is finalising the
+            // link (its stabilization window). The page shows "Connecting…".
+            'linking'   => $linking,
+            // The current code, so the page can redraw it in place on each
+            // WhatsApp rotation instead of leaving a soon-expired one on screen.
+            'qr'        => $state === 'open' ? null : $polledQr,
+            // Kept for the empty-card case: the page reloads once when a QR first
+            // appears so an empty card becomes scannable without operator action.
             'qr_arrived' => (bool) $qrArrived,
         ]);
     }

@@ -38,9 +38,18 @@ return [
             'database' => env('DB_DATABASE', database_path('database.sqlite')),
             'prefix' => '',
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
-            'busy_timeout' => null,
-            'journal_mode' => null,
-            'synchronous' => null,
+            // Concurrency hardening. Three writers contend for this file: the
+            // /devices status poll (every 1s), the burst of gateway webhooks
+            // during a link (qr/authenticated/ready/disconnect), and the queue
+            // worker. With no busy_timeout a second writer failed *instantly*
+            // with "database is locked" — and the webhook handler swallows any
+            // write error from claim() as a duplicate, so those events were
+            // silently dropped and devices never flipped to Connected via the
+            // webhook. WAL lets a reader and a writer coexist; busy_timeout makes
+            // a blocked writer wait instead of erroring.
+            'busy_timeout' => env('DB_BUSY_TIMEOUT', 5000),
+            'journal_mode' => env('DB_JOURNAL_MODE', 'wal'),
+            'synchronous' => env('DB_SYNCHRONOUS', 'normal'),
             'transaction_mode' => 'DEFERRED',
         ],
 

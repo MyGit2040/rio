@@ -56,9 +56,10 @@
                             @else
                                 <div class="mt-4 space-y-3" data-connect-block>
                                     @if ($device->qr_code)
+                                        @php $qrImg = $device->qrImageSrc(); @endphp
                                         <div class="text-center" data-qr-wrap>
-                                            @if (\Illuminate\Support\Str::startsWith($device->qr_code, 'data:image/'))
-                                                <img src="{{ $device->qr_code }}" alt="WhatsApp QR code" class="mx-auto w-44 h-44 rounded-lg border border-gray-200" />
+                                            @if ($qrImg)
+                                                <img src="{{ $qrImg }}" alt="WhatsApp QR code" class="mx-auto w-44 h-44 rounded-lg border border-gray-200" />
                                             @else
                                                 <canvas data-openwa-qr data-qr-payload="{{ $device->qr_code }}" aria-label="WhatsApp QR code" class="mx-auto w-44 h-44 rounded-lg border border-gray-200"></canvas>
                                             @endif
@@ -106,7 +107,18 @@
     <script>
         const csrf = document.querySelector('meta[name=csrf-token]').content;
 
-        document.querySelectorAll('[data-openwa-qr]').forEach(canvas => window.renderOpenWaQr(canvas, canvas.dataset.qrPayload));
+        // Draw any raw-payload QR canvases. renderOpenWaQr lives in the Vite
+        // bundle, which loads as a deferred type="module" and so has NOT run yet
+        // at this point in this classic inline script. Calling it now threw
+        // "renderOpenWaQr is not a function", which aborted the rest of this
+        // script — including the poll below — and left the box empty. Defer to
+        // DOMContentLoaded, which fires after deferred modules execute. (Image
+        // QRs render as a plain <img> and need none of this.)
+        function drawQrCanvases() {
+            document.querySelectorAll('[data-openwa-qr]').forEach(c => window.renderOpenWaQr && window.renderOpenWaQr(c, c.dataset.qrPayload));
+        }
+        if (window.renderOpenWaQr) drawQrCanvases();
+        else document.addEventListener('DOMContentLoaded', drawQrCanvases);
 
         function refreshQr(id, attempt = 0) {
             fetch(`/devices/${id}/connect`, { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' } })
@@ -154,19 +166,44 @@
             const badge = card.querySelector('[data-device-status]');
             if (!badge || badge.textContent.trim() !== 'Waiting for scan') return;
             const id = card.dataset.deviceId;
-            // Whether this card is currently showing a QR. An empty box that
-            // later receives one triggers a single reload to render it.
-            const hasQr = !!card.querySelector('[data-openwa-qr], img[alt="WhatsApp QR code"]');
+            // The QR currently on screen, so a poll only acts when WhatsApp has
+            // actually rotated the code (~every 20s).
+            let shown = card.querySelector('img[alt="WhatsApp QR code"]')?.getAttribute('src')
+                     || card.querySelector('[data-openwa-qr]')?.dataset.qrPayload
+                     || null;
             const timer = setInterval(() => {
                 fetch(`/devices/${id}/state`, { headers: { 'Accept': 'application/json' } })
                     .then(r => r.json())
                     .then(d => {
                         // Connected — swap the card to its linked state.
                         if (d.status === 'open') { clearInterval(timer); location.reload(); return; }
-                        // A QR just became available for a card that had none.
-                        // Reload once to draw it; after that hasQr is true so
-                        // this cannot loop.
-                        if (d.qr_arrived && !hasQr) { clearInterval(timer); location.reload(); }
+                        // Scan landed; the engine is finalising the link. Tell the
+                        // operator it worked instead of showing the QR + "Waiting
+                        // for scan", and keep polling until it reports 'open'.
+                        if (d.linking) {
+                            badge.textContent = 'Connecting…';
+                            const block = card.querySelector('[data-connect-block]');
+                            if (block) block.style.display = 'none';
+                            return;
+                        }
+                        if (!d.qr || d.qr === shown) return;
+                        shown = d.qr;
+                        const isImage = d.qr.startsWith('data:image/') || d.qr.startsWith('iVBOR');
+                        if (isImage) {
+                            const src = d.qr.startsWith('data:') ? d.qr : 'data:image/png;base64,' + d.qr;
+                            const img = card.querySelector('img[alt="WhatsApp QR code"]');
+                            // Refresh the image in place; if the card has no <img>
+                            // yet (was empty, a button, or a canvas), one reload
+                            // renders it through the view's <img> path.
+                            if (img) img.src = src;
+                            else { clearInterval(timer); location.reload(); }
+                        } else {
+                            // Raw-payload fallback: redraw the canvas in place, or
+                            // reload once to obtain a canvas to draw onto.
+                            const canvas = card.querySelector('[data-openwa-qr]');
+                            if (canvas && window.renderOpenWaQr) window.renderOpenWaQr(canvas, d.qr);
+                            else { clearInterval(timer); location.reload(); }
+                        }
                     })
                     .catch(() => {});
             // A completed QR/pairing login is time-sensitive in the UI. Poll at
