@@ -3,9 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\CampaignRecipient;
-use App\Models\Message;
 use App\Models\WhatsappInstance;
 use App\Services\InboundMessageRecorder;
+use App\Support\ChatRealtime;
 use App\Support\Tenancy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -186,13 +186,8 @@ class BaileysWebhookController extends Controller
                 ->whereIn('status', ['sent', 'delivered'])
                 ->update(['status' => $status]);
 
-            // Mirror the tick onto the chat thread's own row (sent → delivered →
-            // read; a late 'delivered' must never downgrade an already-read row).
-            Message::where('whatsapp_instance_id', $instance->id)
-                ->where('direction', 'out')
-                ->where('message_id', $messageId)
-                ->whereIn('status', ['sent', 'delivered'])
-                ->update(['status' => $status]);
+            // Mirror the tick onto the chat thread's own row + live-push it.
+            ChatRealtime::statusMirrored($instance, $messageId, $status);
         }
 
         if ($eventType === 'message.received') {

@@ -9,6 +9,7 @@ use App\Models\Contact;
 use App\Models\Message;
 use App\Models\Suppression;
 use App\Models\WhatsappInstance;
+use App\Support\ChatRealtime;
 use App\Support\Whatsapp;
 use Illuminate\Support\Facades\Log;
 
@@ -91,6 +92,9 @@ class InboundMessageRecorder
             'status'               => 'received',
             'message_id'           => $messageId,
         ]);
+
+        // Push to every open Chats tab (best-effort; polling remains the floor).
+        ChatRealtime::messageStored($message, $contact->name);
 
         if ($fromMe) {
             return $message;

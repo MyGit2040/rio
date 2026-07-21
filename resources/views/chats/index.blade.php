@@ -193,6 +193,7 @@
                 baseUrl: @json(url('/chats')),
                 uploadUrl: @json(route('uploads.store')),
                 csrf: @json(csrf_token()),
+                tenantId: @json(auth()->user()->tenant_id),
             };
 
             return {
@@ -218,6 +219,9 @@
                 error: '',
                 seen: {},                 // 'deviceId:phone' -> last message id read here
                 timers: [],
+                echoLive: false,          // true while the Reverb socket is connected
+                lastThreadFetchAt: 0,
+                lastConvFetchAt: {},      // deviceId -> ms of last successful list fetch
 
                 init() {
                     try { this.seen = JSON.parse(localStorage.getItem('rio-chat-seen') || '{}'); } catch (e) { this.seen = {}; }
@@ -227,10 +231,76 @@
                         || this.devices[0];
                     if (first) this.switchDevice(first.id);
 
-                    this.timers.push(setInterval(() => { if (this.activeDeviceId) this.loadConversations(this.activeDeviceId, true); }, 8000));
-                    this.timers.push(setInterval(() => this.pollThread(), 4000));
+                    this.initEcho();
+
+                    // Polling is the FLOOR, not the engine: with the socket live the
+                    // ticks skip while data is fresh (thread 20s, active list 30s,
+                    // other tabs 2m) — pushes carry the real-time load. The moment
+                    // the socket drops, the original cadence resumes by itself.
+                    this.timers.push(setInterval(() => {
+                        if (! this.activeDeviceId) return;
+                        if (this.echoLive && Date.now() - (this.lastConvFetchAt[this.activeDeviceId] || 0) < 30000) return;
+                        this.loadConversations(this.activeDeviceId, true);
+                    }, 8000));
+                    this.timers.push(setInterval(() => {
+                        if (this.echoLive && Date.now() - this.lastThreadFetchAt < 20000) return;
+                        this.pollThread();
+                    }, 4000));
                     this.timers.push(setInterval(() => this.refreshOtherDevices(), 30000));
                     this.refreshOtherDevices();
+                },
+
+                // ---- Live push (Laravel Reverb via Echo; optional) ----
+                initEcho() {
+                    if (! window.Echo || ! cfg.tenantId) return;
+                    try {
+                        const channel = window.Echo.private('chat.' + cfg.tenantId);
+                        channel.listen('.chat.message', (e) => this.onLiveMessage(e));
+                        channel.listen('.chat.status', (e) => this.onLiveStatus(e));
+                        const conn = window.Echo.connector?.pusher?.connection;
+                        if (conn) {
+                            this.echoLive = conn.state === 'connected';
+                            conn.bind('state_change', (s) => { this.echoLive = s.current === 'connected'; });
+                        }
+                    } catch (e) { /* socket unavailable — polling carries on */ }
+                },
+
+                onLiveMessage(e) {
+                    if (e.device_id === this.activeDeviceId && e.phone === this.activePhone) {
+                        if (! this.messages.some(m => m.id === e.message.id)) {
+                            this.messages.push(e.message);
+                            this.lastMessageId = Math.max(this.lastMessageId, e.message.id);
+                            this.markSeen();
+                            this.$nextTick(() => this.scrollToEnd());
+                        }
+                        if (e.contact_name && ! this.activeName) this.activeName = e.contact_name;
+                    }
+
+                    // Patch the conversation list of whichever tab it belongs to,
+                    // so previews + unread badges move without a fetch.
+                    const list = this.convCache[e.device_id] || [];
+                    const idx = list.findIndex(c => c.phone === e.phone);
+                    const conv = idx >= 0 ? list[idx] : { phone: e.phone, name: e.contact_name || null, contact_id: null };
+                    if (idx >= 0) list.splice(idx, 1);
+                    conv.name = conv.name || e.contact_name || null;
+                    conv.last_id = e.message.id;
+                    conv.last_direction = e.message.direction;
+                    conv.last_type = e.message.type;
+                    conv.last_body = e.message.body;
+                    conv.last_at = e.message.at;
+                    list.unshift(conv);
+                    this.convCache[e.device_id] = list;
+                    if (e.device_id === this.activeDeviceId) {
+                        this.conversations = list;
+                        this.conversationsLoaded = true;
+                    }
+                },
+
+                onLiveStatus(e) {
+                    if (e.device_id !== this.activeDeviceId || e.phone !== this.activePhone) return;
+                    this.messages.forEach(m => {
+                        if (e.message_ids.includes(m.id)) m.status = e.status;
+                    });
                 },
 
                 activeDevice() { return this.devices.find(d => d.id === this.activeDeviceId) || null; },
@@ -258,6 +328,7 @@
                         });
                         if (! res.ok) return;
                         const data = await res.json();
+                        this.lastConvFetchAt[deviceId] = Date.now();
                         this.convCache[deviceId] = data.conversations;
                         const dev = this.devices.find(d => d.id === deviceId);
                         if (dev) dev.status = data.device.status;
@@ -280,6 +351,7 @@
                     this.messages = [];
                     this.threadLoaded = false;
                     this.lastMessageId = 0;
+                    this.lastThreadFetchAt = 0;
                     this.error = '';
                     const conv = this.conversations.find(c => c.phone === phone);
                     this.activeName = conv ? conv.name : null;
@@ -299,6 +371,7 @@
                         });
                         if (! res.ok) return;
                         const data = await res.json();
+                        this.lastThreadFetchAt = Date.now();
                         if (data.contact) { this.activeName = data.contact.name; this.activeContactId = data.contact.id; }
                         const incoming = data.messages.filter(m => ! this.messages.some(x => x.id === m.id));
                         if (incoming.length) {

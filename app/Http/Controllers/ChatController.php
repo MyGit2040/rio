@@ -6,6 +6,7 @@ use App\Models\Contact;
 use App\Models\Message;
 use App\Models\WhatsappInstance;
 use App\Services\PlanLimit;
+use App\Support\ChatRealtime;
 use App\Support\LocalTime;
 use App\Support\Whatsapp;
 use Illuminate\Http\JsonResponse;
@@ -186,6 +187,9 @@ class ChatController extends Controller
             'status'               => 'sent',
             'message_id'           => $result['message_id'],
         ]);
+
+        // Other open tabs/devices of this workspace see the send instantly.
+        ChatRealtime::messageStored($message, $contact->name);
 
         return response()->json(['ok' => true, 'message' => $this->presentMessage($message)]);
     }
