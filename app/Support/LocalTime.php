@@ -35,4 +35,27 @@ class LocalTime
 
         return Carbon::parse($value)->timezone(self::zone())->format($format);
     }
+
+    /**
+     * Interpret a datetime-local string (as typed in the picker, i.e. in the
+     * workspace timezone) as a real instant.
+     */
+    public static function parseInput($value): Carbon
+    {
+        return Carbon::parse($value, self::zone());
+    }
+
+    /**
+     * Validation closure: a datetime-local string must be in the future when read
+     * in the workspace timezone. `date`/`after:now` can't do this — they read the
+     * bare string as app-time (UTC), so a local time near the edge validated wrong.
+     */
+    public static function futureRule(string $message = 'The send time must be in the future.'): \Closure
+    {
+        return function ($attribute, $value, $fail) use ($message) {
+            if ($value && self::parseInput($value)->isPast()) {
+                $fail($message);
+            }
+        };
+    }
 }

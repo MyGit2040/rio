@@ -195,8 +195,9 @@
                         <div>
                             <x-input-label for="scheduled_at" value="Send at" />
                             <input id="scheduled_at" name="scheduled_at" type="datetime-local"
-                                   value="{{ old('scheduled_at', $campaign->scheduled_at?->format('Y-m-d\TH:i')) }}"
+                                   value="{{ old('scheduled_at', \App\Support\LocalTime::format($campaign->scheduled_at, 'Y-m-d\TH:i', '')) }}"
                                    class="mt-1 block w-full rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500">
+                            <span class="block mt-1 text-xs text-gray-500">Times are in {{ \App\Support\LocalTime::zone() }} (your workspace timezone).</span>
                             @error('scheduled_at')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                         </div>
                     @endif

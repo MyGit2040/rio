@@ -40,7 +40,7 @@ class CampaignRequest extends FormRequest
             'max_delay'   => ['required', 'integer', 'gte:min_delay', 'max:600'],
             'max_retries' => ['nullable', 'integer', 'min:0', 'max:10'],
             'schedule'    => ['required', 'in:now,later'],
-            'scheduled_at' => ['nullable', 'date', 'after:now', 'required_if:schedule,later'],
+            'scheduled_at' => ['nullable', 'date', 'required_if:schedule,later', \App\Support\LocalTime::futureRule()],
         ];
     }
 }

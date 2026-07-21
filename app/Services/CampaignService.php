@@ -8,6 +8,7 @@ use App\Models\Contact;
 use App\Models\Suppression;
 use App\Models\Template;
 use App\Models\WhatsappInstance;
+use App\Support\LocalTime;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -35,8 +36,11 @@ class CampaignService
                 ->filter(fn ($v) => $v > 0)
                 ->all();
 
+            // The picker shows the operator's workspace timezone, so read it in
+            // that zone and convert to UTC for storage — otherwise "3 PM" was
+            // stored as 3 PM UTC and fired hours off local time.
             $scheduledAt = ($data['schedule'] ?? 'now') === 'later'
-                ? Carbon::parse($data['scheduled_at'])
+                ? Carbon::parse($data['scheduled_at'], LocalTime::zone())->setTimezone(config('app.timezone', 'UTC'))
                 : null;
 
             $campaign = Campaign::create([
@@ -231,7 +235,9 @@ class CampaignService
         }
 
         if ($campaign->status === 'scheduled' && ! empty($data['scheduled_at'])) {
-            $payload['scheduled_at'] = Carbon::parse($data['scheduled_at']);
+            // Read in the workspace timezone (as shown in the picker), store UTC.
+            $payload['scheduled_at'] = Carbon::parse($data['scheduled_at'], LocalTime::zone())
+                ->setTimezone(config('app.timezone', 'UTC'));
         }
 
         DB::transaction(function () use ($campaign, $payload, $data, $deviceIds) {

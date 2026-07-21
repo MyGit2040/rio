@@ -175,6 +175,8 @@
                         <input id="scheduled_at" name="scheduled_at" type="datetime-local" :disabled="schedule !== 'later'"
                                value="{{ old('scheduled_at') }}"
                                class="mt-1 block w-full rounded-lg border-gray-300 text-sm focus:ring-green-500 focus:border-green-500">
+                        <span class="block mt-1 text-xs text-gray-500">Times are in {{ \App\Support\LocalTime::zone() }} (your workspace timezone).</span>
+                        @error('scheduled_at')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                 </div>
             </x-card>

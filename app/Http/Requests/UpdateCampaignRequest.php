@@ -50,7 +50,7 @@ class UpdateCampaignRequest extends FormRequest
             'min_delay'       => ['required', 'integer', 'min:1', 'max:600'],
             'max_delay'       => ['required', 'integer', 'gte:min_delay', 'max:600'],
             'max_retries'     => ['nullable', 'integer', 'min:0', 'max:10'],
-            'scheduled_at'    => ['nullable', 'date', 'after:now', Rule::requiredIf($campaign->status === 'scheduled')],
+            'scheduled_at'    => ['nullable', 'date', Rule::requiredIf($campaign->status === 'scheduled'), \App\Support\LocalTime::futureRule()],
         ];
     }
 
