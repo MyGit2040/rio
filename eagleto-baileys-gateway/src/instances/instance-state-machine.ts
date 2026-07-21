@@ -25,6 +25,30 @@ import { INSTANCE_STATES, type DisconnectClassification, type InstanceState } fr
 const UNIVERSAL_SINKS: readonly InstanceState[] = ['ERROR', 'STOPPED']
 
 /**
+ * Also reachable from anywhere: STARTING — the source-side mirror of the
+ * universal sinks.
+ *
+ * Opening a socket is an operator/API action, not a connection event. The
+ * strict graph below governs what happens *after* a socket opens
+ * (STARTING -> QR_REQUIRED -> AUTHENTICATED -> READY); it must not govern the
+ * *decision* to open one. Whenever the gateway holds no live socket for an
+ * instance — a fresh process after a restart, a crashed socket, or a QR that
+ * was never scanned — a start must be able to (re)open it regardless of the
+ * state last written to the database.
+ *
+ * This does not weaken rule 1: reaching STARTING only re-opens a socket, and
+ * STARTING does not list READY as a successor, so READY is still earned through
+ * a completed handshake.
+ *
+ * Without it, an instance recorded as QR_REQUIRED — exactly what a rebuilt
+ * container leaves behind — could never be started again: every start threw
+ * "Illegal transition QR_REQUIRED -> STARTING" and surfaced as a 409, which is
+ * the QR-never-appears symptom. The same trap hit resumeEnabledInstances on
+ * boot for any instance previously READY, AUTHENTICATED or SYNCING.
+ */
+const UNIVERSAL_SOURCE: InstanceState = 'STARTING'
+
+/**
  * Outcomes that invalidate the link itself. Any state that owns (or is
  * negotiating) a connection can land here, because these are discovered from
  * the disconnect code rather than reached by design.
@@ -98,7 +122,7 @@ const BASE_TRANSITIONS: Record<InstanceState, readonly InstanceState[]> = {
   STOPPED: ['STARTING'],
 }
 
-function withUniversalSinks(from: InstanceState, targets: readonly InstanceState[]): readonly InstanceState[] {
+function withUniversalEdges(from: InstanceState, targets: readonly InstanceState[]): readonly InstanceState[] {
   const merged = new Set<InstanceState>(targets)
 
   for (const sink of UNIVERSAL_SINKS) {
@@ -109,12 +133,18 @@ function withUniversalSinks(from: InstanceState, targets: readonly InstanceState
     }
   }
 
+  // Every state except STARTING itself may (re)start. STARTING -> STARTING is a
+  // no-op the service short-circuits, so it is left out for the same reason.
+  if (from !== UNIVERSAL_SOURCE) {
+    merged.add(UNIVERSAL_SOURCE)
+  }
+
   return Object.freeze([...merged])
 }
 
 export const ALLOWED_TRANSITIONS: Record<InstanceState, readonly InstanceState[]> = Object.freeze(
   Object.fromEntries(
-    INSTANCE_STATES.map((from) => [from, withUniversalSinks(from, BASE_TRANSITIONS[from])] as const),
+    INSTANCE_STATES.map((from) => [from, withUniversalEdges(from, BASE_TRANSITIONS[from])] as const),
   ) as Record<InstanceState, readonly InstanceState[]>,
 )
 

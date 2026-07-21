@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { canTransition } from '../../src/instances/instance-state-machine.js'
-import type { InstanceState } from '../../src/types/index.js'
+import { INSTANCE_STATES, type InstanceState } from '../../src/types/index.js'
 
 /**
  * The state machine and the socket manager have to agree.
@@ -75,5 +75,35 @@ describe('socket manager lifecycle paths', () => {
     ).filter((state) => canTransition(state, 'READY'))
 
     expect(reaching.sort()).toEqual(['AUTHENTICATED', 'SYNCING'])
+  })
+
+  it('allows a (re)start from every state, because opening a socket is an action not an event', () => {
+    // The bug: a rebuilt container leaves an instance recorded as QR_REQUIRED
+    // with no live socket. The next /start moved it QR_REQUIRED -> STARTING,
+    // which the graph forbade, so the QR never came back — a 409 instead.
+    // Starting must be legal from anywhere except STARTING itself (a no-op the
+    // service short-circuits).
+    for (const from of INSTANCE_STATES) {
+      if (from === 'STARTING') {
+        continue
+      }
+
+      expect(canTransition(from, 'STARTING'), `${from} -> STARTING must be allowed (restart is always valid)`).toBe(
+        true,
+      )
+    }
+  })
+
+  it('specifically permits the QR_REQUIRED -> STARTING restart that produced the 409', () => {
+    expect(canTransition('QR_REQUIRED', 'STARTING')).toBe(true)
+  })
+
+  it('lets resumeEnabledInstances restart a stale READY/SYNCING/AUTHENTICATED row after a reboot', () => {
+    // On boot the socket map is empty but the database still holds the last
+    // state. resumeEnabledInstances calls start() for these, which transitions
+    // to STARTING — it must not throw.
+    for (const from of ['READY', 'AUTHENTICATED', 'SYNCING', 'DISCONNECTED', 'RECONNECT_WAIT'] as const) {
+      expect(canTransition(from, 'STARTING'), `${from} -> STARTING on resume`).toBe(true)
+    }
   })
 })
