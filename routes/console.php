@@ -20,6 +20,13 @@ Schedule::call(function () {
 // Launch scheduled campaigns every minute.
 Schedule::command('campaigns:dispatch-due')->everyMinute()->withoutOverlapping();
 
+// Reconcile device status with the gateway's REAL session state every minute.
+// A banned/logged-out number can otherwise stay "connected" in the app forever —
+// nothing fails, so the 3-failures health guard never fires — and campaigns keep
+// feeding it. Two consecutive non-open sightings flip it to disconnected
+// (anti-flap); a reconnect heals it back via the webhook or the next sync pass.
+Schedule::command('devices:sync-status')->everyMinute()->withoutOverlapping();
+
 // Send due drip-sequence steps every minute.
 Schedule::command('sequences:dispatch')->everyMinute()->withoutOverlapping();
 
