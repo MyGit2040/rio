@@ -101,4 +101,92 @@ class Personalizer
 
         return empty($pool) ? (string) $body : (string) $pool[array_rand($pool)];
     }
+
+    /**
+     * Workspace-level "common spintax" (Settings → Sending → bulk_spintax_groups):
+     * synonym groups defined ONCE that vary the wording of EVERY message and
+     * variant — so an author never has to paste {a|b} braces into hundreds of
+     * variants.
+     *
+     * One group per line, options separated by | (e.g. "Book a demo|Request a
+     * demo"). Wherever ANY option of a group appears in the text (whole
+     * word/phrase, case-insensitive), it is swapped for a random option of that
+     * group — or the FIRST option when the workspace turned rotation off
+     * (bulk_spintax = false), mirroring inline spintax. The capitalisation of
+     * what was written is kept, and URLs are never touched.
+     *
+     * @param  array<string, mixed>|null  $settings
+     */
+    public static function applySynonyms(string $text, ?array $settings = null): string
+    {
+        $settings ??= [];
+        $groups = self::synonymGroups((string) data_get($settings, 'bulk_spintax_groups', ''));
+
+        if ($text === '' || $groups === []) {
+            return $text;
+        }
+
+        $random = (bool) data_get($settings, 'bulk_spintax', true);
+
+        // Never rewrite inside a URL — split links out and vary only the prose.
+        $parts = preg_split('/(https?:\/\/\S+)/i', $text, -1, PREG_SPLIT_DELIM_CAPTURE) ?: [$text];
+
+        foreach ($parts as $i => $part) {
+            if ($i % 2 === 1) {
+                continue; // URL segment — untouched
+            }
+
+            foreach ($groups as $options) {
+                // Longest option first so "Book a demo now" wins over "Book a demo".
+                $ordered = $options;
+                usort($ordered, fn ($a, $b) => mb_strlen($b) <=> mb_strlen($a));
+                $pattern = '/\b(?:'.implode('|', array_map(fn ($o) => preg_quote($o, '/'), $ordered)).')\b/iu';
+
+                $part = (string) preg_replace_callback($pattern, function ($m) use ($options, $random) {
+                    $choice = $random ? $options[array_rand($options)] : $options[0];
+                    $first = mb_substr($m[0], 0, 1);
+
+                    // Keep the capitalisation of what was written.
+                    return $first !== mb_strtolower($first)
+                        ? mb_strtoupper(mb_substr($choice, 0, 1)).mb_substr($choice, 1)
+                        : $choice;
+                }, $part);
+            }
+
+            $parts[$i] = $part;
+        }
+
+        return implode('', $parts);
+    }
+
+    /**
+     * The workspace's common opening line (Settings → Sending → bulk_greeting):
+     * one greeting — with its own spintax and merge tags — automatically topping
+     * EVERY campaign message and variant, so it lives in one place instead of
+     * being pasted into each variant. Empty setting = no change.
+     *
+     * @param  array<string, mixed>|null  $settings
+     */
+    public static function withCommonOpening(string $body, ?array $settings = null): string
+    {
+        $opening = trim((string) data_get($settings ?? [], 'bulk_greeting', ''));
+
+        return $opening === '' ? $body : $opening."\n\n".ltrim($body);
+    }
+
+    /** @return array<int, array<int, string>> */
+    private static function synonymGroups(string $raw): array
+    {
+        $groups = [];
+
+        foreach (preg_split('/\R/', $raw) ?: [] as $line) {
+            $options = array_values(array_filter(array_map('trim', explode('|', $line)), fn ($o) => $o !== ''));
+
+            if (count($options) >= 2) {
+                $groups[] = $options;
+            }
+        }
+
+        return $groups;
+    }
 }

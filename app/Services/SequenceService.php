@@ -203,11 +203,12 @@ class SequenceService
 
     /**
      * Everything the old inline version resolved ({{name}}, {{phone}}, contact
-     * attributes) plus spintax {a|b}, {{date}} and the prefixed random
-     * reference ID — the same wording tools campaign sends apply.
+     * attributes) plus spintax {a|b}, workspace common spintax groups, {{date}}
+     * and the prefixed random reference ID — the same wording tools campaign
+     * sends apply.
      */
     private function personalize(string $body, Contact $contact, array $settings = []): string
     {
-        return Personalizer::render($body, $contact, $contact->phone, $settings);
+        return Personalizer::applySynonyms(Personalizer::render($body, $contact, $contact->phone, $settings), $settings);
     }
 }

@@ -69,6 +69,10 @@ class SettingsController extends Controller
             'bulk_hook_number'   => ['nullable', 'string', 'max:32'],
             'bulk_random_prefix' => ['nullable', 'string', 'max:32'],
             'bulk_spintax'       => ['sometimes', 'boolean'],
+            // Workspace-level common spintax: synonym groups + opening line that
+            // apply to every campaign message and variant automatically.
+            'bulk_spintax_groups' => ['nullable', 'string', 'max:10000'],
+            'bulk_greeting'       => ['nullable', 'string', 'max:500'],
             'bulk_device_failover' => ['sometimes', 'boolean'],
             // Anti-ban hardening (all opt-in, off by default).
             'bulk_antifingerprint'      => ['sometimes', 'boolean'],
@@ -113,6 +117,8 @@ class SettingsController extends Controller
         $settings['bulk_hook_number']   = preg_replace('/\D+/', '', (string) ($data['bulk_hook_number'] ?? '')) ?: null;
         $settings['bulk_random_prefix'] = trim((string) ($data['bulk_random_prefix'] ?? '')) ?: null;
         $settings['bulk_spintax']       = $request->boolean('bulk_spintax');
+        $settings['bulk_spintax_groups'] = trim((string) ($data['bulk_spintax_groups'] ?? '')) ?: null;
+        $settings['bulk_greeting']       = trim((string) ($data['bulk_greeting'] ?? '')) ?: null;
         $settings['bulk_device_failover'] = $request->boolean('bulk_device_failover');
         // Anti-ban hardening (opt-in): invisible content variation, contact-graph
         // gate + its window, and the double-tick delivery-ratio guard.

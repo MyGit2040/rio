@@ -512,14 +512,15 @@ class CampaignController extends Controller
         $engine = Whatsapp::forInstance($device);
         $settings = (array) ($campaign->tenant?->settings ?? []);
 
-        // Mirror a real campaign send: pick one of the message variants, append
-        // the footer, then resolve spintax {a|b}, {{merge}} tags and the
+        // Mirror a real campaign send: pick one of the message variants, top it
+        // with the workspace's common opening line, append the footer, then
+        // resolve spintax {a|b}, common spintax groups, {{merge}} tags and the
         // prefixed random reference ID — so the test previews the true message.
-        $body = Personalizer::pickVariant($campaign->body, $campaign->variants);
+        $body = Personalizer::withCommonOpening(Personalizer::pickVariant($campaign->body, $campaign->variants), $settings);
         if (($footer = trim((string) $campaign->footer)) !== '') {
             $body = rtrim($body)."\n\n".$footer;
         }
-        $body = Personalizer::render($body, null, $number, $settings);
+        $body = Personalizer::applySynonyms(Personalizer::render($body, null, $number, $settings), $settings);
 
         // A poll can't carry text/media, so (like a real send) send the message FIRST —
         // the image with the caption, or plain text — then the poll below it.

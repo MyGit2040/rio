@@ -133,6 +133,12 @@ class SendCampaignMessage implements ShouldQueue
         // The variant slot is assigned round-robin at build time so each successive
         // message uses the next variant in order (not random).
         [$variantIndex, $body] = $this->variantFor($campaign, $recipient->variant_index);
+
+        // Common opening line (Settings → Sending): one greeting — with its own
+        // spintax and {{name}} — automatically tops EVERY variant, so it lives
+        // in one place instead of being pasted into each of 1000 variants.
+        $body = \App\Support\Personalizer::withCommonOpening((string) $body, $this->activeTenantSettings);
+
         $referenceId = $this->ensureReferenceId($recipient);
 
         // Footer (signature) is stored separately and merged onto the message here, so
@@ -528,6 +534,10 @@ class SendCampaignMessage implements ShouldQueue
 
         // 1) Spintax variation: {Hi|Hello} -> one option (natural wording variety).
         $text = $this->spin((string) $body, $spinRandom);
+
+        // 1b) Workspace-level common spintax groups (Settings → Sending):
+        // wording variety across EVERY variant without editing each one.
+        $text = \App\Support\Personalizer::applySynonyms($text, $this->activeTenantSettings);
 
         // 2) Built-in compliant merge tags — no random/tracking tokens.
         $randomNumber = trim((string) data_get($this->activeTenantSettings, 'bulk_random_prefix', '')).($referenceId ?? '');

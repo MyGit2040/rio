@@ -212,6 +212,19 @@
                     </span>
                 </label>
 
+                <div class="pl-7 space-y-4">
+                    <div>
+                        <x-input-label for="bulk_greeting" value="Common opening line — all campaign messages &amp; variants" />
+                        <x-text-input id="bulk_greeting" name="bulk_greeting" class="block mt-1 w-full" placeholder="{Hi|Hello|Dear} @{{name}}," :value="old('bulk_greeting', data_get($s, 'bulk_greeting'))" />
+                        <p class="text-xs text-gray-500 mt-1">Added automatically at the top of <strong>every</strong> campaign message and variant — write the greeting (spintax + merge tags welcome) once instead of inside each variant. Leave empty to disable.</p>
+                    </div>
+                    <div>
+                        <x-input-label for="bulk_spintax_groups" value="Common spintax words — apply to all variants" />
+                        <textarea id="bulk_spintax_groups" name="bulk_spintax_groups" rows="4" class="block mt-1 w-full rounded-lg border-gray-300 text-sm focus:border-brand focus:ring-brand" placeholder="Book a demo|Request a demo|See a quick demo&#10;Explore|Discover|Check out">{{ old('bulk_spintax_groups', data_get($s, 'bulk_spintax_groups')) }}</textarea>
+                        <p class="text-xs text-gray-500 mt-1">One group per line, options separated by <code>|</code>. Wherever any option appears in a message — the main body <strong>or any variant</strong> — it is swapped for a random option from its group, so you never have to paste <code>{a|b}</code> braces into hundreds of variants. Links are never altered. When "Spintax variation" is off, the first option is always used.</p>
+                    </div>
+                </div>
+
                 <label class="flex items-start gap-3">
                     <input type="hidden" name="bulk_antifingerprint" value="0">
                     <input type="checkbox" name="bulk_antifingerprint" value="1" @checked(data_get($s, 'bulk_antifingerprint', false)) class="mt-1 rounded border-gray-300 text-brand focus:ring-brand">

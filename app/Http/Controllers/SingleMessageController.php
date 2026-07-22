@@ -53,11 +53,11 @@ class SingleMessageController extends Controller
         $contact = Contact::where('phone', $phone)->first();
 
         // Variant chooser: a template with A/B variants sends one of them, then
-        // spintax {a|b}, {{merge}} tags (real contact name when the number is a
-        // known contact) and the prefixed random reference ID are resolved —
-        // the same wording tools a campaign send applies.
+        // spintax {a|b}, common spintax groups, {{merge}} tags (real contact
+        // name when the number is a known contact) and the prefixed random
+        // reference ID are resolved — the same wording tools a campaign applies.
         $raw = $template ? Personalizer::pickVariant($template->body, $template->variants) : (string) ($data['body'] ?? '');
-        $body = Personalizer::render($raw, $contact, $phone, $settings);
+        $body = Personalizer::applySynonyms(Personalizer::render($raw, $contact, $phone, $settings), $settings);
 
         $engine = Whatsapp::forInstance($device);
         $name = $device->instance_name;
