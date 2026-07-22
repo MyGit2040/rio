@@ -11,6 +11,7 @@ use App\Models\WhatsappInstance;
 use App\Models\Message;
 use App\Services\CampaignService;
 use App\Services\PlanLimit;
+use App\Support\Personalizer;
 use App\Support\Whatsapp;
 use App\Support\Audit;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -509,8 +510,16 @@ class CampaignController extends Controller
         }
 
         $engine = Whatsapp::forInstance($device);
-        $reference = trim((string) data_get($campaign->tenant?->settings, 'bulk_random_prefix', '')).random_int(100000, 999999);
-        $body = str_ireplace(['{{name}}', '{{phone}}', '{{variant_ref_id}}', '{{ref_id}}', '{{reference_id}}', '{{random}}', '[random]', '[ref_id]', '[reference_id]'], ['there', $number, $reference, $reference, $reference, $reference, $reference, $reference, $reference], (string) $campaign->body);
+        $settings = (array) ($campaign->tenant?->settings ?? []);
+
+        // Mirror a real campaign send: pick one of the message variants, append
+        // the footer, then resolve spintax {a|b}, {{merge}} tags and the
+        // prefixed random reference ID — so the test previews the true message.
+        $body = Personalizer::pickVariant($campaign->body, $campaign->variants);
+        if (($footer = trim((string) $campaign->footer)) !== '') {
+            $body = rtrim($body)."\n\n".$footer;
+        }
+        $body = Personalizer::render($body, null, $number, $settings);
 
         // A poll can't carry text/media, so (like a real send) send the message FIRST —
         // the image with the caption, or plain text — then the poll below it.

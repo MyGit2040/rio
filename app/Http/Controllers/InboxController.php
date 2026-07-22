@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Contact;
 use App\Models\Message;
 use App\Models\WhatsappInstance;
+use App\Support\Personalizer;
 use App\Support\Whatsapp;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -57,8 +58,12 @@ class InboxController extends Controller
             return back()->with('error', 'Connect a WhatsApp device first to reply.');
         }
 
+        // Spintax {a|b}, {{merge}} tags and the random reference ID resolve
+        // here too, so a pasted template reads clean in a one-to-one reply.
+        $body = Personalizer::render($data['body'], $contact, $contact->phone, (array) (auth()->user()->tenant?->settings ?? []));
+
         $result = Whatsapp::forInstance($device)
-            ->sendText($device->instance_name, $contact->phone, $data['body']);
+            ->sendText($device->instance_name, $contact->phone, $body);
 
         if (! $result['ok']) {
             return back()->with('error', 'Could not send: '.($result['error'] ?? 'unknown error'));
@@ -70,7 +75,7 @@ class InboxController extends Controller
             'direction'            => 'out',
             'phone'                => $contact->phone,
             'type'                 => 'text',
-            'body'                 => $data['body'],
+            'body'                 => $body,
             'status'               => 'sent',
             'message_id'           => $result['message_id'],
         ]);

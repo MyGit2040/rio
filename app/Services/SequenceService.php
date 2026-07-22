@@ -8,6 +8,7 @@ use App\Models\Sequence;
 use App\Models\SequenceEnrollment;
 use App\Models\Suppression;
 use App\Models\WhatsappInstance;
+use App\Support\Personalizer;
 use App\Support\SendingWindow;
 use App\Support\Tenancy;
 use App\Support\Whatsapp;
@@ -155,7 +156,7 @@ class SequenceService
             return false;
         }
 
-        $this->send($device, $contact, $step);
+        $this->send($device, $contact, $step, (array) ($sequence->tenant?->settings ?? []));
 
         // Advance to the next step (or finish).
         $nextIndex = $enrollment->current_step + 1;
@@ -168,12 +169,17 @@ class SequenceService
         return true;
     }
 
-    private function send(WhatsappInstance $device, Contact $contact, $step): void
+    private function send(WhatsappInstance $device, Contact $contact, $step, array $settings = []): void
     {
         $engine = Whatsapp::forInstance($device);
         $template = $step->template;
 
-        $body = $this->personalize($template->body ?? $step->body ?? '', $contact);
+        // Variant chooser: a template step with A/B variants sends one of them.
+        $raw = $template
+            ? Personalizer::pickVariant($template->body, $template->variants)
+            : (string) ($step->body ?? '');
+
+        $body = $this->personalize($raw, $contact, $settings);
 
         if ($template && $template->media_url) {
             $result = $engine->sendMedia($device->instance_name, $contact->phone, $template->media_type ?: 'image', $template->media_url, $body);
@@ -195,25 +201,13 @@ class SequenceService
         ]);
     }
 
-    private function personalize(string $body, Contact $contact): string
+    /**
+     * Everything the old inline version resolved ({{name}}, {{phone}}, contact
+     * attributes) plus spintax {a|b}, {{date}} and the prefixed random
+     * reference ID — the same wording tools campaign sends apply.
+     */
+    private function personalize(string $body, Contact $contact, array $settings = []): string
     {
-        $name = $contact->name ?: 'there';
-        $body = preg_replace(
-            ['/\{\{\s*name\s*\}\}/i', '/\{\{\s*phone\s*\}\}/i'],
-            [$name, $contact->phone],
-            $body
-        );
-
-        $attributes = (array) ($contact->attributes ?? []);
-
-        return preg_replace_callback('/\{\{\s*([a-z0-9_]+)\s*\}\}/i', function ($m) use ($attributes) {
-            foreach ($attributes as $k => $v) {
-                if (strtolower((string) $k) === strtolower($m[1]) && ! is_array($v)) {
-                    return (string) $v;
-                }
-            }
-
-            return '';
-        }, $body);
+        return Personalizer::render($body, $contact, $contact->phone, $settings);
     }
 }

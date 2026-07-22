@@ -7,6 +7,7 @@ use App\Models\Message;
 use App\Models\Template;
 use App\Models\WhatsappInstance;
 use App\Services\PlanLimit;
+use App\Support\Personalizer;
 use App\Support\Whatsapp;
 use App\Support\Tenancy;
 use Illuminate\Http\RedirectResponse;
@@ -48,8 +49,15 @@ class SingleMessageController extends Controller
         $template = ! empty($data['template_id']) ? Template::find($data['template_id']) : null;
 
         $type = $template->type ?? 'text';
-        $reference = trim((string) data_get(auth()->user()?->tenant?->settings, 'bulk_random_prefix', '')).random_int(100000, 999999);
-        $body = str_ireplace(['{{name}}', '{{phone}}', '{{variant_ref_id}}', '{{ref_id}}', '{{reference_id}}', '{{random}}', '[random]', '[ref_id]', '[reference_id]'], ['there', $phone, $reference, $reference, $reference, $reference, $reference, $reference, $reference], (string) ($template->body ?? $data['body'] ?? ''));
+        $settings = (array) (auth()->user()?->tenant?->settings ?? []);
+        $contact = Contact::where('phone', $phone)->first();
+
+        // Variant chooser: a template with A/B variants sends one of them, then
+        // spintax {a|b}, {{merge}} tags (real contact name when the number is a
+        // known contact) and the prefixed random reference ID are resolved —
+        // the same wording tools a campaign send applies.
+        $raw = $template ? Personalizer::pickVariant($template->body, $template->variants) : (string) ($data['body'] ?? '');
+        $body = Personalizer::render($raw, $contact, $phone, $settings);
 
         $engine = Whatsapp::forInstance($device);
         $name = $device->instance_name;
@@ -82,7 +90,7 @@ class SingleMessageController extends Controller
 
         Message::create([
             'whatsapp_instance_id' => $device->id,
-            'contact_id'           => Contact::where('phone', $phone)->value('id'),
+            'contact_id'           => $contact?->id,
             'direction'            => 'out',
             'phone'                => $phone,
             'type'                 => $type,

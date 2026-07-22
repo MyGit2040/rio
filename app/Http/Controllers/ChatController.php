@@ -8,6 +8,7 @@ use App\Models\WhatsappInstance;
 use App\Services\PlanLimit;
 use App\Support\ChatRealtime;
 use App\Support\LocalTime;
+use App\Support\Personalizer;
 use App\Support\Whatsapp;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -152,6 +153,14 @@ class ChatController extends Controller
         $body = trim((string) ($data['body'] ?? ''));
         $mediaUrl = $data['media_url'] ?? null;
         $engine = Whatsapp::forInstance($device);
+
+        // The same wording tools campaigns get — spintax {a|b}, {{merge}} tags
+        // and the prefixed random reference ID — apply to chat sends too, so a
+        // pasted template never leaves with raw braces or unresolved tokens.
+        $contact = Contact::where('phone', $phone)->first();
+        if ($body !== '') {
+            $body = Personalizer::render($body, $contact, $phone, (array) (auth()->user()->tenant?->settings ?? []));
+        }
 
         $result = $mediaUrl
             ? $engine->sendMedia(
